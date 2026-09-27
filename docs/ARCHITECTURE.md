@@ -78,6 +78,8 @@ the menu is open), written under a file lock.
 | `launcher/hearth/audio.py` | Output/input devices, volumes and per-app streams via `pactl -f json` (PipeWire). |
 | `launcher/hearth/gamescope.py` | X11 properties: `STEAM_GAME` tags, `GAMESCOPECTRL_BASELAYER_APPID` focus, overlay flags. |
 | `launcher/hearth/session.py` | Shared state file, systemd scopes (spawn, freeze, thaw, stop), which app owns a PID. |
+| `launcher/hearth/wiimote.py` | Wii Remotes on a DolphinBar (mode 4), read directly over hidraw: IR camera setup, buttons, and the sensor bar's dots turned into a pointer. |
+| `launcher/hearth/wiiinput.py` | Wii Remote → Quick Menu navigation, or keys and pointer (via XTest) for the app in front; Home tap/hold; hands the remotes to Dolphin while it runs. |
 | `launcher/hearth/pointer.py` | Controller → virtual mouse/keyboard (uinput) for apps without a TV interface. |
 | `launcher/hearth/updates.py` | OS version and staged updates (`rpm-ostree status`), running updates through `hearth-update`. |
 | `launcher/hearth/ctl.py` | `hearthctl`: status, doctor, logs, update, rollback, enable/disable, dev mode. |
@@ -128,12 +130,13 @@ screen shows what went wrong).
 
 - **Real gamescope** (`tools/gamescope-lab/`, needs Docker): Hearth as the
   client of gamescope 3.16 in Steam mode, with real PipeWire, driven through a
-  scripted session with 20 checks and recorded to video. It confirms that
+  scripted session with 22 checks and recorded to video. It confirms that
   gamescope accepts and focuses Hearth's tagged windows, follows its
   front-app list between home, game and Discord, shows the Quick Menu overlay
   with input focus, and that audio switching, per-app volume, and Discord
-  mute/deafen change the real PipeWire streams, and that a problem report
-  captures the screen and gamescope's state.
+  mute/deafen change the real PipeWire streams, that pointing at a tile and
+  pressing A opens it (the path a Wii Remote's input takes), and that a problem
+  report captures the screen and gamescope's state.
 
 What none of these cover is real GPU rendering, real controllers, and
 pausing games (systemd scopes). That's the list below.
@@ -168,10 +171,15 @@ These couldn't be tested without a real machine. Check them first, in this order
     through it; the game pauses (the user systemd manager can freeze scopes)
     and resumes; audio device switching and per-app volume work through
     `pactl`; closing a game from it returns home.
-11. **Discord**: starts in the background, comes to the front from the menu,
+11. **Wii Remotes** (DolphinBar in mode 4): `hearthctl doctor` finds the
+    slots; a paired remote rumbles and lights its LED; the pointer tracks the
+    screen the right way round (the `gain` in `wiimote.Aim` may need tuning,
+    and whether the bar is above or below the TV); keys reach Kodi and ES-DE;
+    Dolphin gets the remotes while it runs and Hearth takes them back after.
+12. **Discord**: starts in the background, comes to the front from the menu,
     the controller moves a pointer there (needs write access to
     `/dev/uinput`), and mute/deafen affect its call.
-12. **Android tile** appears after `ujust setup-waydroid` (it looks for
+13. **Android tile** appears after `ujust setup-waydroid` (it looks for
    `/var/lib/waydroid/waydroid.cfg`) and Bazzite's `waydroid-launcher` displays
    under Hearth's gamescope session.
 

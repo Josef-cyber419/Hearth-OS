@@ -254,7 +254,29 @@ say("Home again", "Discord keeps running in the background (green dot)")
 check("Discord still running", "discord" in state()["background"])
 time.sleep(3.5)
 
-# 10. a troubleshooting report, with a screenshot
+# 11. pointing (what a Wii Remote does): aim at a tile, press A
+say("Point at a tile, press A", "A Wii Remote on a DolphinBar: the pointer highlights what you aim at")
+from hearth.ui import Theme  # noqa: E402
+from hearth.wiiinput import XTestSink  # noqa: E402
+
+th = Theme((1280, 720))
+aim = XTestSink(gs.d)
+tx = (th.margin + th.tile_w / 2) / 1280  # Kodi: first tile of the second row
+ty = (th.header_h + th.row_h + th.row_title_h + th.tile_h / 2) / 720
+for i in range(1, 25):  # glide there like a hand would
+    aim.move(0.75 + (tx - 0.75) * i / 24, 0.3 + (ty - 0.3) * i / 24)
+    time.sleep(0.03)
+time.sleep(0.8)
+key("Return", 0.3)
+wait_for("gamescope opens the tile pointed at (Kodi)",
+         lambda: root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [appid_for("kodi")])
+time.sleep(1.5)
+ctl("home")
+wait_for("back home", lambda: state()["foreground"] is None
+         and root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [HOME_APPID])
+time.sleep(1)
+
+# 12. a troubleshooting report, with a screenshot
 say("Report a problem", "hearthctl report: logs, hardware, timeline and a screenshot in one file")
 ctl("report", "--screenshot", "-o", f"{OUT}/reports")
 bundle = sorted(pathlib.Path(f"{OUT}/reports").glob("hearth-report-*.tar.gz"))[-1]

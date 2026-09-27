@@ -25,6 +25,7 @@ BOOT_SECONDS = 1.6
 RETURN_SECONDS = 0.55
 LAUNCH_SECONDS = 0.42
 CONFIRM_SECONDS = 0.18
+POINTER_SECONDS = 2.5  # the pointer hides this long after it last moved
 SLANT = 0.45  # the lean of the big livery stripes, as a fraction of height
 
 
@@ -143,6 +144,9 @@ class HomeScreen:
         self._confirm_t0 = 0.0
         self._focus_key: tuple[int, int] | None = None
         self._focus_since = self._last
+        self._hits: list[tuple[pygame.Rect, int, int]] = []  # tiles on screen, for the pointer
+        self._pointer: tuple[int, int] | None = None
+        self._pointer_at = 0.0
 
     # -- caches ----------------------------------------------------------------
 
@@ -221,6 +225,52 @@ class HomeScreen:
         self.home.move(nav)
         return None
 
+    # -- pointer (a Wii Remote, or a mouse) --------------------------------------
+
+    def _tile_at(self, pos: tuple[int, int]) -> tuple[int, int] | None:
+        for rect, r, c in self._hits:
+            if rect.collidepoint(pos):
+                return r, c
+        return None
+
+    def point(self, pos: tuple[int, int]) -> None:
+        """Pointing at a tile highlights it."""
+        if self._pointer is not None and abs(pos[0] - self._pointer[0]) + abs(pos[1] - self._pointer[1]) < 2:
+            return  # ignore tremor
+        self._pointer, self._pointer_at = pos, time.monotonic()
+        if self.confirming is None:
+            hit = self._tile_at(pos)
+            if hit:
+                self.home.row, self.home.cols[hit[0]] = hit
+                self.intro = None
+
+    def click(self, pos: tuple[int, int]) -> App | None:
+        """A click on a tile opens it (or answers the confirm dialog)."""
+        if self.confirming is not None:
+            return self.handle(Nav.SELECT)
+        hit = self._tile_at(pos)
+        if hit is None:
+            return None
+        self.home.row, self.home.cols[hit[0]] = hit
+        return self.handle(Nav.SELECT)
+
+    def _draw_pointer(self) -> None:
+        if self._pointer is None:
+            return
+        age = time.monotonic() - self._pointer_at
+        if age > POINTER_SECONDS:
+            return
+        th, lv = self.theme, self.theme.lv
+        a = 1.0 if age < POINTER_SECONDS - 0.4 else (POINTER_SECONDS - age) / 0.4
+        r = int(16 * th.u)
+        layer = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
+        c = (r + 2, r + 2)
+        style.circle(layer, (0, 0, 0), c, r)
+        style.circle(layer, lv.text, c, r - max(2, int(3 * th.u)))
+        style.circle(layer, lv.accent, c, r * 0.45)
+        layer.set_alpha(int(235 * a))
+        self.surface.blit(layer, (self._pointer[0] - c[0], self._pointer[1] - c[1]))
+
     # -- timing ----------------------------------------------------------------
 
     def _intro_progress(self) -> float:
@@ -261,6 +311,7 @@ class HomeScreen:
             self._focus_key, self._focus_since = focus_key, now
 
         s.set_clip(area.inflate(0, th.gap))
+        self._hits = []
         indicator = None
         for r in range(len(self.home.config.rows)):
             y = int(area.y + r * th.row_h - self._scroll_y)
@@ -283,6 +334,7 @@ class HomeScreen:
             self._draw_boot_sweep()
         if self.confirming is not None:
             self._draw_confirm(self.confirming)
+        self._draw_pointer()
 
     def _draw_header(self) -> None:
         th, s, lv = self.theme, self.surface, self.theme.lv
@@ -354,6 +406,10 @@ class HomeScreen:
             appear = self._appear(0.06 * r + 0.045 * c, 0.42)
             if appear > 0:
                 self._draw_tile(app, pygame.Rect(x, ty, th.tile_w, th.tile_h), f, focused, appear)
+                visible = pygame.Rect(x, ty, th.tile_w, th.tile_h).clip(
+                    pygame.Rect(0, th.header_h, th.width, th.height - th.header_h - th.footer_h))
+                if visible.w > th.tile_w // 3 and visible.h > th.tile_h // 3:
+                    self._hits.append((visible, r, c))
         return focus_rect
 
     def _draw_tile(self, app: App, rest: pygame.Rect, f: float, focused: bool, appear: float) -> None:
@@ -564,9 +620,14 @@ def run(
                 mapper.reset()
         now = pygame.time.get_ticks()
         navs: list[Nav] = []
+        chosen = None
         for event in pygame.event.get():
             if event.type == pygame.QUIT and allow_quit:
                 return None
+            if not blocked and event.type == pygame.MOUSEMOTION:
+                screen.point(event.pos)
+            elif not blocked and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                chosen = screen.click(event.pos)
             nav = mapper.translate(event, now)
             if nav is not None and not blocked:
                 navs.append(nav)
@@ -578,9 +639,12 @@ def run(
                 return None
             app = screen.handle(nav)
             if app is not None:
-                if not app.background and not app.confirm:
-                    screen.play_launch(app)
-                return app
+                chosen = app
+                break
+        if chosen is not None:
+            if not chosen.background and not chosen.confirm:
+                screen.play_launch(chosen)
+            return chosen
         screen.draw()
         pygame.display.flip()
         if stats is not None:

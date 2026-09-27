@@ -6,6 +6,7 @@
 - Tags new windows with their app's ID so gamescope will show them.
 - While a background app with `pointer = true` is in front, the controller
   drives a mouse pointer.
+- Wii Remotes on a DolphinBar work as a remote and a pointer (wiiinput.py).
 
 Started by the hub (`python -m hearth.overlay`); safe to restart any time.
 """
@@ -95,12 +96,25 @@ class Actions:
         self.o.refresh(force=True)
         return None  # stay open to show progress
 
+    def set_wii_mouse(self, on: bool):
+        key = focus_key(session.read())
+        session.update(lambda s: s.setdefault("wii_mouse", {}).__setitem__(key, bool(on)))
+        self.o.state = session.read()
+        return None
+
     def report(self):
         if (session.read().get("report") or {}).get("status") != "running":
             session.update(lambda s: s.__setitem__("report", {"status": "running"}))
             threading.Thread(target=self.o.run_report, daemon=True).start()
         self.o.refresh(force=True)
         return None  # stay open to show progress
+
+
+def focus_key(state: dict) -> str:
+    """The app in front: "home", a background app's id, or the foreground app's id."""
+    if state["focus"] == "foreground":
+        return (state["foreground"] or {}).get("id") or "home"
+    return state["focus"]
 
 
 class Overlay:
@@ -154,6 +168,12 @@ class Overlay:
         self.events: queue.Queue[str] = queue.Queue()
         homebutton.Watcher(lambda: self.events.put("tap"), homebutton.GuideTap, repeat=True).start()
         homebutton.Watcher(lambda: self.events.put("hold"), homebutton.HomeButton, repeat=True).start()
+        self.wii = None
+        if config.wii_remote:
+            from .wiiinput import WiiInput, XTestSink
+
+            self.wii = WiiInput(XTestSink(gs.d) if gs else None, on_tap=lambda: self.events.put("tap"),
+                                on_hold=lambda: self.events.put("wii_hold"))
 
     # -- state -----------------------------------------------------------------
 
@@ -185,8 +205,9 @@ class Overlay:
                 self._audio_error = str(e)
             snapshot = Snapshot()
         discord = self.config.app("discord")
+        wii = {"mouse": self.wii_mouse(), "app": self.title()} if self.wii and self.wii.active else None
         ctx = Context(self.audio, snapshot, self.state, self.actions,
-                      discord_available=bool(discord and discord.available()))
+                      discord_available=bool(discord and discord.available()), wii=wii)
         self.menu.set_tabs(build_tabs(ctx))
 
     # -- updates ---------------------------------------------------------------
@@ -396,10 +417,13 @@ class Overlay:
             if kind == "tap":
                 self.close_menu() if self.open else self.open_menu()
             elif kind == "hold" and not self.open:
-                state = session.read()
-                if state["focus"] in state["background"]:
-                    back = "foreground" if state["foreground"] else "home"
-                    self.apply_focus(session.update(lambda s: s.__setitem__("focus", back)))
+                self.back_from_background()
+            elif kind == "wii_hold":
+                # Holding Home on a Wii Remote: like holding Guide, from anywhere.
+                if self.open:
+                    self.close_menu()
+                if not self.back_from_background():
+                    self.actions.go_home()
 
         now = self.pg.time.get_ticks()
         navs = []
@@ -415,6 +439,8 @@ class Overlay:
             repeat = self.mapper.repeat(now)
             if repeat is not None:
                 navs.append(repeat)
+        if self.wii:
+            navs += self.wii.poll(self.open, pointing=self.state["focus"] == "home", mouse=self.wii_mouse())
         for nav in navs:
             log.debug("menu input: %s on %s", nav.name, getattr(self.menu.selected, "key", None))
             if nav is Nav.MENU:  # Start closes the menu, like B
@@ -423,6 +449,32 @@ class Overlay:
                 self.close_menu()
                 break
             self._refreshed = min(self._refreshed, time.monotonic() - REFRESH_SECONDS + AFTER_CHANGE_SECONDS)
+
+    def back_from_background(self) -> bool:
+        """With a background app (Discord) in front, go back to what was
+        behind it. Returns False if there's no background app in front."""
+        state = session.read()
+        if state["focus"] not in state["background"]:
+            return False
+        back = "foreground" if state["foreground"] else "home"
+        self.apply_focus(session.update(lambda s: s.__setitem__("focus", back)))
+        return True
+
+    def wii_mouse(self) -> bool:
+        """Whether the Wii Remote pointer drives the mouse for the app in front."""
+        state = self.state
+        key = focus_key(state)
+        override = state.get("wii_mouse", {}).get(key)
+        if override is not None:
+            return bool(override)
+        if key == "home" or self.config.wii_mouse == "never":
+            return False
+        if self.config.wii_mouse == "always":
+            return True
+        if key in state["background"]:
+            return bool(state["background"][key].get("pointer"))
+        app = self.config.app(key)
+        return bool(app and app.pointer)
 
     def draw(self) -> None:
         r = self.renderer
@@ -477,6 +529,8 @@ class Overlay:
         elif self.pointer_active:
             self.pointer.tick(clock.get_time() / 1000)
             clock.tick(120)
+        elif self.wii and self.wii.active:
+            clock.tick(100)  # the pointer follows the remote smoothly
         else:
             clock.tick(20)
 

@@ -111,6 +111,12 @@ class Config:
     livery: str = "gulf"
     # "reduced" turns off the intro, launch zoom and other decorative motion.
     motion: str = "full"
+    # Wii Remotes on a DolphinBar (mode 4) drive Hearth like a TV remote.
+    wii_remote: bool = True
+    # When the Wii Remote pointer works as a mouse: "apps" (those with
+    # pointer = true, e.g. Discord), "always", or "never". The Quick Menu can
+    # switch it for the app in front.
+    wii_mouse: str = "apps"
 
     def app(self, app_id: str) -> App | None:
         return next((a for row in self.rows for a in row.apps if a.id == app_id), None)
@@ -188,12 +194,18 @@ def parse(data: dict) -> Config:
     motion = theme.get("motion", "full")
     if motion not in ("full", "reduced"):
         raise ConfigError("theme.motion must be \"full\" or \"reduced\"")
+    wii = data.get("wii_remote", {})
+    wii_mouse = wii.get("mouse", "apps")
+    if wii_mouse not in ("apps", "always", "never"):
+        raise ConfigError("wii_remote.mouse must be \"apps\", \"always\" or \"never\"")
     return Config(
         title=data.get("title", "Hearth"),
         rows=tuple(rows),
         pause_game=bool(quick_menu.get("pause_game", True)),
         livery=str(theme.get("livery", "gulf")).lower(),
         motion=motion,
+        wii_remote=bool(wii.get("enabled", True)),
+        wii_mouse=wii_mouse,
     )
 
 
@@ -209,7 +221,7 @@ def merge(base: dict, user: dict) -> dict:
     """Layer user changes over the defaults (see the module docstring)."""
     if user.get("replace"):
         return user
-    tables = ("quick_menu", "theme")
+    tables = ("quick_menu", "theme", "wii_remote")
     merged = {**base, **{k: v for k, v in user.items() if k not in ("rows", "hide", *tables)}}
     for table in tables:
         merged[table] = {**base.get(table, {}), **user.get(table, {})}

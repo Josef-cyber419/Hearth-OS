@@ -44,11 +44,13 @@ def runtime_dir() -> Path:
 #   "paused": bool,
 #   "requests": ["menu" | "home", ...]   (from hearthctl; handled by the overlay)
 #   "update": {"status": "running" | "ready" | "current" | "failed", "version"} | null,
-#   "report": {"status": "running" | "done" | "failed", "file"} | null
+#   "report": {"status": "running" | "done" | "failed", "file"} | null,
+#   "wii_mouse": {app id: bool}   (Quick Menu's per-app override of wii_remote.mouse)
 # }
 
 DEFAULT_STATE = {"foreground": None, "background": {}, "focus": "home", "overlay_open": False,
-                 "paused": False, "requests": [], "update": None, "report": None}
+                 "paused": False, "requests": [], "update": None, "report": None,
+                 "wii_mouse": {}}
 
 
 def _state_path() -> Path:

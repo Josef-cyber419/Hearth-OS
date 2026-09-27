@@ -50,11 +50,50 @@ big game downloads.
 ## Game-changers for emulation
 
 ### Wii: Mayflash DolphinBar (~$30), yes, it's worth it
-A USB sensor bar with a built-in Bluetooth adapter for **real Wii Remotes**. In
-Dolphin, put it in **mode 4** and use "Connect real Wii
-Remotes". You get genuine pointer aiming, motion controls, speaker and rumble,
-with none of the Bluetooth pairing trouble. It also works as a sensor bar for
-Wii Remotes used as light guns in Wii rail shooters.
+A USB sensor bar with a built-in Bluetooth adapter for **real Wii Remotes**:
+genuine pointer aiming, motion controls, speaker and rumble, with none of the
+Bluetooth pairing trouble. It also works as a sensor bar for Wii Remotes used
+as light guns in Wii rail shooters.
+
+**Setup:**
+1. Put it centred above or below the TV and plug it **straight into the PC**
+   (not a hub).
+2. Press its mode button until the LED shows **mode 4**, and leave it there.
+3. Pair each remote: press the DolphinBar's sync button, then the red sync
+   button in the remote's battery cover. The remote rumbles and lights its
+   player LED when Hearth sees it.
+4. Once, in Desktop Mode: Dolphin → Controllers → set each Wii Remote to
+   **Real Wii Remote** and tick **Continuous Scanning**.
+
+`hearthctl doctor` checks the DolphinBar is in mode 4 and usable. (The image
+includes the device permissions Dolphin needs for it, and for the official
+GameCube controller adapter.)
+
+**The Wii Remote also works in Hearth itself**, like a TV remote with a pointer:
+
+| Wii Remote | Home screen and apps | Quick Menu |
+|---|---|---|
+| Point | Highlights the tile you aim at | |
+| D-pad | Arrow keys | Move |
+| A (or 2) | Open / Enter | Select |
+| B (or 1) | Back / Escape | Back |
+| − / + | Backspace / Menu | Previous / next tab |
+| Home | Tap: Quick Menu. Hold: close the app and go home | Close |
+
+**As a mouse**, the pointer moves the mouse, A clicks and 2 right-clicks. That's
+automatic in Discord, and Quick Menu → System → *Wii Remote pointer as mouse*
+switches it for whatever's in front, like a browser in Desktop Mode or a PC
+game's menus. Set when it's on in `apps.toml`:
+
+```toml
+[wii_remote]
+mouse = "apps"     # "apps" (Discord and other pointer apps), "always" or "never"
+enabled = true     # false: Hearth leaves Wii Remotes alone entirely
+```
+
+While **Dolphin** is running, Hearth lets go of the remotes so Wii games get
+them, and takes them back when Dolphin closes. In a Wii game, Home is the game's
+Home menu; use a controller's Guide button (or Dolphin's hotkey) to leave.
 
 ### Light guns for retro arcade/console shooters
 Old light guns only work with CRT TVs. Modern alternatives:

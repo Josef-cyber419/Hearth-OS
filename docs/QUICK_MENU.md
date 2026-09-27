@@ -29,8 +29,13 @@ Discord and go back to your game.
   Discord hidden. Mute and deafen last for the current call. (PipeWire
   remembers app volumes between sessions, but Hearth clears a remembered
   Discord mute, so a new call never starts silently muted.)
-- **System**: resume, close the current app, sleep, restart, power off.
-  Anything that ends what you're doing asks you to press A again.
+- **System**: resume, close the current app, check for updates, report a
+  problem, sleep, restart, power off. With a Wii Remote connected, also
+  *Wii Remote pointer as mouse* for the app in front. Anything that ends what
+  you're doing asks you to press A again.
+
+A Wii Remote on a DolphinBar opens the Quick Menu with a tap of **Home**; see
+[HARDWARE.md](HARDWARE.md#wii-mayflash-dolphinbar-30-yes-its-worth-it).
 
 ## Discord with a controller
 

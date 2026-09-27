@@ -141,6 +141,7 @@ class Actions(Protocol):
     def power(self, action: str) -> str | None: ...
     def update(self) -> str | None: ...
     def report(self) -> str | None: ...
+    def set_wii_mouse(self, on: bool) -> str | None: ...
 
 
 @dataclass
@@ -150,6 +151,8 @@ class Context:
     state: dict
     actions: Actions
     discord_available: bool = True
+    # Set while a Wii Remote is connected: {"mouse": bool, "app": name in front}
+    wii: dict | None = None
 
 
 def build_tabs(ctx: Context) -> list[Tab]:
@@ -265,6 +268,10 @@ def _system_tab(ctx: Context) -> Tab:
         tab.items.append(Item("home", "Close " + fg["name"], "action", confirm=True,
                               detail="Return to the home screen", on_select=act.go_home))
     tab.items.append(_update_item(ctx))
+    if ctx.wii is not None:
+        tab.items.append(Item("wii-mouse", "Wii Remote pointer as mouse", "toggle", value=ctx.wii["mouse"],
+                              detail=f"For {ctx.wii['app']}: point to move, A to click, 2 to right-click",
+                              on_change=act.set_wii_mouse))
     tab.items.append(_report_item(ctx))
     tab.items.append(Item("sleep", "Sleep", "action", on_select=lambda: act.power("suspend")))
     tab.items.append(Item("restart", "Restart", "action", confirm=True, on_select=lambda: act.power("reboot")))

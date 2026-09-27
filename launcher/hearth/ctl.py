@@ -158,6 +158,35 @@ def check_input() -> list[Check]:
     return out
 
 
+def check_wii() -> list[Check]:
+    from . import wiimote
+
+    slots = wiimote.find()
+    if slots:
+        blocked = [p for p in slots if not os.access(p, os.R_OK | os.W_OK)]
+        if blocked:
+            return [Check("Wii Remotes (DolphinBar)", "fail",
+                          f"found in mode 4, but {len(blocked)} of {len(slots)} slots can't be opened",
+                          "the image's udev rule (70-hearth-nintendo.rules) grants access: unplug and "
+                          "replug the DolphinBar, or restart")]
+        note = " (Dolphin has them right now)" if wiimote.dolphin_running() else ""
+        return [Check("Wii Remotes (DolphinBar)", "ok",
+                      f"mode 4, {len(slots)} slots, usable by Dolphin and Hearth{note}",
+                      "pair a remote: press the DolphinBar's sync button, then the red button in the remote")]
+    names = _read_text("/proc/bus/input/devices").lower()
+    if "mayflash" in names or "dolphinbar" in names:
+        return [Check("Wii Remotes (DolphinBar)", "warn", "plugged in, but not in mode 4",
+                      "press the DolphinBar's mode button until LED 4 lights (mode 4 is for Dolphin and Hearth)")]
+    return [Check("Wii Remotes (DolphinBar)", "info", "none plugged in")]
+
+
+def _read_text(path: str) -> str:
+    try:
+        return Path(path).read_text(errors="replace")
+    except OSError:
+        return ""
+
+
 def installed_flatpaks() -> set[str]:
     try:
         out = subprocess.run(["flatpak", "list", "--app", "--columns=application"], capture_output=True, text=True)
@@ -209,7 +238,8 @@ def check_updates() -> list[Check]:
 
 def run_doctor() -> int:
     checks = []
-    for group in (check_updates, check_session, check_modules, check_config, check_audio, check_input, check_apps):
+    for group in (check_updates, check_session, check_modules, check_config, check_audio, check_input, check_wii,
+                  check_apps):
         try:
             checks += group()
         except Exception as e:  # a broken check shouldn't hide the others

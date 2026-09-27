@@ -44,8 +44,10 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   cascade in, a focus stripe that glides between tiles, and a launch where the
   tile opens out to fill the screen. `motion = "reduced"` turns the decoration off.
 - **Works with anything you hold**: Xbox/PlayStation/8BitDo controllers (SDL
-  GameController mappings), TV remotes over HDMI-CEC, IR remotes via FLIRC, and
-  keyboards.
+  GameController mappings), TV remotes over HDMI-CEC, IR remotes via FLIRC,
+  keyboards, and **Wii Remotes** on a DolphinBar: point at a tile to pick it,
+  and use the pointer as a mouse where you want one. Dolphin gets them back
+  for Wii games.
 - **Quick Menu, over any game**: tap the controller's **Guide** button for a
   panel over whatever's playing, in the same livery, with the game paused. Switch audio
   output and microphone, set volumes, mix per-app volume, run Discord in the
@@ -109,7 +111,7 @@ tools/gamescope-lab/run.sh   # needs Docker → tools/gamescope-lab/out/hearth-d
 ```
 
 Runs Hearth inside real gamescope (Steam mode) with real PipeWire, plays
-through a session with 20 checks, and records a video. See
+through a session with 22 checks, and records a video. See
 [tools/gamescope-lab](tools/gamescope-lab/README.md).
 
 ## Project status

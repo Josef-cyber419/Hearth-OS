@@ -128,3 +128,52 @@ def test_overlay_end_to_end(xdisplay, runtime_dir):
     result = subprocess.run([sys.executable, "-c", OVERLAY_SCRIPT], env=env, capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "OK" in result.stdout
+
+
+def test_wii_remote_input_reaches_the_app(xdisplay):
+    """What a Wii Remote does, as the app underneath sees it: the pointer
+    moves there (through the hidden Quick Menu) and keys arrive."""
+    from Xlib import X, display
+
+    from hearth.gamescope import Gamescope
+    from hearth.wiiinput import XTestSink
+
+    app_conn = display.Display(xdisplay)
+    root = app_conn.screen().root
+    app = root.create_window(0, 0, 1280, 720, 0, X.CopyFromParent,
+                             event_mask=X.KeyPressMask | X.PointerMotionMask)
+    app.map()
+    app_conn.sync()
+
+    gs = Gamescope.connect(xdisplay)
+    menu = gs.d.screen().root.create_window(0, 0, 1280, 720, 0, X.CopyFromParent)
+    menu.map()
+    gs.d.sync()
+    gs.make_overlay(menu)
+    gs.set_overlay_visible(menu, False)  # hidden: clicks must go through it
+
+    app.set_input_focus(X.RevertToParent, X.CurrentTime)
+    app_conn.sync()
+    sink = XTestSink(gs.d)
+    sink.move(0.25, 0.5)
+    pointer = root.query_pointer()
+    assert (pointer.root_x, pointer.root_y) == (319, 359)
+    assert pointer.child.id == app.id  # not the Quick Menu's window
+
+    sink.key("Return", True)
+    sink.key("Return", False)
+    deadline = time.time() + 3
+    got = None
+    while time.time() < deadline and got is None:
+        while app_conn.pending_events():
+            e = app_conn.next_event()
+            if e.type == X.KeyPress:
+                got = app_conn.keycode_to_keysym(e.detail, 0)
+        time.sleep(0.05)
+    from Xlib import XK
+
+    assert got == XK.string_to_keysym("Return")
+
+    gs.set_overlay_visible(menu, True)  # shown: the menu takes the pointer again
+    sink.move(0.5, 0.5)
+    assert root.query_pointer().child.id == menu.id
