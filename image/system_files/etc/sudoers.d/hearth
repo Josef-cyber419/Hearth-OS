@@ -1,3 +1,5 @@
 # Let Hearth (Quick Menu, hearthctl) install updates and roll back without a
 # password prompt, which a TV remote can't answer. Fixed actions only.
-%wheel ALL=(root) NOPASSWD: /usr/libexec/hearth/hearth-update apply, /usr/libexec/hearth/hearth-update rollback
+# hearth-session clear-desktop-login: Steam's "Switch to Desktop" inside Hearth
+# returns home instead (see /usr/libexec/hearth/hearth-steam).
+%wheel ALL=(root) NOPASSWD: /usr/libexec/hearth/hearth-update apply, /usr/libexec/hearth/hearth-update rollback, /usr/libexec/hearth/hearth-session clear-desktop-login

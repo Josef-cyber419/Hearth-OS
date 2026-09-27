@@ -1,6 +1,14 @@
 #!/usr/bin/bash
 # Leave the TV session for the desktop (KDE Plasma or GNOME). Bazzite's
 # "Return to Gaming Mode" shortcut on the desktop brings you back to Hearth.
+# hearth-steam refuses a logout while Steam runs; make sure that's gone
+# (e.g. if Steam was killed) so this deliberate switch goes through.
+dropin=${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd/user/graphical-session.target.d/50-hearth-steam.conf
+if [[ -e $dropin ]]; then
+    rm -f "$dropin"
+    systemctl --user daemon-reload
+fi
+
 for select in /usr/libexec/os-session-select /usr/bin/steamos-session-select; do
     [[ -x $select ]] && exec "$select" plasma
 done

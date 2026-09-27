@@ -2,4 +2,7 @@
 # ES-DE, the emulation menu: one entry per console that has games in ~/ROMs.
 # Emulators are separate Flatpaks (see /usr/share/hearth/emulators.list);
 # ES-DE finds them automatically.
+# Point ES-DE at the standalone emulators Hearth installed (quick; the
+# RetroArch cores are downloaded in the background when Hearth starts).
+hearthctl emulation-setup --no-download --quiet || true
 exec "$HOME/Applications/ES-DE.AppImage" "$@"
