@@ -77,7 +77,7 @@ GameCube controller adapter.)
 | D-pad | Arrow keys | Move |
 | A (or 2) | Open / Enter | Select |
 | B (or 1) | Back / Escape | Back |
-| − / + | Backspace / Menu | Previous / next tab |
+| − / + | Options (pin a game, hide a tile) / Menu | Previous / next tab |
 | Home | Tap: Quick Menu. Hold: close the app and go home | Close |
 
 **Settings → Wii Remote** has the rest: where the sensor bar is (above or below

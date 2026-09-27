@@ -64,6 +64,12 @@ title = "Play"
   color = "#1b2838"
 
   [[rows.apps]]
+  id = "library"
+  name = "Library"
+  command = "hearth:library"   # built in: every Steam and emulated game, pin your favourites
+  color = "#3d4a5c"
+
+  [[rows.apps]]
   # ES-DE: one menu, a tile per console you've added games for.
   # Installed per user by hearth-esde-update; see docs/EMULATION.md.
   id = "emulation"

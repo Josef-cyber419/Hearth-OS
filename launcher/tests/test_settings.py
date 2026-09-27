@@ -202,11 +202,13 @@ def test_hiding_a_tile(shipped_config, offline):
     app = SettingsApp(shipped_config)
     app.handle(Nav.DOWN)  # Home screen
     app.handle(Nav.RIGHT)
+    app.menu.select(next(i.key for i in app.menu.current.items if i.key.startswith("tile-")))
     first = app.menu.selected
     assert first.kind == "toggle" and first.value
     app.handle(Nav.SELECT)
     assert settings.load()["hide"] == [first.key.removeprefix("tile-")]
     assert "tile-settings" not in [i.key for i in app.menu.current.items]  # can't hide your way out
+    assert "tile-library" not in [i.key for i in app.menu.current.items]
 
 
 def test_wifi_password_flow(shipped_config, offline):

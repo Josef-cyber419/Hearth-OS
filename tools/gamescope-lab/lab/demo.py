@@ -276,6 +276,41 @@ wait_for("back home", lambda: state()["foreground"] is None
          and root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [HOME_APPID])
 time.sleep(1)
 
+# A small Steam library (what Steam leaves on disk: manifests, play times,
+# artwork), so the home screen has games to show from here on.
+def fake_steam():
+    import random
+    root = pathlib.Path("/lab/home/.local/share/Steam")
+    apps = root / "steamapps"
+    apps.mkdir(parents=True, exist_ok=True)
+    (apps / "libraryfolders.vdf").write_text(f'"libraryfolders" {{ "0" {{ "path" "{root}" }} }}')
+    played = []
+    for i, (appid, name, hue) in enumerate((("1245620", "ELDEN RING", 38), ("367520", "Hollow Knight", 210),
+                                            ("1145360", "Hades", 350), ("413150", "Stardew Valley", 110))):
+        (apps / f"appmanifest_{appid}.acf").write_text(
+            f'"AppState" {{ "appid" "{appid}" "name" "{name}" "StateFlags" "4" }}')
+        played.append(f'"{appid}" {{ "LastPlayed" "{int(time.time()) - i * 86400}" }}')
+        art = pygame.Surface((460, 215))
+        rnd = random.Random(i)
+        for y in range(215):
+            c = pygame.Color(0)
+            c.hsva = (hue, 55, 25 + 45 * y / 215, 100)
+            pygame.draw.line(art, c, (0, y), (460, y))
+        for _ in range(8):
+            c = pygame.Color(0)
+            c.hsva = ((hue + rnd.randint(-30, 30)) % 360, 65, rnd.randint(45, 90), 100)
+            pygame.draw.circle(art, c, (rnd.randint(0, 460), rnd.randint(30, 215)), rnd.randint(18, 60))
+        art.blit(FONT.render(name, True, (255, 255, 255)), (22, 20))
+        path = root / f"appcache/librarycache/{appid}/h{i}"
+        path.mkdir(parents=True, exist_ok=True)
+        pygame.image.save(art, str(path / "header.jpg"))
+    (root / "userdata/1/config").mkdir(parents=True, exist_ok=True)
+    (root / "userdata/1/config/localconfig.vdf").write_text(
+        '"UserLocalConfigStore" { "Software" { "Valve" { "Steam" { "apps" { ' + " ".join(played) + " } } } } }")
+
+
+fake_steam()
+
 # 12. the Settings app, with the remote
 say("Settings", "Every option with a remote: looks, Wii Remote, Bluetooth, Wi-Fi...")
 key("Tab", 0.5)  # Menu jumps to the System row; Settings is its first tile
@@ -305,7 +340,28 @@ time.sleep(2)
 ctl("menu")
 time.sleep(1)
 
-# 13. a troubleshooting report, with a screenshot
+# 13. your games on the home screen: Continue, pin one, the Library
+say("Your games, up front", "Continue: what you played last, Steam and emulated, with artwork")
+for _ in range(4):
+    key("Up", 0.35)  # from the Settings tile up to the Continue row
+time.sleep(2)
+key("o", 1.0)  # Options (Y on a controller)
+say("Pin a game", "Y on any game: pin it to the home screen")
+key("Return", 1.5)
+wait_for("game pinned", lambda: json.load(open("/lab/config/hearth/settings.json")).get("pins") == ["steam:1245620"])
+time.sleep(1.5)
+say("The Library", "Every Steam game and ROM, by platform")
+key("Down", 0.5)
+key("Down", 0.5)  # the Play row
+for _ in range(3):
+    key("Right", 0.4)  # Fake Game, Emulation, Discord, Library
+key("Return", 2.5)
+wait_for("Library opened", lambda: '"library_open"' in pathlib.Path("/lab/state/hearth/events.jsonl").read_text())
+time.sleep(2)
+key("Escape", 1.5)
+wait_for("home screen back", lambda: root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [HOME_APPID])
+
+# 14. a troubleshooting report, with a screenshot
 say("Report a problem", "hearthctl report: logs, hardware, timeline and a screenshot in one file")
 ctl("report", "--screenshot", "-o", f"{OUT}/reports")
 bundle = sorted(pathlib.Path(f"{OUT}/reports").glob("hearth-report-*.tar.gz"))[-1]

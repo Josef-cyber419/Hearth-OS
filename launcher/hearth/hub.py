@@ -16,13 +16,14 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 import pygame
 
 from . import config as cfg
-from . import events, homebutton, logs, session, ui, updates
+from . import events, homebutton, library, logs, session, style, ui, updates
 from .gamescope import HOME_APPID, Gamescope
 from .model import Home
 
@@ -215,16 +216,45 @@ def main(argv: list[str] | None = None) -> int:
             state["message"] = f"Something went wrong ({type(e).__name__}); details: hearthctl logs"
 
 
-def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: bool, state: dict) -> str | None:
-    """One round of: show the home screen, then run what was picked."""
+def home_config(args, state: dict | None = None) -> cfg.Config:
+    """The home screen's contents: apps.toml + settings, and your games on top."""
     try:
         config = cfg.load(args.config)
     except (OSError, cfg.ConfigError) as e:
         log.error("config: %s", e)
         config = cfg.Config(rows=())
-        state["message"] = f"Config error: {e}"
+        if state is not None:
+            state["message"] = f"Config error: {e}"
     if not args.show_all:
         config = config.visible()
+    try:
+        config = library.with_game_rows(config)
+    except Exception:  # never lose the home screen over the game library
+        log.exception("game rows")
+    return config
+
+
+def tune_emulators(resolution: str) -> None:
+    """Give each emulator recommended settings once it has created its own
+    config (after its first run). See emutune.py."""
+    from . import emutune, settings
+
+    try:
+        done = set(settings.load().get("emulation_tuned", []))
+        new = emutune.auto(resolution, set(done))
+        if new != done:
+            data = settings.load()
+            data["emulation_tuned"] = sorted(new)
+            settings.save(data)
+            events.record("emulators_tuned", emulators=sorted(new - done))
+    except Exception:
+        log.exception("tuning emulators")
+
+
+def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: bool, state: dict) -> str | None:
+    """One round of: show the home screen, then run what was picked."""
+    config = home_config(args, state)
+    style.set_prompts(config.prompts, config.confirm)
     if overlay:
         overlay.ensure()
 
@@ -234,15 +264,21 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
 
     if state["surface"] is None:
         state["surface"] = open_display(args.windowed)
+    if not state.get("tuned"):
+        state["tuned"] = True
+        threading.Thread(target=tune_emulators, args=(config.emulation_resolution,), daemon=True).start()
     show_home(gs)
     current = session.read()
     ready = (current.get("update") or {}).get("status") == "ready"
     stats = events.FrameStats()
-    app = ui.run(state["surface"], home, config.title, message=state["message"], allow_quit=dev_mode, stats=stats,
-                 input_blocked=lambda: session.read()["overlay_open"],
+    view, offset = style.inset(state["surface"], config.safe_area)
+    common = dict(input_blocked=lambda: session.read()["overlay_open"], livery=config.livery, motion=config.motion,
+                  clock=config.clock, swap_confirm=config.confirm == "east", offset=offset,
+                  saver_after=config.screensaver_minutes * 60)
+    app = ui.run(view, home, config.title, message=state["message"], allow_quit=dev_mode, stats=stats,
                  badge="Update ready: restart to finish" if ready else None,
-                 running=set(current["background"]), livery=config.livery, motion=config.motion,
-                 intro=state["intro"], clock=config.clock)
+                 running=set(current["background"]), intro=state["intro"],
+                 rebuild=lambda: home_config(args), sleep_after=config.sleep_minutes * 60, **common)
     state["message"] = None
     state["intro"] = None
     frames = stats.summary()
@@ -252,13 +288,25 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
         return "quit"
     state["last_id"] = app.id
 
-    if app.builtin:
+    if app.command[0] == "hearth:settings":
         from . import settings_app
 
         # Runs in this window; it may hand back an app to open (Desktop Mode).
-        app = settings_app.run(state["surface"], args.config)
+        app = settings_app.run(view, args.config, offset=offset)
         if app is None:
             return None
+    elif app.command[0] == "hearth:library":
+        events.record("library_open")
+        library_home = Home(library.library_config())
+        app = ui.run(view, library_home, "Library", back_exits=True, rebuild=library.library_config,
+                     hints=(("A", "Play"), ("Y", "Pin"), ("B", "Back")), **common)
+        if app is None:
+            return None
+    elif app.builtin:
+        return None
+    key = library.key_of(app.id)
+    if key:
+        library.record_play(key)
 
     if app.background and not args.dry_run:
         # The home screen stays open behind it; the Quick Menu or a held

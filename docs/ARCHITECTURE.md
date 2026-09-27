@@ -78,6 +78,8 @@ the menu is open), written under a file lock.
 | `launcher/hearth/audio.py` | Output/input devices, volumes and per-app streams via `pactl -f json` (PipeWire). |
 | `launcher/hearth/gamescope.py` | X11 properties: `STEAM_GAME` tags, `GAMESCOPECTRL_BASELAYER_APPID` focus, overlay flags. |
 | `launcher/hearth/session.py` | Shared state file, systemd scopes (spawn, freeze, thaw, stop), which app owns a PID. |
+| `launcher/hearth/library.py` | Games from Steam (appmanifests, `localconfig.vdf` play times, Steam's artwork cache) and from `~/ROMs` with ES-DE's gamelists (names, favourites, play times, scraped artwork). Launch commands follow ES-DE's defaults for the installed emulators. Builds the Continue and Pinned rows and the Library. |
+| `launcher/hearth/emutune.py` | Recommended emulator settings for the PC and TV: edits only its own keys in configs the emulator already wrote, with a backup. |
 | `launcher/hearth/settings_app.py` | The Settings app (the Settings tile, command `hearth:settings`): runs in the home screen's window; categories, options, on-screen keyboard, Wii Remote calibration; slow work in background threads. |
 | `launcher/hearth/settings.py` | Settings made in the app, in `~/.config/hearth/settings.json`, layered over `apps.toml` (a bad file is ignored rather than breaking the home screen). The Quick Menu process notices changes and applies them at once. |
 | `launcher/hearth/network.py` / `bluetooth.py` | Wi-Fi and connection status through NetworkManager (`nmcli`); pairing and connecting through `bluetoothctl`. |

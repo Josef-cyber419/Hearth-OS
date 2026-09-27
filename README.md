@@ -37,6 +37,13 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 - **TV home screen**: rows of tiles (Play / Watch / System), clock, confirm
   dialogs for power actions. Scales cleanly from 720p to 4K.
+- **Your games up front**: a **Continue** row of what you played last and a
+  **Pinned** row of favourites, across Steam and every emulated console, with
+  their artwork. Press Y on any game to pin it. The **Library** tile lists
+  every installed Steam game and every ROM, by platform. Games start directly:
+  Steam ones open Big Picture and launch, emulated ones open their emulator.
+- **Emulators tuned for your PC and TV**: Vulkan, upscaling to your TV's
+  resolution, stutter-free shaders ([docs/EMULATION.md](docs/EMULATION.md#tuned-for-your-pc)).
 - **Heritage racing look**: tiles painted like period race cars (deep enamel,
   twin stripes, a number roundel), condensed signwriter type, and a choice of
   liveries: Gulf, Martini, British Racing Green, Rosso, Silver Arrow. Motion is
@@ -65,8 +72,12 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   place: livery, motion and clock; which tiles show; the Guide button and
   controller-as-mouse speed; the Wii Remote (sensor bar position, pointer
   speed and steadiness, sideways hold, mouse mode, and a two-target pointer
-  calibration); Bluetooth pairing; Wi-Fi with an on-screen keyboard; versions,
-  storage, updates and problem reports. Changes apply at once.
+  calibration); emulator tuning; Bluetooth pairing; Wi-Fi with an on-screen
+  keyboard and a connection test; hardware, temperatures, storage, updates and
+  problem reports. Also the things TVs and consoles are expected to have: a
+  screen saver (OLED-friendly), sleep when idle, screen edges for TVs that
+  crop, Nintendo-style confirm button, and Xbox, PlayStation or Nintendo
+  button names on screen. Changes apply at once.
 - **Customisable without rebuilding**: copy
   [`apps.toml`](image/system_files/usr/share/hearth/apps.toml) to
   `~/.config/hearth/apps.toml` and edit. Tiles for apps that aren't installed are

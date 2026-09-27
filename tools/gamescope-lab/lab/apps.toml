@@ -22,6 +22,11 @@ title = "Play"
   pointer = true
   wm_class = "discord"
   color = "#5865f2"
+  [[rows.apps]]
+  id = "library"
+  name = "Library"
+  command = "hearth:library"
+  color = "#3d4a5c"
 
 [[rows]]
 title = "Watch"

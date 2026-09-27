@@ -8,13 +8,15 @@ independent curves; `motion = "reduced"` keeps it still.
 
 from __future__ import annotations
 
+import math
+import subprocess
 import time
 from pathlib import Path
 from typing import Callable
 
 import pygame
 
-from . import style
+from . import events, style
 from .config import App
 from .input import InputMapper
 from .model import Home, Nav
@@ -59,9 +61,69 @@ class Theme:
         self.font_hint = t(26, "text", "medium")
 
 
+_art: dict[str, pygame.Surface | None] = {}
+
+
+def load_art(path: str | None) -> pygame.Surface | None:
+    """A game's artwork, loaded once."""
+    if not path:
+        return None
+    if path not in _art:
+        if len(_art) > 200:
+            _art.clear()
+        try:
+            _art[path] = pygame.image.load(path)
+        except (pygame.error, OSError, FileNotFoundError):
+            _art[path] = None
+    return _art[path]
+
+
+def cover(img: pygame.Surface, size: tuple[int, int]) -> pygame.Surface:
+    """Scale an image to fill `size`, cropping the overflow evenly."""
+    w, h = size
+    scale = max(w / img.get_width(), h / img.get_height())
+    scaled = pygame.transform.smoothscale(img, (max(w, int(img.get_width() * scale) + 1),
+                                                max(h, int(img.get_height() * scale) + 1)))
+    out = pygame.Surface(size, pygame.SRCALPHA)
+    out.blit(scaled, ((w - scaled.get_width()) // 2, (h - scaled.get_height()) // 2))
+    return out
+
+
+def paint_game(size: tuple[int, int], app: App, th: Theme, lit: bool, art: pygame.Surface,
+               details: bool = True) -> pygame.Surface:
+    """A game tile: its artwork edge to edge, the title over a shaded foot."""
+    lv, (w, h) = th.lv, size
+    surf = cover(art, size)
+    if not lit:
+        style.blend_rect(surf, surf.get_rect(), (*lv.ink, 95))
+    if details:
+        foot = style.gradient((w, int(h * 0.6)), (*lv.ink, 0), (*lv.ink, 235), vertical=True)
+        surf.blit(foot, (0, h - foot.get_height()))
+        pad = int(h * 0.1)
+        if app.platform:
+            badge = style.tracked(th.type(16, "cond", "semibold"), app.platform.upper(), lv.text, 0.18)
+            chip = badge.get_rect().inflate(int(16 * th.u), int(6 * th.u))
+            chip.topright = (w - pad, pad)
+            style.blend_rect(surf, chip, (*lv.ink, 190), chip.h // 2)
+            surf.blit(badge, badge.get_rect(center=chip.center))
+        name = style.tracked(th.font_tile, app.name.upper(), lv.text if lit else mix(lv.text, lv.ink, 0.2), 0.05)
+        surf.blit(style.fit(name, w - pad * 2), (pad, h - pad - name.get_height() + int(h * 0.03)))
+    if lit:
+        style.stripes(surf, 0, 0, h, max(3, int(h * 0.05)), (lv.accent, lv.second))
+    style.rounded(surf, th.radius)
+    if lit:
+        pygame.draw.rect(surf, (*lv.text, 225), surf.get_rect(), width=max(2, int(2 * th.u)),
+                         border_radius=th.radius)
+    return surf
+
+
 def paint_tile(size: tuple[int, int], app: App, th: Theme, lit: bool, icon: pygame.Surface | None = None,
                details: bool = True) -> pygame.Surface:
-    """A tile as a little race car: enamel body, twin stripes, a roundel."""
+    """A tile as a little race car: enamel body, twin stripes, a roundel.
+    Games with artwork show that instead."""
+    art = load_art(app.art)
+    if art is not None:
+        return paint_game(size, app, th, lit, art, details)
     lv, (w, h) = th.lv, size
     body = enamel(parse_color(app.color), lv.ink)
     if not lit:
@@ -97,14 +159,34 @@ def paint_loading(size: tuple[int, int], app: App, livery: str = "gulf") -> pyga
     lv, (w, h) = th.lv, size
     body = enamel(parse_color(app.color), lv.ink)
     surf = style.gradient(size, mix(body, lv.ink, 0.30), mix(body, lv.ink, 0.78), vertical=True)
-    style.stripes(surf, int(w * 0.70), 0, h, max(3, int(th.tile_h * 1.06 * 0.085)), (lv.text, lv.accent), alpha=60)
+    art = load_art(app.art)
+    if art is not None:
+        # The game's artwork, softly blurred behind its name.
+        small = cover(art, (max(1, w // 64), max(1, h // 64)))
+        surf = pygame.transform.smoothscale(pygame.transform.smoothscale(small, (w // 8, h // 8)), size)
+        style.blend_rect(surf, surf.get_rect(), (*lv.ink, 170))
+    else:
+        style.stripes(surf, int(w * 0.70), 0, h, max(3, int(th.tile_h * 1.06 * 0.085)), (lv.text, lv.accent),
+                      alpha=60)
     cy = int(h * 0.42)
     radius = h * 0.115
-    style.circle(surf, (0, 0, 0, 60), (w // 2, cy + int(radius * 0.12)), radius * 1.04)
-    style.roundel(surf, (w // 2, cy), radius, app.name[:1].upper(), th.type(radius * 1.45 / th.u, "cond", "bold"),
-                  lv.text, mix(body, (0, 0, 0), 0.35))
-    name = style.tracked(th.font_title, app.name.upper(), lv.text, 0.1)
-    y = int(cy + radius + th.gap * 1.2)
+    if art is not None:
+        card_size = (int(th.tile_w * 1.5), int(th.tile_h * 1.5))
+        card = paint_game(card_size, app, th, True, art, details=False)
+        rect = card.get_rect(center=(w // 2, cy))
+        surf.blit(style.soft_shadow(card_size, th.radius, th.gap, 160), (rect.x - th.gap, rect.y - th.gap + th.gap // 2))
+        surf.blit(card, rect)
+        y = rect.bottom + th.gap
+        if app.platform:
+            plat = style.tracked(th.font_date, app.platform.upper(), lv.dim, 0.3)
+            surf.blit(plat, plat.get_rect(midtop=(w // 2, y)))
+            y += plat.get_height() + th.gap // 3
+    else:
+        style.circle(surf, (0, 0, 0, 60), (w // 2, cy + int(radius * 0.12)), radius * 1.04)
+        style.roundel(surf, (w // 2, cy), radius, app.name[:1].upper(),
+                      th.type(radius * 1.45 / th.u, "cond", "bold"), lv.text, mix(body, (0, 0, 0), 0.35))
+        y = int(cy + radius + th.gap * 1.2)
+    name = style.fit(style.tracked(th.font_title, app.name.upper(), lv.text, 0.1), w - 2 * th.margin)
     surf.blit(name, name.get_rect(midtop=(w // 2, y)))
     y += name.get_height() + th.gap // 2
     if not app.confirm:
@@ -148,6 +230,12 @@ class HomeScreen:
         self._hits: list[tuple[pygame.Rect, int, int]] = []  # tiles on screen, for the pointer
         self._pointer: tuple[int, int] | None = None
         self._pointer_at = 0.0
+        self.options: tuple[App, list, int] | None = None
+        self.rebuild: Callable[[], object] | None = None  # fresh contents after a change
+        self.back_exits = False  # the Library: B leaves it
+        self.exit = False
+        self.saver = False  # the screen saver is showing
+        self.hints = (("A", "Open"), ("Y", "Options"), ("START", "System"), ("GUIDE", "Quick Menu"))
 
     # -- caches ----------------------------------------------------------------
 
@@ -204,10 +292,75 @@ class HomeScreen:
 
     # -- input -----------------------------------------------------------------
 
+    # -- the Options popup (Y): pin, unpin, hide -------------------------------
+
+    def open_options(self) -> None:
+        from . import library, settings
+
+        app = self.home.selected
+        if app is None:
+            return
+        row = self.home.config.rows[self.home.row].title
+        key = library.key_of(app.id)
+        prefs = settings.load()
+        choices: list[tuple[str, Callable[[], None]]] = []
+        if key:
+            if key in prefs.get("pins", []):
+                choices.append(("Unpin from home", lambda: settings.toggle_in("pins", key, False)))
+            else:
+                choices.append(("Pin to home", lambda: settings.toggle_in("pins", key, True)))
+            if row == "Continue":
+                choices.append(("Remove from Continue", lambda: settings.toggle_in("hide_recent", key, True)))
+        elif app.id not in ("settings", "library"):
+            choices.append(("Hide this tile", lambda: settings.set_hidden(app.id, True)))
+            choices.append(("Bring hidden tiles back: Settings → Home screen", lambda: None))
+        if not choices:
+            return
+        choices.append(("Cancel", lambda: None))
+        self.options = (app, choices, 0)
+        self._confirm_t0 = time.monotonic()
+
+    def _options_handle(self, nav: Nav) -> None:
+        app, choices, index = self.options
+        if nav in (Nav.UP, Nav.DOWN):
+            self.options = (app, choices, (index + (1 if nav is Nav.DOWN else -1)) % len(choices))
+        elif nav is Nav.SELECT:
+            label, act = choices[index]
+            self.options = None
+            act()
+            events.record("home_option", tile=app.id, choice=label)
+            if self.rebuild is not None:
+                self.reload(self.rebuild(), app.id)
+        elif nav in (Nav.BACK, Nav.OPTIONS, Nav.MENU):
+            self.options = None
+
+    def reload(self, config, keep_id: str | None = None) -> None:
+        """New contents (after pinning, say), keeping the place as best it can."""
+        row_title = self.home.config.rows[self.home.row].title if self.home.config.rows else None
+        home = Home(config)
+        titles = [r.title for r in config.rows]
+        if keep_id and home.select_id(keep_id):
+            pass
+        elif row_title in titles:
+            home.row = titles.index(row_title)
+        self.home = home
+        self._tiles.clear()
+
+    # -- input -------------------------------------------------------------------
+
     def handle(self, nav: Nav) -> App | None:
         """Apply a navigation action; returns the app to launch, if any."""
         self.intro = None  # any input skips the entrance animation
         self.message = None
+        if self.options is not None:
+            self._options_handle(nav)
+            return None
+        if nav is Nav.OPTIONS:
+            self.open_options()
+            return None
+        if nav is Nav.BACK and self.back_exits and self.confirming is None:
+            self.exit = True
+            return None
         if self.confirming is not None:
             app, self.confirming = self.confirming, None
             return app if nav is Nav.SELECT else None
@@ -327,6 +480,8 @@ class HomeScreen:
             self._draw_boot_sweep()
         if self.confirming is not None:
             self._draw_confirm(self.confirming)
+        if self.options is not None:
+            self._draw_options()
         self._draw_pointer()
 
     def _draw_header(self) -> None:
@@ -479,7 +634,7 @@ class HomeScreen:
         if self._appear(0.3, 0.4) < 1:
             return
         x = th.margin
-        for button, label in (("A", "Open"), ("B", "Back"), ("START", "System"), ("GUIDE", "Quick Menu")):
+        for button, label in self.hints:
             x = style.button_hint(s, x, cy, button, label, th.type, lv)
 
     def _draw_boot_sweep(self) -> None:
@@ -499,6 +654,55 @@ class HomeScreen:
             pygame.draw.polygon(layer, color, [(x, h), (x + bw, h), (x + bw + slant, 0), (x + slant, 0)])
             x += bw + broad // 4
         self.surface.blit(layer, (0, 0))
+
+    def _draw_options(self) -> None:
+        th, s, lv = self.theme, self.surface, self.theme.lv
+        app, choices, index = self.options
+        p = 1.0 if self.reduced else ease_out((time.monotonic() - self._confirm_t0) / CONFIRM_SECONDS)
+        shade = pygame.Surface(s.get_size(), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, int(170 * p)))
+        s.blit(shade, (0, 0))
+        row_h = int(64 * th.u)
+        box = pygame.Rect(0, 0, int(th.width * 0.4), int(140 * th.u) + row_h * len(choices))
+        card = pygame.Surface(box.size, pygame.SRCALPHA)
+        card.blit(style.gradient(box.size, style.lighten(lv.panel, 0.05), lv.panel, vertical=True), (0, 0))
+        stripe_w = style.stripes(card, int(34 * th.u), 0, box.h, max(4, int(12 * th.u)), (lv.accent, lv.second))
+        style.rounded(card, th.radius)
+        x = int(34 * th.u) + stripe_w + int(36 * th.u)
+        cap = style.tracked(th.font_date, "OPTIONS", lv.dim, 0.3)
+        card.blit(cap, (x, int(30 * th.u)))
+        title = style.fit(style.tracked(th.font_row, app.name.upper(), lv.text, 0.08), box.w - x - int(30 * th.u))
+        card.blit(title, (x, int(30 * th.u) + cap.get_height() + int(4 * th.u)))
+        y = int(110 * th.u)
+        f = th.type(26, "text", "semibold")
+        for i, (label, _) in enumerate(choices):
+            rect = pygame.Rect(x - int(16 * th.u), y + i * row_h, box.w - x - int(14 * th.u), row_h - int(8 * th.u))
+            if i == index:
+                style.blend_rect(card, rect, (*lv.text, 22), int(8 * th.u))
+                card.fill(lv.accent, (rect.x, rect.y + int(12 * th.u), max(2, int(4 * th.u)), rect.h - int(24 * th.u)))
+            text = style.fit(f.render(label, True, lv.text if i == index else lv.dim), rect.w - int(40 * th.u))
+            card.blit(text, (rect.x + int(22 * th.u), rect.centery - text.get_height() // 2))
+        scale = 0.96 + 0.04 * p
+        if scale < 1:
+            card = pygame.transform.smoothscale(card, (int(box.w * scale), int(box.h * scale)))
+        card.set_alpha(int(255 * p))
+        s.blit(card, card.get_rect(center=(th.width // 2, th.height // 2)))
+
+    def draw_saver(self) -> None:
+        """The screen saver: dark, with the time drifting slowly (kind to OLED TVs)."""
+        th, s, lv = self.theme, self.surface, self.theme.lv
+        s.fill((0, 0, 0))
+        t = time.monotonic()
+        clock = th.type(120, "cond", "semibold").render(style.clock_text(self.clock), True, mix(lv.text, (0, 0, 0), 0.45))
+        date = style.tracked(th.font_date, time.strftime("%A %d %B").upper(), mix(lv.dim, (0, 0, 0), 0.4), 0.3)
+        w = max(clock.get_width(), date.get_width())
+        x = int((th.width - w) * (0.5 + 0.45 * math.sin(t / 97)))
+        y = int((th.height - clock.get_height() * 2) * (0.5 + 0.45 * math.sin(t / 61 + 1.3)))
+        s.blit(clock, (x, y))
+        s.blit(date, (x + int(4 * th.u), y + clock.get_height()))
+        style.stripes(s, x + int(4 * th.u), y + clock.get_height() + date.get_height() + int(14 * th.u),
+                      int(90 * th.u), max(3, int(6 * th.u)), (mix(lv.accent, (0, 0, 0), 0.4), mix(lv.second, (0, 0, 0), 0.4)),
+                      vertical=False)
 
     def _draw_confirm(self, app: App) -> None:
         th, s, lv = self.theme, self.surface, self.theme.lv
@@ -588,6 +792,13 @@ def run(
     intro: str | None = None,
     stats=None,
     clock: str = "24h",
+    rebuild: Callable[[], object] | None = None,
+    back_exits: bool = False,
+    saver_after: float = 0,
+    sleep_after: float = 0,
+    swap_confirm: bool = False,
+    offset: tuple[int, int] = (0, 0),
+    hints: tuple | None = None,
 ) -> App | None:
     """Show the home screen until the user picks an app.
 
@@ -595,18 +806,28 @@ def run(
     `input_blocked` is polled a few times a second; while it's true (the Quick
     Menu is open over the home screen), input is ignored. `intro` is "boot"
     for the power-on animation, "return" for coming back from an app.
-    `stats` (events.FrameStats) collects frame times.
+    `stats` (events.FrameStats) collects frame times. `rebuild` gives fresh
+    contents after a change in the Options popup; `back_exits` makes B leave
+    (the Library). After `saver_after` seconds without input the screen saver
+    shows; after `sleep_after` the PC sleeps (0 = never). `offset` is where
+    this surface sits on the screen (a safe-area inset), for the pointer.
     """
     screen = HomeScreen(surface, home, title, livery=livery, motion=motion, intro=intro)
     screen.message = message
     screen.clock = clock
+    screen.rebuild = rebuild
+    screen.back_exits = back_exits
+    if hints:
+        screen.hints = hints
     screen.badge = badge
     screen.running = running or set()
     mapper = InputMapper()
+    mapper.swap_confirm = swap_confirm
     mapper.open_devices()
     clock = pygame.time.Clock()
     frames = 0
     blocked = False
+    idle_since = time.monotonic()
     while max_frames is None or frames < max_frames:
         frames += 1
         if input_blocked and frames % 8 == 0:
@@ -619,10 +840,21 @@ def run(
         for event in pygame.event.get():
             if event.type == pygame.QUIT and allow_quit:
                 return None
+            if event.type in (pygame.KEYDOWN, pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN, pygame.CONTROLLERBUTTONDOWN,
+                              pygame.JOYBUTTONDOWN, pygame.CONTROLLERAXISMOTION, pygame.JOYAXISMOTION):
+                if not (event.type in (pygame.CONTROLLERAXISMOTION, pygame.JOYAXISMOTION)
+                        and abs(getattr(event, "value", 0)) < 0.5 * (32767 if event.type ==
+                                                                     pygame.CONTROLLERAXISMOTION else 1)):
+                    idle_since = time.monotonic()
+                    if screen.saver:  # waking up: this input only wakes the screen
+                        screen.saver = False
+                        mapper.reset()
+                        continue
+            pos = (event.pos[0] - offset[0], event.pos[1] - offset[1]) if hasattr(event, "pos") else None
             if not blocked and event.type == pygame.MOUSEMOTION:
-                screen.point(event.pos)
+                screen.point(pos)
             elif not blocked and event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                chosen = screen.click(event.pos)
+                chosen = screen.click(pos)
             nav = mapper.translate(event, now)
             if nav is not None and not blocked:
                 navs.append(nav)
@@ -633,6 +865,8 @@ def run(
             if nav is Nav.BACK and allow_quit and screen.confirming is None and home.row == 0 and home.col == 0:
                 return None
             app = screen.handle(nav)
+            if screen.exit:
+                return None
             if app is not None:
                 chosen = app
                 break
@@ -640,6 +874,21 @@ def run(
             if not chosen.background and not chosen.confirm and not chosen.builtin:
                 screen.play_launch(chosen)
             return chosen
+        if blocked:
+            idle_since = time.monotonic()
+        idle = time.monotonic() - idle_since
+        if sleep_after and idle > sleep_after:
+            events.record("idle_sleep", minutes=round(idle / 60))
+            subprocess.Popen(["systemctl", "suspend"])
+            idle_since = time.monotonic()
+        if saver_after and idle > saver_after and not screen.saver:
+            screen.saver = True
+            events.record("screen_saver")
+        if screen.saver:
+            screen.draw_saver()
+            pygame.display.flip()
+            clock.tick(10)
+            continue
         screen.draw()
         pygame.display.flip()
         if stats is not None:

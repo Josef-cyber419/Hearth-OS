@@ -15,6 +15,7 @@ from __future__ import annotations
 import json
 import logging
 import queue
+import re
 import shutil
 import threading
 import time
@@ -39,6 +40,7 @@ CATEGORIES = [
     ("home", "Home screen", "Which tiles show, and what Game Mode starts in."),
     ("controllers", "Controllers", "Connected controllers, the Guide button, and the controller as a mouse."),
     ("wii", "Wii Remote", "Wii Remotes on a DolphinBar: aiming, sensitivity and calibration."),
+    ("emulation", "Emulation", "Emulator settings tuned for this PC and your TV."),
     ("bluetooth", "Bluetooth", "Pair controllers and headsets."),
     ("network", "Network", "Wired and Wi-Fi connections."),
     ("system", "System", "Versions, storage, updates and help."),
@@ -216,6 +218,71 @@ def read_aim(max_age: float = 1.0) -> tuple[float, float] | None:
     return tuple(data["raw"])  # type: ignore[return-value]
 
 
+# -- system information --------------------------------------------------------
+
+
+def hardware_summary() -> str:
+    cpu = gpu = ""
+    try:
+        cpu = next((line.split(":", 1)[1].strip() for line in Path("/proc/cpuinfo").read_text().splitlines()
+                    if line.startswith("model name")), "")
+    except OSError:
+        pass
+    for card in sorted(Path("/sys/class/drm").glob("card[0-9]")):
+        try:
+            product = (card / "device" / "product_name").read_text().strip()
+        except OSError:
+            product = ""
+        if product:
+            gpu = product
+            break
+    try:
+        kb = next(int(line.split()[1]) for line in Path("/proc/meminfo").read_text().splitlines()
+                  if line.startswith("MemTotal"))
+        memory = f"{kb / 1024 / 1024:.0f} GB memory"
+    except (OSError, StopIteration, ValueError):
+        memory = ""
+    cpu = re.sub(r"\s+\d+-Core Processor|\(R\)|\(TM\)|CPU @.*", "", cpu).strip()
+    return " · ".join(p for p in (cpu, gpu, memory) if p) or "Unknown"
+
+
+def temperatures() -> str:
+    """CPU and GPU temperatures from the kernel's sensors (hwmon)."""
+    found = {}
+    for hw in sorted(Path("/sys/class/hwmon").glob("hwmon*")):
+        try:
+            name = (hw / "name").read_text().strip()
+            temp = int((hw / "temp1_input").read_text()) / 1000
+        except (OSError, ValueError):
+            continue
+        label = {"k10temp": "CPU", "coretemp": "CPU", "zenpower": "CPU", "amdgpu": "GPU"}.get(name)
+        if label and label not in found:
+            found[label] = f"{label} {temp:.0f}°C"
+    return " · ".join(found[k] for k in ("CPU", "GPU") if k in found)
+
+
+def storage_breakdown() -> str:
+    """Rough sizes of what takes the most space, via du (runs in the background)."""
+    import subprocess
+
+    home = Path.home()
+    places = [("Steam games", [home / ".local/share/Steam/steamapps"]), ("ROMs", [home / "ROMs"]),
+              ("Emulator and app data", [home / ".var/app"])]
+    out = []
+    for label, paths in places:
+        existing = [str(p) for p in paths if p.exists()]
+        if not existing:
+            continue
+        try:
+            p = subprocess.run(["du", "-sb", "--apparent-size", *existing], capture_output=True, text=True,
+                               timeout=120)
+            total = sum(int(line.split()[0]) for line in p.stdout.splitlines() if line.split())
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            continue
+        out.append(f"{label} {total / 1e9:.0f} GB")
+    return " · ".join(out) or "Nothing measured"
+
+
 # -- the app -------------------------------------------------------------------
 
 
@@ -294,7 +361,8 @@ class SettingsApp:
 
     def build(self) -> list[Tab]:
         pages = {"appearance": self._appearance, "home": self._home, "controllers": self._controllers,
-                 "wii": self._wii, "bluetooth": self._bluetooth, "network": self._network, "system": self._system}
+                 "wii": self._wii, "emulation": self._emulation, "bluetooth": self._bluetooth,
+                 "network": self._network, "system": self._system}
         tabs = []
         for key, title, _ in CATEGORIES:
             tab = Tab(key, title, "")
@@ -318,17 +386,41 @@ class SettingsApp:
             Item("clock", "Clock", "choice", value=0 if c.clock == "24h" else 1,
                  options=("24-hour (18:30)", "12-hour (6:30 pm)"),
                  on_change=lambda i: self.put("theme", "clock", ("24h", "12h")[i])),
+            Item("safe-area", "Screen edges", "slider", value=c.safe_area, low=0, high=10, step=1,
+                 detail="Raise this if your TV cuts off the edges (overscan)",
+                 on_change=lambda v: self.put("theme", "safe_area", int(v))),
         ]
 
     def _home(self) -> list[Item]:
         from . import ctl
 
         hidden = set(settings.load().get("hide", []))
-        items = []
+        c = self.config
+        saver = (0, 5, 10, 15, 30, 60)
+        sleep = (0, 30, 60, 120, 240)
+        items = [
+            Item("home-recent", "Continue: recently played games", "toggle", value=c.home_recent,
+                 detail="A row of what you played last, Steam and emulated",
+                 on_change=lambda on: self.put("home", "recent", bool(on))),
+            Item("home-pins", "Pinned games", "toggle", value=c.home_pins,
+                 detail="Press Y on a game to pin it; ES-DE favourites show here too",
+                 on_change=lambda on: self.put("home", "pins", bool(on))),
+            Item("saver", "Screen saver", "choice",
+                 value=saver.index(c.screensaver_minutes) if c.screensaver_minutes in saver else 2,
+                 options=tuple("Never" if m == 0 else f"After {m} minutes" if m < 60 else "After 1 hour"
+                               for m in saver),
+                 detail="Protects OLED TVs from a still picture",
+                 on_change=lambda i: self.put("home", "screensaver_minutes", saver[i])),
+            Item("idle-sleep", "Sleep when left on the home screen", "choice",
+                 value=sleep.index(c.sleep_minutes) if c.sleep_minutes in sleep else 0,
+                 options=tuple("Never" if m == 0 else f"After {m} minutes" if m < 60 else
+                               f"After {m // 60} hour{'s' if m > 60 else ''}" for m in sleep),
+                 on_change=lambda i: self.put("home", "sleep_minutes", sleep[i])),
+        ]
         for row in self.all_tiles.rows:
             for app in row.apps:
-                if app.id == "settings":
-                    continue  # always there: it's how you'd get tiles back
+                if app.id in ("settings", "library"):
+                    continue  # always there: Settings is how you'd get tiles back
                 why = app.missing()
                 items.append(Item(
                     f"tile-{app.id}", app.name, "toggle", value=app.id not in hidden,
@@ -371,7 +463,60 @@ class SettingsApp:
                           on_change=lambda v: self.put("controllers", "mouse_speed", int(v))))
         items.append(Item("pause", "Pause the game under the Quick Menu", "toggle", value=c.pause_game,
                           on_change=lambda on: self.put("quick_menu", "pause_game", bool(on))))
+        items.append(Item("confirm", "Confirm button", "choice", value=0 if c.confirm == "south" else 1,
+                          options=("Bottom (Xbox, PlayStation)", "Right (Nintendo)"),
+                          detail="In Hearth's menus. Games use their own layout",
+                          on_change=lambda i: self.put("controllers", "confirm", ("south", "east")[i])))
+        styles = ("xbox", "playstation", "nintendo")
+        items.append(Item("prompts", "Button names on screen", "choice", value=styles.index(c.prompts),
+                          options=("Xbox: A B X Y", "PlayStation: shapes", "Nintendo: B A Y X"),
+                          on_change=lambda i: self.put("controllers", "prompts", styles[i])))
         return items
+
+    def _emulation(self) -> list[Item]:
+        from . import emutune
+
+        c = self.config
+        choices = ("auto", "1080p", "1440p", "4k")
+        height = emutune.target_height(c.emulation_resolution)
+        tuned = set(settings.load().get("emulation_tuned", []))
+        results = self.data.get("tune") or {}
+        items = [
+            Item("emu-res", "Upscale for", "choice", value=choices.index(c.emulation_resolution),
+                 options=(f"Auto: your TV ({height}p)", "1080p", "1440p", "4K"),
+                 detail="How sharp emulated games are drawn: higher needs a stronger GPU",
+                 on_change=lambda i: self.put("emulation", "resolution", choices[i])),
+            Item("emu-apply", "Apply recommended settings", "action",
+                 detail=self.note("emu-apply", "Vulkan, upscaling, stutter-free shaders. Keeps a backup"),
+                 on_select=self._tune),
+        ]
+        for tune in emutune.TUNES:
+            if not emutune.installed(tune):
+                continue
+            state = results.get(tune.name) or (tune.summary(height) if tune.app in tuned
+                                               else "Tuned automatically after you first open it")
+            items.append(Item(f"emu-{tune.app}", tune.name, "info", detail=state))
+        items.append(Item("emu-more", "Cemu, Eden, Azahar, RPCS3, xemu", "info",
+                          detail="Recommended settings for these are in docs/EMULATION.md"))
+        return items
+
+    def _tune(self) -> None:
+        from . import emutune
+
+        def work() -> str:
+            results = emutune.apply_all(self.config.emulation_resolution)
+            self.data["tune"] = results
+            data = settings.load()
+            done = set(data.get("emulation_tuned", []))
+            done |= {t.app for t in emutune.TUNES if results.get(t.name, "").startswith(("Vulkan",))}
+            data["emulation_tuned"] = sorted(done)
+            settings.save(data)
+            events.record("emulators_tuned", manual=True, results=results)
+            changed = sum(r.startswith("Vulkan") for r in results.values())
+            return f"Done: {changed} emulator{'s' if changed != 1 else ''} updated"
+
+        self.jobs.start("emu-apply", work, "Applying…")
+        return None
 
     def _wii_status(self) -> str:
         state = session.read().get("wii") or {}
@@ -488,7 +633,10 @@ class SettingsApp:
                          detail="NetworkManager (nmcli) isn't installed")]
         status = d["net"]
         items = [Item("net-status", "Connection", "info",
-                      detail=self.note("net", status.describe() if status else "Checking…"))]
+                      detail=self.note("net", status.describe() if status else "Checking…")),
+                 Item("net-test", "Test the connection", "action",
+                      detail=self.note("net-test", "Router, internet and name lookups"),
+                      on_select=lambda: self.jobs.start("net-test", network.test, "Testing…"))]
         if d["wifi"] is not None:
             items.append(Item("wifi", "Wi-Fi", "toggle", value=bool(d["wifi"]),
                               on_change=lambda on: self.jobs.start("net", lambda: (network.set_wifi(on),
@@ -545,6 +693,11 @@ class SettingsApp:
                  detail=(f"{os_status.image or 'unknown image'} · {os_status.booted or '?'}" if os_status
                          else "Checking…")),
             Item("storage", "Storage", "info", detail=storage),
+            Item("storage-use", "What's using space", "action",
+                 detail=self.note("storage-use", "Games, ROMs and emulator data"),
+                 on_select=lambda: self.jobs.start("storage-use", storage_breakdown, "Measuring…")),
+            Item("hardware", "Hardware", "info", detail=hardware_summary()),
+            Item("temps", "Temperatures", "info", detail=temperatures() or "Not available"),
             Item("address", "Network address", "info",
                  detail=(d["net"].address or "Not connected") if d["net"] else "Checking…"),
             Item("updates", "Check for updates", "action",
@@ -878,12 +1031,13 @@ class SettingsView(QuickMenuView):
 
 
 def run(surface: pygame.Surface, config_path: Path | None = None, max_frames: int | None = None,
-        input_blocked: Callable[[], bool] | None = None) -> App | None:
+        input_blocked: Callable[[], bool] | None = None, offset: tuple[int, int] = (0, 0)) -> App | None:
     """Show the Settings app until it's closed. Returns an app to open next, if any."""
     app = SettingsApp(config_path)
     c = app.config
     view = SettingsView(surface.get_size(), c.livery, c.motion, c.clock)
     mapper = InputMapper()
+    mapper.swap_confirm = c.confirm == "east"
     mapper.open_devices()
     clock = pygame.time.Clock()
     blocked = False
@@ -904,10 +1058,10 @@ def run(surface: pygame.Surface, config_path: Path | None = None, max_frames: in
                 if blocked:
                     continue
                 if event.type == pygame.MOUSEMOTION:
-                    app.point(view.hit(event.pos))
+                    app.point(view.hit((event.pos[0] - offset[0], event.pos[1] - offset[1])))
                     continue
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if app.click(view.hit(event.pos)) == "exit":
+                    if app.click(view.hit((event.pos[0] - offset[0], event.pos[1] - offset[1]))) == "exit":
                         return app.launch
                     continue
                 if app.keyboard and event.type == pygame.KEYDOWN and event.unicode and event.unicode.isprintable() \
@@ -924,6 +1078,8 @@ def run(surface: pygame.Surface, config_path: Path | None = None, max_frames: in
                 if app.handle(nav) == "exit":
                     return app.launch
             app.tick()
+            mapper.swap_confirm = app.config.confirm == "east"
+            style.set_prompts(app.config.prompts, app.config.confirm)
             view.draw_settings(surface, app)
             pygame.display.flip()
             clock.tick(60)

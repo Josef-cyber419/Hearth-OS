@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-TABLES = ("theme", "quick_menu", "controllers", "wii_remote")
+TABLES = ("theme", "quick_menu", "controllers", "wii_remote", "home", "emulation")
 
 
 def path() -> Path:
@@ -58,6 +58,17 @@ def set_hidden(app_id: str, hidden: bool) -> dict:
     if hidden:
         hide.append(app_id)
     data["hide"] = hide
+    save(data)
+    return data
+
+
+def toggle_in(name: str, key: str, on: bool) -> dict:
+    """Add or remove `key` in a list setting (e.g. pins), keeping its order."""
+    data = load()
+    items = [k for k in data.get(name, []) if k != key]
+    if on:
+        items.append(key)
+    data[name] = items
     save(data)
     return data
 

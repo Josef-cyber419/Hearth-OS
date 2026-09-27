@@ -244,7 +244,10 @@ def test_wii_support_switches_on_and_off_live():
 
     import queue
 
-    o.view, o.pointer, o.events = View(), Pointer(), queue.Queue()
+    class Mapper:
+        swap_confirm = False
+
+    o.view, o.pointer, o.events, o.mapper = View(), Pointer(), queue.Queue(), Mapper()
     o.apply_config()
     assert o.wii is None
     o.config = cfg.parse({"wii_remote": {"enabled": True, "hold": "sideways"}})

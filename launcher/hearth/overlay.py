@@ -24,7 +24,7 @@ import time
 from pathlib import Path
 
 from . import config as cfg
-from . import events, homebutton, logs, session, settings, updates
+from . import events, homebutton, logs, session, settings, style, updates
 from .audio import Audio, Snapshot, reset_restored_discord_mutes
 from .gamescope import Gamescope, appid_for
 
@@ -180,6 +180,8 @@ class Overlay:
         """Use the current settings: look, Wii Remote aim, mouse speed."""
         c = self.config
         self.view.set_theme(c.livery, c.motion, c.clock)
+        style.set_prompts(c.prompts, c.confirm)
+        self.mapper.swap_confirm = c.confirm == "east"
         self.pointer.speed = c.mouse_speed / 100
         if c.wii_remote and self.wii is None:
             from .wiiinput import WiiInput, XTestSink

@@ -77,6 +77,9 @@ class App:
     # Hearth tags the app's windows so gamescope will show them. Off for Steam,
     # which does this itself.
     tag_windows: bool = True
+    # A game's artwork (fills the tile) and its platform ("PlayStation 2").
+    art: str | None = None
+    platform: str | None = None
 
     @property
     def builtin(self) -> bool:
@@ -133,6 +136,14 @@ class Config:
     clock: str = "24h"  # or "12h"
     guide_hold: float = 1.5  # seconds to hold Guide to go home
     mouse_speed: int = 100  # controller-as-mouse speed, percent
+    confirm: str = "south"  # which face button confirms: "south" (Xbox/PlayStation) or "east" (Nintendo)
+    prompts: str = "xbox"  # button names shown on screen: "xbox", "playstation" or "nintendo"
+    safe_area: int = 0  # percent kept clear at the screen's edges, for TVs that crop (overscan)
+    home_recent: bool = True  # the "Continue" row of recently played games
+    home_pins: bool = True  # the "Pinned" row
+    screensaver_minutes: int = 10  # 0 = never; protects OLED TVs from a still home screen
+    sleep_minutes: int = 0  # 0 = never; sleep after this long idle on the home screen
+    emulation_resolution: str = "auto"  # target for emulator upscaling: auto, 1080p, 1440p, 4k
 
     def app(self, app_id: str) -> App | None:
         return next((a for row in self.rows for a in row.apps if a.id == app_id), None)
@@ -212,6 +223,7 @@ def parse(data: dict) -> Config:
         raise ConfigError("theme.motion must be \"full\" or \"reduced\"")
     wii = data.get("wii_remote", {})
     controllers = data.get("controllers", {})
+    home_table = data.get("home", {})
     wii_mouse = _choice(wii, "wii_remote", "mouse", ("apps", "always", "never"))
     calibration = wii.get("calibration")
     if calibration is not None and (not isinstance(calibration, (list, tuple)) or len(calibration) != 4):
@@ -232,6 +244,15 @@ def parse(data: dict) -> Config:
         clock=_choice(theme, "theme", "clock", ("24h", "12h")),
         guide_hold=float(_number(controllers, "controllers", "guide_hold_seconds", 1.5, 0.5, 5)),
         mouse_speed=int(_number(controllers, "controllers", "mouse_speed", 100, 25, 300)),
+        confirm=_choice(controllers, "controllers", "confirm", ("south", "east")),
+        prompts=_choice(controllers, "controllers", "prompts", ("xbox", "playstation", "nintendo")),
+        safe_area=int(_number(theme, "theme", "safe_area", 0, 0, 10)),
+        home_recent=bool(home_table.get("recent", True)),
+        home_pins=bool(home_table.get("pins", True)),
+        screensaver_minutes=int(_number(home_table, "home", "screensaver_minutes", 10, 0, 240)),
+        sleep_minutes=int(_number(home_table, "home", "sleep_minutes", 0, 0, 1440)),
+        emulation_resolution=_choice(data.get("emulation", {}), "emulation", "resolution",
+                                     ("auto", "1080p", "1440p", "4k")),
     )
 
 
@@ -261,7 +282,7 @@ def merge(base: dict, user: dict) -> dict:
     """Layer user changes over the defaults (see the module docstring)."""
     if user.get("replace"):
         return user
-    tables = ("quick_menu", "theme", "wii_remote", "controllers")
+    tables = ("quick_menu", "theme", "wii_remote", "controllers", "home", "emulation")
     merged = {**base, **{k: v for k, v in user.items() if k not in ("rows", "hide", *tables)}}
     for table in tables:
         merged[table] = {**base.get(table, {}), **user.get(table, {})}

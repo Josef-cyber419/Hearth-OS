@@ -267,24 +267,84 @@ def roundel(surf: pygame.Surface, center, radius: float, text: str, font: pygame
     surf.blit(glyph, glyph.get_rect(center=(int(center[0]), int(center[1] + radius * 0.04))))
 
 
+# Which controller's button names to show (Settings → Controllers).
+_prompts = {"style": "xbox", "swap": False}
+_POSITION = {"A": "south", "B": "east", "X": "west", "Y": "north"}  # the Xbox names, by position
+_LABELS = {
+    "xbox": {"south": "A", "east": "B", "west": "X", "north": "Y", "START": "MENU", "GUIDE": "GUIDE"},
+    "playstation": {"south": "cross", "east": "circle", "west": "square", "north": "triangle",
+                    "START": "OPTIONS", "GUIDE": "PS"},
+    "nintendo": {"south": "B", "east": "A", "west": "Y", "north": "X", "START": "+", "GUIDE": "HOME"},
+}
+
+
+def set_prompts(style_name: str, confirm: str = "south") -> None:
+    _prompts["style"] = style_name if style_name in _LABELS else "xbox"
+    _prompts["swap"] = confirm == "east"
+
+
+def glyph_for(button: str) -> str:
+    """What's printed on the button that does what Xbox's `button` does here."""
+    labels = _LABELS[_prompts["style"]]
+    position = _POSITION.get(button)
+    if position is None:
+        return labels.get(button, button)
+    if _prompts["swap"] and button in ("A", "B"):
+        position = "east" if button == "A" else "south"
+    return labels[position]
+
+
+def _shape(surf: pygame.Surface, name: str, center, r: float, color) -> None:
+    """PlayStation's face-button shapes."""
+    cx, cy = center
+    w = max(2, int(r / 4))
+    if name == "cross":
+        pygame.draw.line(surf, color, (cx - r * 0.5, cy - r * 0.5), (cx + r * 0.5, cy + r * 0.5), w)
+        pygame.draw.line(surf, color, (cx - r * 0.5, cy + r * 0.5), (cx + r * 0.5, cy - r * 0.5), w)
+    elif name == "circle":
+        pygame.draw.circle(surf, color, (int(cx), int(cy)), int(r * 0.55), w)
+    elif name == "square":
+        pygame.draw.rect(surf, color, (cx - r * 0.48, cy - r * 0.48, r * 0.96, r * 0.96), w)
+    elif name == "triangle":
+        pygame.draw.polygon(surf, color, [(cx, cy - r * 0.6), (cx + r * 0.58, cy + r * 0.42),
+                                          (cx - r * 0.58, cy + r * 0.42)], w)
+
+
 def button_hint(surf: pygame.Surface, x: int, cy: int, button: str, label: str, t: Type, lv: Livery,
                 size: float = 1.0) -> int:
-    """A controller button glyph and its action, e.g. (A) OPEN. Returns the
-    x coordinate after it."""
+    """A controller button glyph and its action, e.g. (A) OPEN, in the
+    controller style chosen in Settings. Returns the x coordinate after it."""
     f_btn = t(18 * size, "cond", "bold")
     f_lbl = t(19 * size, "cond", "semibold")
-    glyph = f_btn.render(button, True, lv.ink)
+    name = glyph_for(button)
+    shape = name in ("cross", "circle", "square", "triangle")
+    glyph = None if shape else f_btn.render(name, True, lv.ink)
     h = int(30 * size * t.scale)
-    w = max(h, glyph.get_width() + h // 2)
+    w = h if shape else max(h, glyph.get_width() + h // 2)
     chip = pygame.Rect(x, cy - h // 2, w, h)
     if w == h:
         circle(surf, lv.dim, chip.center, h / 2)
     else:
         pygame.draw.rect(surf, lv.dim, chip, border_radius=h // 2)
-    surf.blit(glyph, glyph.get_rect(center=(chip.centerx, chip.centery + 1)))
+    if shape:
+        _shape(surf, name, chip.center, h * 0.42, lv.ink)
+    else:
+        surf.blit(glyph, glyph.get_rect(center=(chip.centerx, chip.centery + 1)))
     text = tracked(f_lbl, label.upper(), lv.dim, 0.14)
     surf.blit(text, (chip.right + h // 3, cy - text.get_height() // 2))
     return chip.right + h // 3 + text.get_width() + h
+
+
+def inset(surface: pygame.Surface, percent: int) -> tuple[pygame.Surface, tuple[int, int]]:
+    """The part of the screen inside a safe area (for TVs that crop the
+    edges), and where it sits. The border is black."""
+    if percent <= 0:
+        return surface, (0, 0)
+    w, h = surface.get_size()
+    dx, dy = int(w * percent / 100), int(h * percent / 100)
+    surface.fill((0, 0, 0))
+    rect = pygame.Rect(dx, dy, w - 2 * dx, h - 2 * dy)
+    return surface.subsurface(rect), rect.topleft
 
 
 def draw_pointer(surf: pygame.Surface, pos: tuple[int, int], scale: float, lv: Livery, alpha: float = 1.0) -> None:

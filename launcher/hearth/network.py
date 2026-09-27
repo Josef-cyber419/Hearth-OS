@@ -6,6 +6,7 @@ logged in at the TV change Wi-Fi without a password prompt.
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -143,3 +144,34 @@ def connect(ssid: str, password: str | None = None, saved: bool = False, run: Ru
 
 def forget(ssid: str, run: Runner = _run) -> bool:
     return run(["nmcli", "connection", "delete", "id", ssid])[0] == 0
+
+
+def _ping(host: str, run: Runner) -> float | None:
+    rc, out, _ = run(["ping", "-c", "3", "-W", "2", "-q", host])
+    m = re.search(r"= [\d.]+/([\d.]+)/", out)
+    return float(m.group(1)) if rc == 0 and m else None
+
+
+def test(run: Runner = _run, resolve: Callable[[str], bool] | None = None) -> str:
+    """A quick check of the local network, the internet and name lookups."""
+    import socket
+
+    rc, out, _ = run(["ip", "-4", "route", "show", "default"])
+    m = re.search(r"default via (\S+)", out) if rc == 0 else None
+    if not m:
+        return "No router found: check the cable or Wi-Fi"
+    router = _ping(m.group(1), run)
+    internet = _ping("1.1.1.1", run)
+
+    def lookup(name: str) -> bool:
+        try:
+            socket.getaddrinfo(name, 443)
+            return True
+        except OSError:
+            return False
+
+    dns = (resolve or lookup)("store.steampowered.com")
+    parts = [f"Router {router:.0f} ms" if router is not None else "Router not answering"]
+    parts.append(f"internet {internet:.0f} ms" if internet is not None else "no internet")
+    parts.append("names OK" if dns else "name lookups failing (DNS)")
+    return " · ".join(parts)
