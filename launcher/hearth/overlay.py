@@ -60,6 +60,15 @@ class Actions:
             self.show("home")
         return "close"
 
+    def quick_resume(self):
+        """Go home and keep the game paused; the hub pauses it (and keeps it
+        paused, so don't thaw it when the menu closes)."""
+        if (session.read()["foreground"] or {}).get("resumable"):
+            self.o.paused_unit = None
+            session.update(lambda s: s.__setitem__("suspend_request", True))
+            return "close"
+        return self.go_home()
+
     def start_background(self, app_id):
         app = self.o.config.app(app_id)
         if app is None:
@@ -335,6 +344,9 @@ class Overlay:
             elif request == "home":
                 self.actions.go_home()
                 self.close_menu()
+            elif request == "pause":
+                self.actions.quick_resume()
+                self.close_menu()
 
         self._liveness_ticks = (self._liveness_ticks + 1) % 6  # every ~3 s: it runs systemctl
         dead = [] if self._liveness_ticks else [
@@ -450,7 +462,10 @@ class Overlay:
                 if self.open:
                     self.close_menu()
                 if not self.back_from_background():
-                    self.actions.go_home()
+                    if self.config.guide_hold_action == "resume":
+                        self.actions.quick_resume()
+                    else:
+                        self.actions.go_home()
 
         now = self.pg.time.get_ticks()
         navs = []

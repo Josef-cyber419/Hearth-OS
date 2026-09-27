@@ -245,7 +245,8 @@ ctl("menu")
 wait_for("menu open", lambda: state()["overlay_open"])
 time.sleep(0.8)
 key("e", 0.8)  # the menu remembers the Discord tab; System is next
-key("Down", 0.6)
+key("Down", 0.6)  # "Home, keep Fake Game paused" (Quick Resume, shown later)
+key("Down", 0.6)  # "Close Fake Game"
 key("Return", 0.9)
 key("Return", 0.3)
 wait_for("game closed, back home", lambda: state()["foreground"] is None
@@ -360,6 +361,32 @@ wait_for("Library opened", lambda: '"library_open"' in pathlib.Path("/lab/state/
 time.sleep(2)
 key("Escape", 1.5)
 wait_for("home screen back", lambda: root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [HOME_APPID])
+
+# 13b. Quick Resume: pause a game, do something else, carry on where you were
+say("Quick Resume", "Hold Guide in a game: it pauses and waits on the home screen")
+for _ in range(3):
+    key("Left", 0.4)  # back along the Play row to Fake Game
+key("Return", 0.2)
+wait_for("gamescope shows the game", lambda: root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [appid_for("game")])
+game_pid = state()["foreground"]["pid"]
+time.sleep(2)
+ctl("pause")  # what holding Guide does
+wait_for("game paused, home in front", lambda: [e["id"] for e in state()["suspended"]] == ["game"]
+         and root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [HOME_APPID])
+check("the paused game is stopped, not closed",
+      open(f"/proc/{game_pid}/stat").read().split()[2] == "T")
+for _ in range(5):
+    key("Up", 0.3)  # the Quick Resume row, on top
+time.sleep(2.5)
+say("Pick it up again", "Right where you left it: nothing reloads")
+key("Return", 0.2)
+wait_for("the same game is back in front", lambda: root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [appid_for("game")]
+         and state()["suspended"] == [] and state()["foreground"]["pid"] == game_pid)
+time.sleep(2)
+ctl("home")
+wait_for("home screen back", lambda: state()["foreground"] is None
+         and root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [HOME_APPID])
+time.sleep(1)
 
 # 14. a troubleshooting report, with a screenshot
 say("Report a problem", "hearthctl report: logs, hardware, timeline and a screenshot in one file")

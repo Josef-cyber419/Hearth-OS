@@ -9,6 +9,7 @@ or over SSH from another computer).
   hearthctl update          install OS + app updates now (restart to finish)
   hearthctl rollback        go back to the previous OS version
   hearthctl menu | home     open the Quick Menu / close the app and go home
+  hearthctl pause           go home, keep the game paused (Quick Resume)
   hearthctl disable|enable  boot Game Mode straight into Steam / into Hearth
   hearthctl dev PATH|--off  run the launcher from a source checkout
 """
@@ -276,6 +277,8 @@ def cmd_status() -> int:
         print(f"Running: {fg['name']}" + (f" [{fg['unit']}]" if fg.get("unit") else f" [pid {fg.get('pid')}]"))
     for bg in state["background"].values():
         print(f"In background: {bg['name']}")
+    for paused in reversed(state.get("suspended", [])):
+        print(f"Quick Resume: {paused['name']} (paused)")
     print(f"Quick Menu: {'open' if state['overlay_open'] else 'closed'}")
     print(f"Log: {logs.log_path()}")
     return 0
@@ -389,6 +392,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-y", "--yes", action="store_true")
     sub.add_parser("menu")
     sub.add_parser("home")
+    sub.add_parser("pause")
     sub.add_parser("enable")
     sub.add_parser("disable")
     p = sub.add_parser("dev")
@@ -410,7 +414,7 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_update()
     if args.cmd == "rollback":
         return cmd_rollback(args.yes)
-    if args.cmd in ("menu", "home"):
+    if args.cmd in ("menu", "home", "pause"):
         return cmd_request(args.cmd)
     if args.cmd in ("enable", "disable"):
         return cmd_enable(args.cmd == "enable")

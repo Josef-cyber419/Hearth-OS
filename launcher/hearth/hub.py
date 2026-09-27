@@ -35,16 +35,24 @@ QUICK_FAIL_SECONDS = 3
 TERM_TIMEOUT_SECONDS = 5
 
 
+def resumable(app: cfg.App, config: cfg.Config | None) -> bool:
+    """Can Quick Resume keep this app paused? Apps Hearth shows and closes
+    itself, yes; Steam (which manages its own screen and games) and background
+    apps, no."""
+    return bool(config and config.quick_resume and app.tag_windows and app.home_button and not app.background
+                and not app.builtin)
+
+
 def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None,
-           hold_seconds: float = homebutton.HOLD_SECONDS) -> str | None:
-    """Run an app to completion. Returns an error message for the home screen."""
+           hold_seconds: float = homebutton.HOLD_SECONDS, config: cfg.Config | None = None) -> str | None:
+    """Run an app until it exits or is paused (Quick Resume). Returns an
+    error message for the home screen."""
     log.info("launching %s: %s", app.id, " ".join(app.command))
     if dry_run:
         print("would run:", " ".join(app.command), flush=True)
         return None
     if not shutil.which(app.command[0]):
         return f"Couldn't start {app.name}: {app.command[0]} not found"
-    started = time.monotonic()
     try:
         proc, unit = session.spawn("app", app.id, app.command)
     except OSError as e:
@@ -52,43 +60,143 @@ def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None,
         events.record("launch_failed", id=app.id, error=str(e))
         return f"Couldn't start {app.name}: {e.strerror or e}"
     events.record("app_start", id=app.id, scope=bool(unit))
-
     info = {"id": app.id, "name": app.name, "unit": unit, "pid": proc.pid, "started": time.time(),
-            "home_button": app.home_button, "tag_windows": app.tag_windows}
-    state = session.update(lambda s: s.update(foreground=info, focus="foreground"))
+            "home_button": app.home_button, "tag_windows": app.tag_windows, "art": app.art,
+            "platform": app.platform, "color": app.color, "resumable": resumable(app, config)}
+    PROCS[app.id] = proc
+    return run_foreground(info, gs, hold_seconds, config)
+
+
+# Processes of apps we started, so their exit status can be collected (they
+# may be paused for a while under Quick Resume).
+PROCS: dict[str, subprocess.Popen] = {}
+
+
+def run_foreground(info: dict, gs: Gamescope | None, hold_seconds: float, config: cfg.Config | None) -> str | None:
+    """Show an app and wait until it exits, is closed with Guide, or is
+    paused for Quick Resume."""
+    state = session.update(lambda s: s.update(foreground=info, focus="foreground", suspend_request=False))
     if gs:
         gs.show_app(session.focus_order(state))
-
-    sent_home = False
+    proc = PROCS.get(info["id"])
+    started = time.monotonic() - max(0.0, time.time() - info.get("started", time.time()))
+    outcome = {"sent_home": False}
+    keep_paused = info.get("resumable") and (config is None or config.guide_hold_action == "resume")
 
     def go_home() -> None:
-        nonlocal sent_home
         current = session.read()
         if current["focus"] in current["background"]:
             return  # Discord etc. is in front: the overlay handles this hold
-        sent_home = True
-        stop_app(proc, unit)
+        if keep_paused:
+            session.update(lambda s: s.__setitem__("suspend_request", True))
+            return
+        outcome["sent_home"] = True
+        if proc is not None:
+            stop_app(proc, info.get("unit"))
+        else:
+            session.stop_entry(info)
 
-    watcher = homebutton.Watcher(go_home, hold_seconds=hold_seconds) if app.home_button else None
+    watcher = homebutton.Watcher(go_home, hold_seconds=hold_seconds) if info.get("home_button") else None
     if watcher:
         watcher.start()
+    returncode = None
+    suspended = False
     try:
-        returncode = proc.wait()
+        while True:
+            if proc is not None:
+                returncode = proc.poll()
+                if returncode is not None:
+                    break
+            elif not session.entry_alive(info):
+                break
+            if info.get("resumable") and session.read().get("suspend_request"):
+                suspended = suspend(info)
+                if suspended:
+                    break
+                session.update(lambda s: s.__setitem__("suspend_request", False))
+            time.sleep(0.1)
     finally:
         if watcher:
             watcher.stop()
-        session.update(lambda s: s.update(foreground=None, focus="home", paused=False))
-    elapsed = time.monotonic() - started
-    if sent_home:
-        events.record("app_exit", id=app.id, ended="guide", seconds=round(elapsed, 1))
+        session.update(lambda s: s.update(foreground=None, focus="home", paused=False, suspend_request=False))
+    if suspended:
         return None
-    log.info("%s exited with %s after %.1fs", app.id, returncode, elapsed)
-    failed = returncode != 0 and elapsed < QUICK_FAIL_SECONDS
-    events.record("app_exit", id=app.id, ended="failed" if failed else "exited", code=returncode,
+    PROCS.pop(info["id"], None)
+    elapsed = time.monotonic() - started
+    if outcome["sent_home"]:
+        events.record("app_exit", id=info["id"], ended="guide", seconds=round(elapsed, 1))
+        return None
+    log.info("%s exited with %s after %.1fs", info["id"], returncode, elapsed)
+    failed = returncode not in (None, 0) and elapsed < QUICK_FAIL_SECONDS
+    events.record("app_exit", id=info["id"], ended="failed" if failed else "exited", code=returncode,
                   seconds=round(elapsed, 1))
     if failed:
-        return f"{app.name} closed unexpectedly (exit code {returncode})"
+        return f"{info['name']} closed unexpectedly (exit code {returncode})"
     return None
+
+
+def suspend(info: dict) -> bool:
+    """Quick Resume: pause the app and keep it for later."""
+    if not session.pause_entry(info):
+        log.warning("couldn't pause %s for Quick Resume", info["id"])
+        return False
+    paused = {**info, "paused_at": time.time()}
+    session.update(lambda s: s.__setitem__("suspended", [e for e in s["suspended"] if e["id"] != info["id"]]
+                                           + [paused]))
+    events.record("quick_resume", id=info["id"], action="paused")
+    log.info("paused %s for Quick Resume", info["id"])
+    return True
+
+
+def resume(app_id: str, gs: Gamescope | None, hold_seconds: float, config: cfg.Config | None) -> str | None:
+    """Bring a paused app back exactly where it was."""
+    entry = next((e for e in session.read()["suspended"] if e["id"] == app_id), None)
+    session.update(lambda s: s.__setitem__("suspended", [e for e in s["suspended"] if e["id"] != app_id]))
+    if entry is None or not session.entry_alive(entry):
+        PROCS.pop(app_id, None)
+        return "That game had already closed"
+    session.resume_entry(entry)
+    events.record("quick_resume", id=app_id, action="resumed",
+                  paused_minutes=round((time.time() - entry.get("paused_at", time.time())) / 60, 1))
+    info = {k: v for k, v in entry.items() if k != "paused_at"}
+    return run_foreground(info, gs, hold_seconds, config)
+
+
+def close_paused(app_id: str) -> None:
+    entry = next((e for e in session.read()["suspended"] if e["id"] == app_id), None)
+    session.update(lambda s: s.__setitem__("suspended", [e for e in s["suspended"] if e["id"] != app_id]))
+    if entry is None:
+        return
+    session.close_suspended(entry)
+    proc = PROCS.pop(app_id, None)
+    if proc is not None:
+        try:
+            proc.wait(timeout=TERM_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            stop_process_group(proc)
+    events.record("quick_resume", id=app_id, action="closed")
+
+
+def make_room(config: cfg.Config) -> None:
+    """Keep at most `quick_resume` games paused: close the oldest beyond that."""
+    paused = session.read()["suspended"]
+    while len(paused) >= max(1, config.quick_resume):
+        close_paused(paused[0]["id"])
+        paused = session.read()["suspended"]
+
+
+def quick_resume_row(config: cfg.Config) -> cfg.Row | None:
+    """The paused games, newest first, as tiles."""
+    entries = [e for e in session.read()["suspended"] if session.entry_alive(e)]
+    if not entries or not config.quick_resume:
+        return None
+    apps = []
+    for e in reversed(entries):
+        minutes = int((time.time() - e.get("paused_at", time.time())) // 60)
+        ago = "just now" if minutes < 1 else f"{minutes} min" if minutes < 60 else f"{minutes // 60} h"
+        apps.append(cfg.App(id=f"resume:{e['id']}", name=e["name"], command=("hearth:resume", e["id"]),
+                            color=e.get("color") or "#3a3f58", art=e.get("art"), platform=f"Paused · {ago}"))
+    return cfg.Row("Quick Resume", tuple(apps))
 
 
 def stop_app(proc: subprocess.Popen, unit: str | None) -> None:
@@ -192,8 +300,10 @@ def main(argv: list[str] | None = None) -> int:
     overlay = OverlayProcess(args.config) if (args.overlay if args.overlay is not None else in_gamescope) else None
     # Fresh session: nothing in front, but keep background apps that are
     # still running (the hub may have restarted without them).
+    # The same goes for games paused by Quick Resume.
     session.update(lambda s: s.update(copy.deepcopy(session.DEFAULT_STATE), background={
-        k: v for k, v in s["background"].items() if session.background_alive(v)}))
+        k: v for k, v in s["background"].items() if session.background_alive(v)},
+        suspended=[e for e in s.get("suspended", []) if session.entry_alive(e)]))
 
     dev_mode = args.windowed or args.dry_run
     state = {"last_id": None, "message": None, "surface": None, "intro": "boot"}
@@ -231,7 +341,23 @@ def home_config(args, state: dict | None = None) -> cfg.Config:
         config = library.with_game_rows(config)
     except Exception:  # never lose the home screen over the game library
         log.exception("game rows")
+    row = quick_resume_row(config)
+    if row is not None:
+        from dataclasses import replace
+
+        config = replace(config, rows=(row,) + config.rows)
     return config
+
+
+def eviction_question(app: cfg.App, config: cfg.Config) -> str | None:
+    """Starting another game with Quick Resume full closes the oldest paused
+    one: say so first."""
+    paused = session.read()["suspended"]
+    if not resumable(app, config) or any(e["id"] == app.id for e in paused):
+        return None
+    if len(paused) < max(1, config.quick_resume):
+        return None
+    return f"THIS CLOSES PAUSED {paused[0]['name'].upper()}"
 
 
 def tune_emulators(resolution: str) -> None:
@@ -274,7 +400,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     view, offset = style.inset(state["surface"], config.safe_area)
     common = dict(input_blocked=lambda: session.read()["overlay_open"], livery=config.livery, motion=config.motion,
                   clock=config.clock, swap_confirm=config.confirm == "east", offset=offset,
-                  saver_after=config.screensaver_minutes * 60)
+                  saver_after=config.screensaver_minutes * 60, ask=lambda a: eviction_question(a, config))
     app = ui.run(view, home, config.title, message=state["message"], allow_quit=dev_mode, stats=stats,
                  badge="Update ready: restart to finish" if ready else None,
                  running=set(current["background"]), intro=state["intro"],
@@ -302,11 +428,20 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                      hints=(("A", "Play"), ("Y", "Pin"), ("B", "Back")), **common)
         if app is None:
             return None
-    elif app.builtin:
+    if app.command[0] == "hearth:resume":
+        app_id = app.command[1]
+        return foreground(state, gs, lambda: resume(app_id, gs, config.guide_hold, config))
+    if app.builtin:
         return None
+    if any(e["id"] == app.id for e in session.read()["suspended"]):
+        # Picked again from another row: carry on where it was paused.
+        return foreground(state, gs, lambda: resume(app.id, gs, config.guide_hold, config))
     key = library.key_of(app.id)
     if key:
         library.record_play(key)
+
+    if resumable(app, config) and not args.dry_run:
+        make_room(config)  # the home screen asked first (eviction_question)
 
     if app.background and not args.dry_run:
         # The home screen stays open behind it; the Quick Menu or a held
@@ -319,15 +454,26 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
         # as its window appears (see session.focus_order), instead of
         # showing black while it loads.
         ui.draw_loading(state["surface"], app, config.livery)
-        state["message"] = launch(app, dry_run=args.dry_run, gs=gs, hold_seconds=config.guide_hold)
-        state["intro"] = "return"
-        pygame.event.clear()  # drop input that queued up while the app ran
-        return None
+        return foreground(state, gs, lambda: launch(app, dry_run=args.dry_run, gs=gs,
+                                                    hold_seconds=config.guide_hold, config=config))
 
     # Release the screen and input devices entirely (e.g. for Steam, which
     # manages gamescope's focus itself and must not be covered).
     pygame.quit()
     state["surface"] = None
-    state["message"] = launch(app, dry_run=args.dry_run, gs=gs, hold_seconds=config.guide_hold)
+    state["message"] = launch(app, dry_run=args.dry_run, gs=gs, hold_seconds=config.guide_hold, config=config)
     state["intro"] = "return"
+    return None
+
+
+def foreground(state: dict, gs: Gamescope | None, run) -> None:
+    """Run an app in front with the home screen kept open behind it (under
+    gamescope; otherwise the window is closed while it runs)."""
+    if gs is None:
+        pygame.quit()
+        state["surface"] = None
+    state["message"] = run()
+    state["intro"] = "return"
+    if gs is not None:
+        pygame.event.clear()  # drop input that queued up while the app ran
     return None

@@ -144,6 +144,10 @@ class Config:
     screensaver_minutes: int = 10  # 0 = never; protects OLED TVs from a still home screen
     sleep_minutes: int = 0  # 0 = never; sleep after this long idle on the home screen
     emulation_resolution: str = "auto"  # target for emulator upscaling: auto, 1080p, 1440p, 4k
+    # Quick Resume: how many games stay paused in the background (0 = off),
+    # and whether holding Guide pauses the game ("resume") or closes it.
+    quick_resume: int = 2
+    guide_hold_action: str = "resume"
 
     def app(self, app_id: str) -> App | None:
         return next((a for row in self.rows for a in row.apps if a.id == app_id), None)
@@ -253,6 +257,8 @@ def parse(data: dict) -> Config:
         sleep_minutes=int(_number(home_table, "home", "sleep_minutes", 0, 0, 1440)),
         emulation_resolution=_choice(data.get("emulation", {}), "emulation", "resolution",
                                      ("auto", "1080p", "1440p", "4k")),
+        quick_resume=int(_number(home_table, "home", "quick_resume", 2, 0, 3)),
+        guide_hold_action=_choice(controllers, "controllers", "guide_hold", ("resume", "close")),
     )
 
 

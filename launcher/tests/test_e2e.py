@@ -267,3 +267,34 @@ def test_full_session(harness):
              lambda: "settings changed; reloaded" in (h.tmp / "state/hearth/hearth.log").read_text())
     assert h.front_appid() == HOME_APPID
 
+
+
+def test_quick_resume(harness):
+    from hearth.gamescope import HOME_APPID, appid_for
+
+    h = harness
+    home = wait_for("home screen", lambda: h.tagged("Hearth", HOME_APPID))
+    wait_for("overlay window", lambda: h.window("Hearth Quick Menu"))
+    time.sleep(0.5)
+    h.press(home, "Return")
+    wait_for("game in front", lambda: h.front_appid() == appid_for("game"))
+    pid = h.state()["foreground"]["pid"]
+
+    # Pause it (a held Guide button, or the Quick Menu's "Home, keep … paused").
+    h.ctl("pause")
+    wait_for("game paused", lambda: [e["id"] for e in h.state()["suspended"]] == ["game"])
+    wait_for("home in front", lambda: h.front_appid() == HOME_APPID)
+    assert h.state()["foreground"] is None
+    assert Path(f"/proc/{pid}/stat").read_text().split()[2] == "T"  # stopped, still there
+    home = wait_for("home screen back", lambda: h.tagged("Hearth", HOME_APPID))
+    time.sleep(1.2)
+    h.screenshot("qr-1-home-with-quick-resume")
+
+    # The Quick Resume row is on top: pick the game there and it carries on.
+    h.press(home, "Up", "Return")
+    wait_for("game in front again", lambda: h.front_appid() == appid_for("game"))
+    assert h.state()["suspended"] == [] and h.state()["foreground"]["pid"] == pid
+    assert Path(f"/proc/{pid}/stat").read_text().split()[2] != "T"
+
+    kinds = [json.loads(line) for line in (h.tmp / "state/hearth/events.jsonl").read_text().splitlines()]
+    assert [e["action"] for e in kinds if e["event"] == "quick_resume"] == ["paused", "resumed"]

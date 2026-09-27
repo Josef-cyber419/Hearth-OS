@@ -16,6 +16,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import tempfile
 import time
@@ -47,12 +48,15 @@ def runtime_dir() -> Path:
 #   "report": {"status": "running" | "done" | "failed", "file"} | null,
 #   "wii_mouse": {app id: bool},  (Quick Menu's per-app override of wii_remote.mouse)
 #   "wii": {"connected": [player, ...], "dolphin": bool} | null,  (from the overlay)
-#   "wii_raw": bool   (the Settings app is calibrating: the overlay writes wii-aim.json)
+#   "wii_raw": bool,  (the Settings app is calibrating: the overlay writes wii-aim.json)
+#   "suspended": [{like foreground, + "paused_at"}, ...],  (Quick Resume: games kept paused, oldest first)
+#   "suspend_request": bool   (the Quick Menu or a held Guide asks the hub to pause the game and go home)
 # }
 
 DEFAULT_STATE = {"foreground": None, "background": {}, "focus": "home", "overlay_open": False,
                  "paused": False, "requests": [], "update": None, "report": None,
-                 "wii_mouse": {}, "wii": None, "wii_raw": False}
+                 "wii_mouse": {}, "wii": None, "wii_raw": False,
+                 "suspended": [], "suspend_request": False}
 
 
 def _state_path() -> Path:
@@ -139,6 +143,51 @@ def stop(unit: str) -> bool:
 
 def is_active(unit: str) -> bool:
     return systemctl("is-active", "--quiet", unit)
+
+
+# -- Quick Resume: pausing a whole app and bringing it back ------------------------
+
+
+def pause_entry(info: dict) -> bool:
+    """Freeze an app and everything it started. Without a systemd scope, stop
+    its process group instead (the app runs in its own session, see spawn)."""
+    if info.get("unit"):
+        return freeze(info["unit"])
+    try:
+        os.killpg(info["pid"], signal.SIGSTOP)
+        return True
+    except (OSError, KeyError):
+        return False
+
+
+def resume_entry(info: dict) -> bool:
+    if info.get("unit"):
+        return thaw(info["unit"])
+    try:
+        os.killpg(info["pid"], signal.SIGCONT)
+        return True
+    except (OSError, KeyError):
+        return False
+
+
+def entry_alive(info: dict) -> bool:
+    if info.get("unit"):
+        return is_active(info["unit"])
+    try:
+        return Path(f"/proc/{info['pid']}/stat").read_text().split()[2] != "Z"
+    except (OSError, KeyError, IndexError):
+        return False
+
+
+def close_suspended(info: dict) -> None:
+    """Close a paused app (it has to be running to hear the request)."""
+    resume_entry(info)
+    stop_entry(info)
+    if not info.get("unit"):
+        try:
+            os.killpg(info["pid"], signal.SIGCONT)
+        except (OSError, KeyError):
+            pass
 
 
 def app_for_pid(pid: int) -> tuple[str, str] | None:
