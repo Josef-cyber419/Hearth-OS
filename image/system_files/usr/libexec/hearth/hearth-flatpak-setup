@@ -9,7 +9,8 @@ touch "$done_file"
 
 flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
-app_ids() { grep -Ev '^\s*(#|$)' "$@"; }
+# -h: with two lists grep would otherwise prefix each ID with "file:".
+app_ids() { grep -hEv '^\s*(#|$)' "$@"; }
 
 app_ids /usr/share/hearth/flatpaks.list /usr/share/hearth/emulators.list | while read -r app; do
     grep -qxF "$app" "$done_file" && continue

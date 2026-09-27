@@ -132,9 +132,11 @@ Do this once in Desktop Mode, from the app menu:
 - **Exit shortcut**: set a controller shortcut to quit the game back to ES-DE,
   e.g. Select + Start. RetroArch, PCSX2, DuckStation and Dolphin all support one.
 
-**Holding the Guide button always gets you back to the Hearth home screen**, but
-it closes the emulator *and* ES-DE without saving. Save in-game first, or use
-the emulator's exit shortcut instead.
+**Holding the Guide button always gets you back to the Hearth home screen.** With
+Quick Resume on (the default), the game is paused, not closed: it waits in the
+Quick Resume row and carries on exactly where you were. If you've set holding
+Guide to close instead (Settings → Controllers), it closes the emulator *and*
+ES-DE without saving, so save in-game first or use the emulator's exit shortcut.
 
 ## Wii Remotes
 
