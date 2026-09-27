@@ -1,0 +1,22 @@
+#!/usr/bin/bash
+# Root helper for hearth-steam (run through sudo; see /etc/sudoers.d/hearth).
+#
+#   clear-desktop-login   Remove SteamOS Manager's one-time "log in to the
+#                         desktop" setting, so Steam's "Switch to Desktop"
+#                         inside Hearth doesn't end in KDE. A one-time login
+#                         back to Game Mode is left alone.
+set -euo pipefail
+sddm_dir=${HEARTH_SDDM_DIR:-/etc/sddm.conf.d}
+temp_login=$sddm_dir/zzt-steamos-temp-login.conf
+
+case "${1:-}" in
+    clear-desktop-login)
+        if [[ -f $temp_login ]] && ! grep -qi '^Session=gamescope' "$temp_login"; then
+            rm -f -- "$temp_login"
+        fi
+        ;;
+    *)
+        echo "usage: hearth-session clear-desktop-login" >&2
+        exit 2
+        ;;
+esac

@@ -1,6 +1,22 @@
 #!/usr/bin/bash
 # Steam in its console UI (the Steam Deck / Big Picture interface), running
 # inside the current gamescope session. When Steam exits, Hearth comes back.
+#
+# Steam's "Switch to Desktop" asks SteamOS Manager to log out into the
+# desktop: it writes a one-time login session (Session=plasma...) to
+# $sddm_dir/zzt-steamos-temp-login.conf, then stops graphical-session.target,
+# which would end Hearth and any Quick Resume games. Inside Hearth it should
+# just mean "leave Steam". So while Steam runs here:
+#   - a runtime drop-in refuses manual stops of graphical-session.target,
+#     so the logout fails and the session stays up;
+#   - when that one-time desktop login appears, it's cleared (hearth-session,
+#     through sudo) and Steam is asked to exit, which lands back home.
+# hearth-desktop removes the drop-in before a deliberate switch to the desktop.
+
+sddm_dir=${HEARTH_SDDM_DIR:-/etc/sddm.conf.d}
+temp_login=$sddm_dir/zzt-steamos-temp-login.conf
+dropin_dir=${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd/user/graphical-session.target.d
+dropin=$dropin_dir/50-hearth-steam.conf
 
 # Bazzite's Game Mode may run the "ogui-steam" session, which doesn't carry
 # the stock Steam session's feature flags (HDR, VRR, tearing controls...).
@@ -11,4 +27,40 @@ if [[ -z ${STEAM_GAMESCOPE_HDR_SUPPORTED:-} && -f $steam_session ]]; then
     . "$steam_session"
 fi
 
-exec steam -gamepadui -steamos3 -steampal -steamdeck "$@"
+desktop_requested() {
+    [[ -f $temp_login ]] && ! grep -qi '^Session=gamescope' "$temp_login"
+}
+
+clear_desktop_login() {
+    sudo -n /usr/libexec/hearth/hearth-session clear-desktop-login ||
+        echo "hearth-steam: couldn't clear $temp_login" >&2
+}
+
+cleanup() {
+    rm -f "$dropin"
+    systemctl --user daemon-reload 2>/dev/null
+}
+
+# Left over from before (e.g. Steam was killed mid-switch): not a new request.
+desktop_requested && clear_desktop_login
+
+mkdir -p "$dropin_dir"
+printf '[Unit]\n# Hearth: Steam is running inside Hearth; see hearth-steam.\nRefuseManualStop=yes\n' >"$dropin"
+systemctl --user daemon-reload 2>/dev/null
+trap cleanup EXIT
+trap 'kill -TERM "$steam_pid" 2>/dev/null' TERM INT HUP
+
+steam -gamepadui -steamos3 -steampal -steamdeck "$@" &
+steam_pid=$!
+
+left=no
+while kill -0 "$steam_pid" 2>/dev/null; do
+    if [[ $left == no ]] && desktop_requested; then
+        echo "hearth-steam: Steam asked for the desktop; returning to Hearth instead" >&2
+        clear_desktop_login
+        steam -shutdown
+        left=yes
+    fi
+    sleep 0.5
+done
+wait "$steam_pid"

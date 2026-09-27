@@ -362,8 +362,14 @@ def eviction_question(app: cfg.App, config: cfg.Config) -> str | None:
 
 def tune_emulators(resolution: str) -> None:
     """Give each emulator recommended settings once it has created its own
-    config (after its first run). See emutune.py."""
-    from . import emutune, settings
+    config (after its first run), and make ES-DE use them. See emutune.py
+    and esde.py."""
+    from . import emutune, esde, settings
+
+    try:
+        esde.setup()
+    except Exception:
+        log.exception("setting up ES-DE")
 
     try:
         done = set(settings.load().get("emulation_tuned", []))

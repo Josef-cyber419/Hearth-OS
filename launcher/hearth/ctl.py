@@ -10,6 +10,7 @@ or over SSH from another computer).
   hearthctl rollback        go back to the previous OS version
   hearthctl menu | home     open the Quick Menu / close the app and go home
   hearthctl pause           go home, keep the game paused (Quick Resume)
+  hearthctl emulation-setup point ES-DE at the installed emulators, fetch RetroArch cores
   hearthctl disable|enable  boot Game Mode straight into Steam / into Hearth
   hearthctl dev PATH|--off  run the launcher from a source checkout
 """
@@ -343,6 +344,17 @@ def cmd_rollback(yes: bool) -> int:
     return 0 if ok else 1
 
 
+def cmd_emulation_setup(download: bool, quiet: bool) -> int:
+    from . import esde
+
+    report = None if quiet else print
+    esde.setup(download=download, report=report)
+    if not quiet:
+        missing = esde.missing_cores() if download else []
+        print("Missing cores: " + ", ".join(missing) if missing else "ES-DE and RetroArch are set up.")
+    return 0
+
+
 def cmd_enable(enable: bool) -> int:
     flag = disabled_flag()
     if enable:
@@ -395,6 +407,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("pause")
     sub.add_parser("enable")
     sub.add_parser("disable")
+    p = sub.add_parser("emulation-setup")
+    p.add_argument("--no-download", action="store_true", help="don't download RetroArch cores")
+    p.add_argument("--quiet", action="store_true")
     p = sub.add_parser("dev")
     p.add_argument("path", nargs="?")
     p.add_argument("--off", action="store_true")
@@ -418,6 +433,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_request(args.cmd)
     if args.cmd in ("enable", "disable"):
         return cmd_enable(args.cmd == "enable")
+    if args.cmd == "emulation-setup":
+        return cmd_emulation_setup(not args.no_download, args.quiet)
     if args.cmd == "dev":
         if not args.off and not args.path:
             parser.error("dev needs a PATH (the launcher directory of a checkout) or --off")

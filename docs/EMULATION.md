@@ -43,7 +43,13 @@ Only use games, BIOS files and keys you've dumped from hardware you own.
 
 The emulators are installed automatically on first boot (from
 [`emulators.list`](../image/system_files/usr/share/hearth/emulators.list)). ES-DE
-finds each one on its own.
+finds each one on its own, and Hearth makes ES-DE use the standalone emulators
+it installed (Dolphin, PCSX2, DuckStation, PPSSPP, melonDS, Azahar, RMG, MAME)
+rather than RetroArch cores, and downloads the RetroArch cores for the rest
+(NES, SNES, Game Boy/Color/Advance, Genesis/Mega Drive/Master System, Dreamcast,
+Saturn). If ES-DE ever says it can't find an emulator core, run
+`hearthctl emulation-setup` in Desktop Mode. A different emulator chosen in
+ES-DE (Other settings → Alternative emulators) is kept.
 
 Performance is estimated for a **Ryzen 7 5800X3D** with an **RX 6750 XT** and
 24 GB of RAM. That's strong for emulation: the X3D's large cache particularly
