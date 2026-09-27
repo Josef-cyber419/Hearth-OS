@@ -45,12 +45,14 @@ def runtime_dir() -> Path:
 #   "requests": ["menu" | "home", ...]   (from hearthctl; handled by the overlay)
 #   "update": {"status": "running" | "ready" | "current" | "failed", "version"} | null,
 #   "report": {"status": "running" | "done" | "failed", "file"} | null,
-#   "wii_mouse": {app id: bool}   (Quick Menu's per-app override of wii_remote.mouse)
+#   "wii_mouse": {app id: bool},  (Quick Menu's per-app override of wii_remote.mouse)
+#   "wii": {"connected": [player, ...], "dolphin": bool} | null,  (from the overlay)
+#   "wii_raw": bool   (the Settings app is calibrating: the overlay writes wii-aim.json)
 # }
 
 DEFAULT_STATE = {"foreground": None, "background": {}, "focus": "home", "overlay_open": False,
                  "paused": False, "requests": [], "update": None, "report": None,
-                 "wii_mouse": {}}
+                 "wii_mouse": {}, "wii": None, "wii_raw": False}
 
 
 def _state_path() -> Path:
@@ -62,6 +64,11 @@ def _locked() -> Iterator[None]:
     with open(runtime_dir() / "state.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
+
+
+def aim_path() -> Path:
+    """Where a Wii Remote is aiming, while the Settings app calibrates."""
+    return runtime_dir() / "wii-aim.json"
 
 
 def state_path() -> Path:

@@ -123,6 +123,7 @@ class HomeScreen:
         self.home = home
         self.title = title
         self.livery = livery
+        self.clock = "24h"
         self.theme = Theme(surface.get_size(), livery)
         self.reduced = motion == "reduced"
         self.smooth = Smooth(rate=13.0, instant=self.reduced)
@@ -260,16 +261,8 @@ class HomeScreen:
         age = time.monotonic() - self._pointer_at
         if age > POINTER_SECONDS:
             return
-        th, lv = self.theme, self.theme.lv
         a = 1.0 if age < POINTER_SECONDS - 0.4 else (POINTER_SECONDS - age) / 0.4
-        r = int(16 * th.u)
-        layer = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
-        c = (r + 2, r + 2)
-        style.circle(layer, (0, 0, 0), c, r)
-        style.circle(layer, lv.text, c, r - max(2, int(3 * th.u)))
-        style.circle(layer, lv.accent, c, r * 0.45)
-        layer.set_alpha(int(235 * a))
-        self.surface.blit(layer, (self._pointer[0] - c[0], self._pointer[1] - c[1]))
+        style.draw_pointer(self.surface, self._pointer, self.theme.u, self.theme.lv, a)
 
     # -- timing ----------------------------------------------------------------
 
@@ -349,7 +342,7 @@ class HomeScreen:
         brand = style.tracked(th.font_brand, self.title.upper(), lv.text, spacing)
         layer.blit(brand, (th.margin + cell * 4 + int(20 * th.u), top))
 
-        clock = th.font_clock.render(time.strftime("%H:%M"), True, lv.text)
+        clock = th.font_clock.render(style.clock_text(self.clock), True, lv.text)
         clock_rect = clock.get_rect(topright=(th.width - th.margin, top - int(14 * th.u)))
         layer.blit(clock, clock_rect)
         date = style.tracked(th.font_date, time.strftime("%a %d %b").upper(), lv.dim, 0.22)
@@ -594,6 +587,7 @@ def run(
     motion: str = "full",
     intro: str | None = None,
     stats=None,
+    clock: str = "24h",
 ) -> App | None:
     """Show the home screen until the user picks an app.
 
@@ -605,6 +599,7 @@ def run(
     """
     screen = HomeScreen(surface, home, title, livery=livery, motion=motion, intro=intro)
     screen.message = message
+    screen.clock = clock
     screen.badge = badge
     screen.running = running or set()
     mapper = InputMapper()
@@ -642,7 +637,7 @@ def run(
                 chosen = app
                 break
         if chosen is not None:
-            if not chosen.background and not chosen.confirm:
+            if not chosen.background and not chosen.confirm and not chosen.builtin:
                 screen.play_launch(chosen)
             return chosen
         screen.draw()

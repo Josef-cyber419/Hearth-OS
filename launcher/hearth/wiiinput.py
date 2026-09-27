@@ -37,6 +37,17 @@ KEYS = {UP: "Up", DOWN: "Down", LEFT: "Left", RIGHT: "Right", A: "Return", TWO: 
         B: "Escape", ONE: "Escape", PLUS: "Menu", MINUS: "BackSpace"}
 CLICKS = {A: 1, TWO: 3}  # mouse mode: A is a left click, 2 a right click
 DIRECTIONS = (UP, DOWN, LEFT, RIGHT)
+# Held sideways (D-pad on the left, like an NES pad): the D-pad turns a
+# quarter, and 2 / 1 are the main buttons.
+SIDEWAYS = {UP: LEFT, DOWN: RIGHT, LEFT: DOWN, RIGHT: UP, TWO: A, ONE: B}
+
+
+def turn_sideways(buttons: int) -> int:
+    out = buttons & ~(UP | DOWN | LEFT | RIGHT | ONE | TWO)
+    for bit, becomes in SIDEWAYS.items():
+        if buttons & bit:
+            out |= becomes
+    return out
 
 
 class Sink(Protocol):
@@ -111,6 +122,25 @@ class WiiInput:
         self._keys_down: dict[int, str] = {}
         self._clicks_down: dict[int, int] = {}
         self._was_connected: set[str] = set()
+        self.sideways = False
+        self._aim: dict = {}
+
+    def configure(self, config) -> None:
+        """Apply the Wii Remote settings (see config.Config)."""
+        self.sideways = config.wii_hold == "sideways"
+        self._aim = {"speed": config.wii_speed, "steadiness": config.wii_steadiness, "bar": config.wii_bar,
+                     "calibration": config.wii_calibration}
+        for r in self.remotes.values():
+            r.aim.configure(**self._aim)
+
+    @property
+    def raw(self) -> tuple[float, float] | None:
+        """Where the sensor bar is in the camera's view (for calibration)."""
+        return next((r.aim.raw for r in self.remotes.values() if r.connected and r.aim.raw), None)
+
+    @property
+    def connected(self) -> list[int]:
+        return sorted(r.player for r in self.remotes.values() if r.connected)
 
     @property
     def active(self) -> bool:
@@ -129,6 +159,8 @@ class WiiInput:
         for i, path in enumerate(sorted(paths)):
             if path not in self.remotes:
                 remote = wiimote.Remote(path, player=i + 1)
+                if self._aim:
+                    remote.aim.configure(**self._aim)
                 if remote.open():
                     self.remotes[path] = remote
 
@@ -187,6 +219,8 @@ class WiiInput:
         for r in self.remotes.values():
             if r.connected:
                 held |= r.buttons
+        if self.sideways:
+            held = turn_sideways(held)
         pressed, released = held & ~self._held, self._held & ~held
         self._held = held
         navs = self._home(pressed, released, held, now)

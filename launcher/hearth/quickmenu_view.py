@@ -56,7 +56,8 @@ class Icons:
 
 
 class QuickMenuView:
-    def __init__(self, size: tuple[int, int], livery: str = "gulf", motion: str = "full") -> None:
+    def __init__(self, size: tuple[int, int], livery: str = "gulf", motion: str = "full",
+                 clock: str = "24h") -> None:
         self.size = size
         w, h = size
         self.u = h / 1080
@@ -80,9 +81,11 @@ class QuickMenuView:
         self._dt = 0.0
         self._backdrop = self._make_backdrop()
         self._shadow: pygame.Surface | None = None
-        self.set_theme(livery, motion)
+        self.item_hits: list[tuple[pygame.Rect, str]] = []  # where each option is (for a pointer)
+        self.set_theme(livery, motion, clock)
 
-    def set_theme(self, livery: str, motion: str = "full") -> None:
+    def set_theme(self, livery: str, motion: str = "full", clock: str = "24h") -> None:
+        self.clock = clock
         self.lv = style.livery(livery)
         self.reduced = motion == "reduced"
         self.smooth = Smooth(rate=16.0, instant=self.reduced)
@@ -118,8 +121,10 @@ class QuickMenuView:
         surf.blit(layer, panel.topleft)
 
     def _stagger(self, t: float, i: int) -> float:
-        """Content settles in, top to bottom, as the panel arrives."""
-        return ease_out((t - 0.25 - 0.07 * i) / 0.5)
+        """Content settles in, top to bottom, as the panel arrives, and is
+        fully there once it has (however long the list)."""
+        delay = min(0.55, 0.2 + 0.06 * i)
+        return ease_out((t - delay) / (1 - delay))
 
     def _draw_panel(self, s: pygame.Surface, menu: QuickMenu, title: str, paused: bool, t: float) -> None:
         lv, r = self.lv, s.get_rect()
@@ -133,7 +138,7 @@ class QuickMenuView:
         y = self.px(44)
         cap = style.tracked(self.f_caption, "NOW PLAYING" if title != "Home" else "HEARTH", lv.dim, 0.35)
         head.blit(cap, (pad, y))
-        clock = self.f_clock.render(time.strftime("%H:%M"), True, lv.text)
+        clock = self.f_clock.render(style.clock_text(self.clock), True, lv.text)
         head.blit(clock, (r.w - self.pad_r - clock.get_width(), y - self.px(10)))
         y += cap.get_height() + self.px(4)
         chip_w = self.px(140) if paused else 0
@@ -194,7 +199,8 @@ class QuickMenuView:
         self._blit_in(s, layer, (0, y), self._stagger(t, 1))
         return y + tab_h + self.px(12)
 
-    def _draw_items(self, s: pygame.Surface, menu: QuickMenu, area: pygame.Rect, t: float) -> None:
+    def _draw_items(self, s: pygame.Surface, menu: QuickMenu, area: pygame.Rect, t: float,
+                    highlight: float = 1.0) -> None:
         lv, pad = self.lv, self.pad
         row_h, gap = self.px(98), self.px(6)
         items = menu.current.items
@@ -212,13 +218,17 @@ class QuickMenuView:
         if sel in items:
             bar_y = self.smooth.get("bar_y", area.y + idx * (row_h + gap) - self._scroll, self._dt)
             bar = pygame.Rect(left, int(bar_y), width, row_h)
-            style.blend_rect(s, bar, (*lv.text, 16), self.px(8))
-            s.fill(lv.accent, (bar.x, bar.y + self.px(14), max(2, self.px(4)), bar.h - self.px(28)))
+            style.blend_rect(s, bar, (*lv.text, int(16 * highlight)), self.px(8))
+            style.blend_rect(s, pygame.Rect(bar.x, bar.y + self.px(14), max(2, self.px(4)), bar.h - self.px(28)),
+                             (*lv.accent, int(255 * highlight)))
 
+        self.item_hits = []
         for i, item in enumerate(items):
             rect = pygame.Rect(left, area.y + i * (row_h + gap) - int(self._scroll), width, row_h)
             if rect.bottom < area.top or rect.top > area.bottom:
                 continue
+            if item.selectable:
+                self.item_hits.append((rect, item.key))
             a = self._stagger(t, 2 + i)
             if a <= 0:
                 continue
@@ -248,8 +258,8 @@ class QuickMenuView:
         if item.kind == "slider":
             top = rect.y + self.px(14)
             s.blit(label, (x, top))
-            shown = self.smooth.get((item.key, "value"), float(item.value or 0), self._dt)
-            text = "MUTED" if item.muted else f"{round(shown)}%"
+            shown = self.smooth.get((item.key, "value"), item.fraction * 100, self._dt)
+            text = "MUTED" if item.muted else item.shows(item.value)
             value = style.tracked(self.f_value, text, lv.dim if item.muted else (lv.accent if selected else lv.text),
                                   0.06)
             s.blit(value, (inner.right - value.get_width(), top - self.px(2)))

@@ -14,6 +14,7 @@ Started by the hub (`python -m hearth.overlay`); safe to restart any time.
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import queue
@@ -23,7 +24,7 @@ import time
 from pathlib import Path
 
 from . import config as cfg
-from . import events, homebutton, logs, session, updates
+from . import events, homebutton, logs, session, settings, updates
 from .audio import Audio, Snapshot, reset_restored_discord_mutes
 from .gamescope import Gamescope, appid_for
 
@@ -146,7 +147,7 @@ class Overlay:
         self.size = size
         self.render_size = (int(size[0] * scale), int(size[1] * scale))
         self.surface = pygame.Surface(self.render_size, pygame.SRCALPHA)
-        self.view = QuickMenuView(self.render_size, config.livery, config.motion)
+        self.view = QuickMenuView(self.render_size, config.livery, config.motion, config.clock)
 
         self.open = False
         self.t = 0.0
@@ -167,13 +168,31 @@ class Overlay:
         self._update_checked = 0.0
         self.events: queue.Queue[str] = queue.Queue()
         homebutton.Watcher(lambda: self.events.put("tap"), homebutton.GuideTap, repeat=True).start()
-        homebutton.Watcher(lambda: self.events.put("hold"), homebutton.HomeButton, repeat=True).start()
+        homebutton.Watcher(lambda: self.events.put("hold"), homebutton.HomeButton, repeat=True,
+                           hold_seconds=config.guide_hold).start()
         self.wii = None
-        if config.wii_remote:
+        self._settings_mtime = settings.mtime()
+        self._wii_status: dict | None = None
+        self._raw_written = 0.0
+        self.apply_config()
+
+    def apply_config(self) -> None:
+        """Use the current settings: look, Wii Remote aim, mouse speed."""
+        c = self.config
+        self.view.set_theme(c.livery, c.motion, c.clock)
+        self.pointer.speed = c.mouse_speed / 100
+        if c.wii_remote and self.wii is None:
             from .wiiinput import WiiInput, XTestSink
 
-            self.wii = WiiInput(XTestSink(gs.d) if gs else None, on_tap=lambda: self.events.put("tap"),
+            self.wii = WiiInput(XTestSink(self.gs.d) if self.gs else None, on_tap=lambda: self.events.put("tap"),
                                 on_hold=lambda: self.events.put("wii_hold"))
+        elif not c.wii_remote and self.wii is not None:
+            self.wii.close()  # let go of the remotes entirely
+            self.wii = None
+            self._wii_status = None
+            session.update(lambda s: s.__setitem__("wii", None))
+        if self.wii:
+            self.wii.configure(c)
 
     # -- state -----------------------------------------------------------------
 
@@ -262,7 +281,7 @@ class Overlay:
 
     def open_menu(self) -> None:
         self.config = load_config(self.config_path, self.config)
-        self.view.set_theme(self.config.livery, self.config.motion)
+        self.apply_config()
         self.state = session.read()
         fg = self.state["foreground"]
         if fg and not fg.get("home_button", True) and self.state["focus"] == "foreground":
@@ -297,6 +316,12 @@ class Overlay:
         if now - self._housekept < HOUSEKEEPING_SECONDS:
             return
         self._housekept = now
+        if settings.mtime() != self._settings_mtime:
+            # Changed in the Settings app: use it straight away.
+            self._settings_mtime = settings.mtime()
+            self.config = load_config(self.config_path, self.config)
+            self.apply_config()
+            log.info("settings changed; reloaded")
         requests: list[str] = []
         self.state = session.read()
         if self.state["requests"]:
@@ -441,6 +466,7 @@ class Overlay:
                 navs.append(repeat)
         if self.wii:
             navs += self.wii.poll(self.open, pointing=self.state["focus"] == "home", mouse=self.wii_mouse())
+            self.publish_wii()
         for nav in navs:
             log.debug("menu input: %s on %s", nav.name, getattr(self.menu.selected, "key", None))
             if nav is Nav.MENU:  # Start closes the menu, like B
@@ -449,6 +475,22 @@ class Overlay:
                 self.close_menu()
                 break
             self._refreshed = min(self._refreshed, time.monotonic() - REFRESH_SECONDS + AFTER_CHANGE_SECONDS)
+
+    def publish_wii(self) -> None:
+        """Tell the Settings app which remotes are connected, and while it's
+        calibrating, where the remote is aiming."""
+        status = {"connected": self.wii.connected, "dolphin": self.wii.released}
+        if status != self._wii_status:
+            self._wii_status = status
+            session.update(lambda s: s.__setitem__("wii", status))
+        now = time.monotonic()
+        if self.state.get("wii_raw") and now - self._raw_written >= 0.05:
+            self._raw_written = now
+            raw = self.wii.raw
+            try:
+                session.aim_path().write_text(json.dumps({"raw": raw, "t": time.time()}))
+            except OSError:
+                pass
 
     def back_from_background(self) -> bool:
         """With a background app (Discord) in front, go back to what was

@@ -63,20 +63,35 @@ def ir_dots(report: bytes) -> list[Dot]:
     return dots
 
 
+BASE_GAIN = 1.6  # how much of the camera's view spans the screen at 100% speed
+# Aiming at the middle of the screen, the sensor bar is this far off the middle
+# of the camera's view (as a fraction of its height) when the bar is below or
+# above the TV.
+BAR_OFFSET = 0.18
+CALIBRATION_TARGETS = ((0.1, 0.1), (0.9, 0.9))  # where the calibration targets are on screen
+
+
 @dataclass
 class Aim:
     """Turns the sensor bar's dots, as the camera sees them, into a place on
-    the screen (0..1 on each axis), steadied against hand tremor."""
+    the screen (0..1 on each axis), steadied against hand tremor.
 
-    gain: float = 1.6  # how much of the camera's view spans the screen
+    Calibrated (two targets aimed at from the couch), it maps the camera's
+    view onto the screen exactly; otherwise it estimates from the sensor
+    bar's position and the speed setting."""
+
+    gain: float = BASE_GAIN
     smoothing: float = 0.45  # 0 = raw, towards 1 = steadier but laggier
+    offset: float = BAR_OFFSET  # +: bar below the TV, -: above
+    calibration: tuple[float, float, float, float] | None = None
     x: float | None = None
     y: float | None = None
+    raw: tuple[float, float] | None = None  # the bar's middle, in camera coordinates
     _pair: tuple[Dot, Dot] | None = None  # the last two dots seen together, left one first
 
     def update(self, dots: list[Dot]) -> tuple[float, float] | None:
         if not dots:
-            self.x = self.y = None
+            self.x = self.y = self.raw = None
             return None
         dots = sorted(dots, key=lambda d: -d.size)[:2]
         if len(dots) == 2:
@@ -92,9 +107,8 @@ class Aim:
             mx, my = (d.x + sx, d.y + sy) if is_left else (d.x - sx, d.y - sy)
         else:
             mx, my = dots[0].x, dots[0].y
-        # The camera sees the bar move the opposite way to where you point.
-        tx = 0.5 + (0.5 - mx / IR_WIDTH) * self.gain
-        ty = 0.5 + (my / IR_HEIGHT - 0.5) * self.gain
+        self.raw = (mx, my)
+        tx, ty = self.to_screen(mx, my)
         tx, ty = min(1.0, max(0.0, tx)), min(1.0, max(0.0, ty))
         if self.x is None or self.y is None:
             self.x, self.y = tx, ty
@@ -103,6 +117,34 @@ class Aim:
             self.x += (tx - self.x) * k
             self.y += (ty - self.y) * k
         return self.x, self.y
+
+
+    def to_screen(self, mx: float, my: float) -> tuple[float, float]:
+        if self.calibration:
+            x1, y1, x2, y2 = self.calibration
+            (sx1, sy1), (sx2, sy2) = CALIBRATION_TARGETS
+            return (sx1 + (mx - x1) / (x2 - x1) * (sx2 - sx1),
+                    sy1 + (my - y1) / (y2 - y1) * (sy2 - sy1))
+        # The camera sees the bar move the opposite way to where you point.
+        return (0.5 + (0.5 - mx / IR_WIDTH) * self.gain,
+                0.5 + (0.5 - my / IR_HEIGHT + self.offset) * self.gain)
+
+    def configure(self, speed: int = 100, steadiness: int = 45, bar: str = "below",
+                  calibration: tuple[float, float, float, float] | None = None) -> None:
+        self.gain = BASE_GAIN * speed / 100
+        self.smoothing = max(0.0, min(0.9, steadiness / 100))
+        self.offset = BAR_OFFSET if bar == "below" else -BAR_OFFSET
+        self.calibration = calibration if calibration and calibration[0] != calibration[2] \
+            and calibration[1] != calibration[3] else None
+
+
+def calibration_from(first: tuple[float, float], second: tuple[float, float]) -> tuple[float, float, float, float] | None:
+    """Camera positions of the bar while aiming at the two targets. None if
+    they're too close together to be real aims at opposite corners."""
+    (x1, y1), (x2, y2) = first, second
+    if abs(x2 - x1) < IR_WIDTH * 0.08 or abs(y2 - y1) < IR_HEIGHT * 0.08:
+        return None
+    return (round(x1, 1), round(y1, 1), round(x2, 1), round(y2, 1))
 
 
 @dataclass

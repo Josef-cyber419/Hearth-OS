@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import math
+import time
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -168,6 +169,12 @@ def _tracked(font: pygame.font.Font, text: str, color: tuple, spacing: float) ->
     return out
 
 
+def clock_text(clock: str = "24h") -> str:
+    if clock == "12h":
+        return time.strftime("%I:%M").lstrip("0") + time.strftime(" %p").lower()
+    return time.strftime("%H:%M")
+
+
 def fit(surf: pygame.Surface, max_w: int) -> pygame.Surface:
     if surf.get_width() <= max_w or max_w <= 0:
         return surf
@@ -278,6 +285,18 @@ def button_hint(surf: pygame.Surface, x: int, cy: int, button: str, label: str, 
     text = tracked(f_lbl, label.upper(), lv.dim, 0.14)
     surf.blit(text, (chip.right + h // 3, cy - text.get_height() // 2))
     return chip.right + h // 3 + text.get_width() + h
+
+
+def draw_pointer(surf: pygame.Surface, pos: tuple[int, int], scale: float, lv: Livery, alpha: float = 1.0) -> None:
+    """The on-screen pointer for a Wii Remote (or mouse): a small roundel."""
+    r = int(16 * scale)
+    layer = pygame.Surface((r * 2 + 4, r * 2 + 4), pygame.SRCALPHA)
+    c = (r + 2, r + 2)
+    circle(layer, (0, 0, 0), c, r)
+    circle(layer, lv.text, c, r - max(2, int(3 * scale)))
+    circle(layer, lv.accent, c, r * 0.45)
+    layer.set_alpha(int(235 * alpha))
+    surf.blit(layer, (pos[0] - c[0], pos[1] - c[1]))
 
 
 def sheen(size: tuple[int, int], phase: float, strength: int = 46) -> pygame.Surface | None:

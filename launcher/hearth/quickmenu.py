@@ -35,6 +35,19 @@ class Item:
     on_change: Callable[[Any], None] | None = None
     on_select: Callable[[], str | None] | None = None
     on_mute: Callable[[bool], None] | None = None
+    # Sliders: range, step, and how the value reads ("{}%", "{:.1f} s", ...).
+    low: float = 0
+    high: float = 100
+    step: float = STEP
+    unit: str = "{}%"
+
+    def shows(self, value: float) -> str:
+        return self.unit.format(round(value, 2) if isinstance(self.step, float) else round(value))
+
+    @property
+    def fraction(self) -> float:
+        span = self.high - self.low
+        return 0.0 if not span else max(0.0, min(1.0, ((self.value or 0) - self.low) / span))
 
     @property
     def selectable(self) -> bool:
@@ -78,6 +91,11 @@ class QuickMenu:
         key = self._selected.get(self.current.key)
         return next((i for i in self.current.items if i.key == key), None)
 
+    def select(self, key: str) -> None:
+        """Select an item in the current tab (e.g. the one a pointer is on)."""
+        if any(i.key == key and i.selectable for i in self.current.items):
+            self._selected[self.current.key] = key
+
     def _move(self, delta: int) -> None:
         items = [i for i in self.current.items if i.selectable]
         if not items:
@@ -103,7 +121,8 @@ class QuickMenu:
             return None
         if item.kind == "slider":
             if nav in (Nav.LEFT, Nav.RIGHT):
-                item.value = max(0, min(100, item.value + (STEP if nav is Nav.RIGHT else -STEP)))
+                value = item.value + (item.step if nav is Nav.RIGHT else -item.step)
+                item.value = max(item.low, min(item.high, round(value, 3)))
                 if item.on_change:
                     item.on_change(item.value)
             elif nav is Nav.SELECT and item.on_mute:

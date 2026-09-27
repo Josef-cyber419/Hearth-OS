@@ -25,6 +25,7 @@ Put `replace = true` at the top to ignore the defaults entirely.
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import shlex
 import shutil
@@ -77,6 +78,11 @@ class App:
     # which does this itself.
     tag_windows: bool = True
 
+    @property
+    def builtin(self) -> bool:
+        """Part of Hearth itself (e.g. the Settings app), not a program to run."""
+        return bool(self.command) and self.command[0].startswith("hearth:")
+
     def missing(self) -> str | None:
         """Why this tile is hidden, or None if it can be shown."""
         if self.flatpak and not any((d / self.flatpak).is_dir() for d in flatpak_dirs()):
@@ -117,6 +123,16 @@ class Config:
     # pointer = true, e.g. Discord), "always", or "never". The Quick Menu can
     # switch it for the app in front.
     wii_mouse: str = "apps"
+    wii_bar: str = "below"  # where the sensor bar sits: "below" or "above" the TV
+    wii_speed: int = 100  # pointer speed, percent
+    wii_steadiness: int = 45  # pointer smoothing, percent
+    wii_hold: str = "upright"  # "upright" (pointing) or "sideways" (like an NES pad)
+    # Camera coordinates of two calibration targets (10% and 90% across and
+    # down the screen): x1, y1, x2, y2. None until calibrated.
+    wii_calibration: tuple[float, float, float, float] | None = None
+    clock: str = "24h"  # or "12h"
+    guide_hold: float = 1.5  # seconds to hold Guide to go home
+    mouse_speed: int = 100  # controller-as-mouse speed, percent
 
     def app(self, app_id: str) -> App | None:
         return next((a for row in self.rows for a in row.apps if a.id == app_id), None)
@@ -195,9 +211,11 @@ def parse(data: dict) -> Config:
     if motion not in ("full", "reduced"):
         raise ConfigError("theme.motion must be \"full\" or \"reduced\"")
     wii = data.get("wii_remote", {})
-    wii_mouse = wii.get("mouse", "apps")
-    if wii_mouse not in ("apps", "always", "never"):
-        raise ConfigError("wii_remote.mouse must be \"apps\", \"always\" or \"never\"")
+    controllers = data.get("controllers", {})
+    wii_mouse = _choice(wii, "wii_remote", "mouse", ("apps", "always", "never"))
+    calibration = wii.get("calibration")
+    if calibration is not None and (not isinstance(calibration, (list, tuple)) or len(calibration) != 4):
+        raise ConfigError("wii_remote.calibration must be 4 numbers (or left out)")
     return Config(
         title=data.get("title", "Hearth"),
         rows=tuple(rows),
@@ -206,7 +224,29 @@ def parse(data: dict) -> Config:
         motion=motion,
         wii_remote=bool(wii.get("enabled", True)),
         wii_mouse=wii_mouse,
+        wii_bar=_choice(wii, "wii_remote", "sensor_bar", ("below", "above")),
+        wii_speed=int(_number(wii, "wii_remote", "speed", 100, 25, 300)),
+        wii_steadiness=int(_number(wii, "wii_remote", "steadiness", 45, 0, 90)),
+        wii_hold=_choice(wii, "wii_remote", "hold", ("upright", "sideways")),
+        wii_calibration=tuple(float(v) for v in calibration) if calibration else None,
+        clock=_choice(theme, "theme", "clock", ("24h", "12h")),
+        guide_hold=float(_number(controllers, "controllers", "guide_hold_seconds", 1.5, 0.5, 5)),
+        mouse_speed=int(_number(controllers, "controllers", "mouse_speed", 100, 25, 300)),
     )
+
+
+def _choice(table: dict, name: str, key: str, options: tuple[str, ...]) -> str:
+    value = table.get(key, options[0])
+    if value not in options:
+        raise ConfigError(f"{name}.{key} must be one of: {', '.join(options)}")
+    return value
+
+
+def _number(table: dict, name: str, key: str, default: float, low: float, high: float) -> float:
+    value = table.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+        raise ConfigError(f"{name}.{key} must be a number from {low} to {high}")
+    return value
 
 
 def _read(path: Path) -> dict:
@@ -221,7 +261,7 @@ def merge(base: dict, user: dict) -> dict:
     """Layer user changes over the defaults (see the module docstring)."""
     if user.get("replace"):
         return user
-    tables = ("quick_menu", "theme", "wii_remote")
+    tables = ("quick_menu", "theme", "wii_remote", "controllers")
     merged = {**base, **{k: v for k, v in user.items() if k not in ("rows", "hide", *tables)}}
     for table in tables:
         merged[table] = {**base.get(table, {}), **user.get(table, {})}
@@ -249,12 +289,23 @@ def merge(base: dict, user: dict) -> dict:
     return merged
 
 
-def load(path: Path | None = None) -> Config:
-    """An explicit path is used as-is; otherwise defaults + your changes."""
+def load(path: Path | None = None, hide: bool = True) -> Config:
+    """An explicit path is used as-is; otherwise defaults + your changes.
+    Either way, choices made in the Settings app go on top. `hide=False`
+    keeps tiles hidden from the Settings app (for its own list of tiles)."""
+    from . import settings
+
     if path is not None:
-        return parse(_read(path))
-    user = user_config_path()
-    base = _read(SYSTEM_CONFIG) if SYSTEM_CONFIG.exists() else {}
-    if user.exists():
-        return parse(merge(base, _read(user)))
-    return parse(base)
+        data = _read(path)
+    else:
+        user = user_config_path()
+        data = _read(SYSTEM_CONFIG) if SYSTEM_CONFIG.exists() else {}
+        if user.exists():
+            data = merge(data, _read(user))
+    try:
+        return parse(settings.apply(data, settings.load(), hide=hide))
+    except ConfigError as e:
+        # A bad settings.json mustn't take the home screen (and the Settings
+        # tile, which is how you'd fix it) down with it.
+        logging.getLogger("hearth").warning("ignoring %s: %s", settings.path(), e)
+        return parse(data)

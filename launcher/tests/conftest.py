@@ -21,5 +21,6 @@ def runtime_dir(tmp_path, monkeypatch):
     inside each test's temp dir."""
     monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path / "run"))
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     (tmp_path / "run").mkdir()
     return tmp_path / "run"

@@ -80,6 +80,11 @@ GameCube controller adapter.)
 | − / + | Backspace / Menu | Previous / next tab |
 | Home | Tap: Quick Menu. Hold: close the app and go home | Close |
 
+**Settings → Wii Remote** has the rest: where the sensor bar is (above or below
+the TV), pointer speed and steadiness, holding the remote sideways (NES style),
+mouse mode, and **Calibrate the pointer**: aim at two targets and the pointer
+lands exactly where you point, whatever your TV size and seating distance.
+
 **As a mouse**, the pointer moves the mouse, A clicks and 2 right-clicks. That's
 automatic in Discord, and Quick Menu → System → *Wii Remote pointer as mouse*
 switches it for whatever's in front, like a browser in Desktop Mode or a PC

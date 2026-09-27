@@ -43,6 +43,8 @@ plain Bazzite.
 
 ## 4. First-run setup
 
+- **Wi-Fi, Bluetooth controllers, the look**: the **Settings** tile (System
+  row) does all of it with a controller, including typing a Wi-Fi password.
 - **Steam**: open the Steam tile and sign in. Steam runs in the same console UI
   as Bazzite's normal Game Mode.
 - **Emulation**: ES-DE installs itself in the background shortly after first

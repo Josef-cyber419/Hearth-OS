@@ -97,3 +97,9 @@ def test_smoothing_is_frame_rate_independent():
     for _ in range(3):
         b = style.approach(b, 100, 1 / 30)
     assert abs(a - b) < 0.5
+
+
+def test_quick_menu_items_fully_shown_once_open(surface):
+    view = QuickMenuView((1280, 720))
+    assert all(view._stagger(1.0, i) == 1.0 for i in range(20))
+    assert view._stagger(0.0, 0) == 0.0

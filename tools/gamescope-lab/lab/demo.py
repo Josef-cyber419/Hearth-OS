@@ -276,7 +276,36 @@ wait_for("back home", lambda: state()["foreground"] is None
          and root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [HOME_APPID])
 time.sleep(1)
 
-# 12. a troubleshooting report, with a screenshot
+# 12. the Settings app, with the remote
+say("Settings", "Every option with a remote: looks, Wii Remote, Bluetooth, Wi-Fi...")
+key("Tab", 0.5)  # Menu jumps to the System row; Settings is its first tile
+key("Return", 1.2)
+wait_for("Settings opened", lambda: '"settings_open"' in pathlib.Path("/lab/state/hearth/events.jsonl").read_text())
+for _ in range(3):
+    key("Down", 1.1)  # Home screen, Controllers, Wii Remote
+key("Right", 1.0)
+for _ in range(4):
+    key("Down", 0.5)  # through the Wii Remote options
+time.sleep(0.8)
+key("Escape", 0.6)
+for _ in range(3):
+    key("Up", 0.5)
+say("Settings: change the livery", "It applies straight away, everywhere")
+key("Return", 0.8)
+key("Right", 1.6)  # Martini
+key("Right", 1.6)  # British Racing Green
+wait_for("livery saved", lambda: json.load(open("/lab/config/hearth/settings.json"))["theme"]["livery"] == "brg")
+key("Escape", 0.4)
+key("Escape", 1.5)
+wait_for("home screen back", lambda: root_prop(gs, "GAMESCOPE_FOCUSED_APP") == [HOME_APPID])
+ctl("menu")
+wait_for("Quick Menu open in the new livery", lambda: state()["overlay_open"]
+         and "settings changed; reloaded" in open("/lab/state/hearth/hearth.log").read())
+time.sleep(2)
+ctl("menu")
+time.sleep(1)
+
+# 13. a troubleshooting report, with a screenshot
 say("Report a problem", "hearthctl report: logs, hardware, timeline and a screenshot in one file")
 ctl("report", "--screenshot", "-o", f"{OUT}/reports")
 bundle = sorted(pathlib.Path(f"{OUT}/reports").glob("hearth-report-*.tar.gz"))[-1]

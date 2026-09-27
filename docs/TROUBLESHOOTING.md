@@ -82,7 +82,13 @@ want to see exactly what's inside.
 
 ## Customising the home screen
 
-Your changes live in `~/.config/hearth/apps.toml` and are layered over the
+**The easy way: the Settings tile** (System row). It covers the look, which
+tiles show, controllers, Wii Remote, Bluetooth, Wi-Fi and system information,
+all with a controller or remote. Its choices are saved in
+`~/.config/hearth/settings.json` and win over `apps.toml`. Delete that file to
+go back to the defaults.
+
+**By hand:** your changes live in `~/.config/hearth/apps.toml` and are layered over the
 defaults, so new default tiles still appear after updates. Only write what you
 want to change:
 

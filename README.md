@@ -61,6 +61,12 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   services aren't there, and the options for adding them).
 - **Your TV follows the PC**: with a CEC adapter, the TV turns on and switches
   input when the PC wakes, and goes to standby when it sleeps.
+- **Settings app, with the remote**: a Settings tile with everything in one
+  place: livery, motion and clock; which tiles show; the Guide button and
+  controller-as-mouse speed; the Wii Remote (sensor bar position, pointer
+  speed and steadiness, sideways hold, mouse mode, and a two-target pointer
+  calibration); Bluetooth pairing; Wi-Fi with an on-screen keyboard; versions,
+  storage, updates and problem reports. Changes apply at once.
 - **Customisable without rebuilding**: copy
   [`apps.toml`](image/system_files/usr/share/hearth/apps.toml) to
   `~/.config/hearth/apps.toml` and edit. Tiles for apps that aren't installed are
@@ -111,7 +117,7 @@ tools/gamescope-lab/run.sh   # needs Docker → tools/gamescope-lab/out/hearth-d
 ```
 
 Runs Hearth inside real gamescope (Steam mode) with real PipeWire, plays
-through a session with 22 checks, and records a video. See
+through a session with 26 checks, and records a video. See
 [tools/gamescope-lab](tools/gamescope-lab/README.md).
 
 ## Project status

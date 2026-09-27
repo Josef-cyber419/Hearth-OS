@@ -62,6 +62,7 @@ def make_uinput():
 class Pointer:
     def __init__(self, device) -> None:
         self.dev = device
+        self.speed = 1.0  # the Settings app's "controller mouse speed"
         self.axes = {"lx": 0.0, "ly": 0.0, "ry": 0.0}
         self._carry = {"x": 0.0, "y": 0.0, "wheel": 0.0}
 
@@ -87,8 +88,8 @@ class Pointer:
         if self.dev is None:
             return
         moves = {
-            "x": curve(self.axes["lx"]) * SPEED * dt,
-            "y": curve(self.axes["ly"]) * SPEED * dt,
+            "x": curve(self.axes["lx"]) * SPEED * self.speed * dt,
+            "y": curve(self.axes["ly"]) * SPEED * self.speed * dt,
             "wheel": -curve(self.axes["ry"]) * SCROLL_RATE * dt,
         }
         wrote = False

@@ -44,6 +44,12 @@ title = "Watch"
 [[rows]]
 title = "System"
   [[rows.apps]]
+  id = "settings"
+  name = "Settings"
+  command = "hearth:settings"   # built into Hearth: look, Wii Remote, Bluetooth, Wi-Fi, ...
+  color = "#4a5068"
+
+  [[rows.apps]]
   id = "desktop"
   name = "Desktop Mode"
   command = "true"

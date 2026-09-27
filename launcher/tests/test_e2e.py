@@ -67,6 +67,10 @@ title = "Play"
 [[rows]]
 title = "System"
   [[rows.apps]]
+  id = "settings"
+  name = "Settings"
+  command = "hearth:settings"
+  [[rows.apps]]
   id = "poweroff"
   name = "Power Off"
   command = "true"
@@ -244,3 +248,22 @@ def test_full_session(harness):
         assert any(expected[0] in (None, k[0]) and k[1] == expected[1] and (expected[2] is None or k[2] == expected[2]) for k in kinds), expected
     exit_event = next(e for e in timeline if e["event"] == "app_exit")
     assert exit_event["ended"] == "exited" and exit_event["seconds"] > 0
+
+    # 9. Settings: change the livery with the remote; it's saved, and the
+    #    Quick Menu picks it up without a restart.
+    h.ctl("home")
+    wait_for("home in front", lambda: h.front_appid() == HOME_APPID)
+    home = wait_for("home screen", lambda: h.tagged("Hearth", HOME_APPID))
+    time.sleep(0.4)
+    h.press(home, "Tab", "Return")  # Menu jumps to the System row; Settings is first
+    time.sleep(0.8)
+    h.screenshot("9-settings")
+    h.press(home, "Return", "Right")  # into Appearance; next livery
+    saved = h.tmp / "cfg/hearth/settings.json"
+    wait_for("livery saved", lambda: json.loads(saved.read_text())["theme"]["livery"] == "martini")
+    h.screenshot("9-settings-martini")
+    h.press(home, "Escape", "Escape")  # out of the category, out of Settings
+    wait_for("overlay reloaded settings",
+             lambda: "settings changed; reloaded" in (h.tmp / "state/hearth/hearth.log").read_text())
+    assert h.front_appid() == HOME_APPID
+

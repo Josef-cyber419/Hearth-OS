@@ -28,10 +28,10 @@ def test_parse_buttons_and_ir():
 
 
 def test_aim():
-    aim = wiimote.Aim(smoothing=0)
+    aim = wiimote.Aim(smoothing=0, offset=0)
     assert aim.update([Dot(412, 384, 2), Dot(612, 384, 2)]) == (0.5, 0.5)
     # Pointing right: the bar moves left in the camera's view.
-    x, _ = aim.update([Dot(212, 384, 2), Dot(412, 384, 2)])
+    x, _ = aim.update([Dot(212, 384 - 138, 2), Dot(412, 384 - 138, 2)])
     assert x > 0.6
     # One dot drops out of view: keep aiming from the remembered spacing.
     x1, _ = aim.update([Dot(412, 384, 2)])
@@ -75,7 +75,7 @@ class Slot:
 
 def test_remote_starts_on_status_report():
     slot = Slot()
-    r = wiimote.Remote("/fake", fd=slot.host.detach())
+    r = wiimote.Remote("/fake", fd=slot.host.detach(), aim=wiimote.Aim(offset=0))
     slot.dev.send(bytes([0x20, 0, 0, 0, 0, 0, 0x60]))
     r.read(now=1.0)
     assert r.connected
@@ -147,7 +147,7 @@ def test_mouse_mode_clicks_and_points(rig):
     press(0, [(412, 384, 2), (612, 384, 2)], mouse=True)
     press(TWO, mouse=True)
     press(0, mouse=True)
-    assert ("move", 0.5, 0.5) in sink.calls
+    assert ("move", 0.5, 0.79) in sink.calls  # the bar is below the TV by default
     assert [c for c in sink.calls if c[0] == "button"] == [("button", 1, True), ("button", 1, False),
                                                           ("button", 3, True), ("button", 3, False)]
     sink.calls.clear()
@@ -228,3 +228,28 @@ def test_pointing_at_tiles(shipped_config):
             assert screen.click((5, 5)).id == "poweroff"  # a click anywhere confirms
     finally:
         pygame.quit()
+
+
+def test_wii_support_switches_on_and_off_live():
+    o = Overlay.__new__(Overlay)
+    o.config = cfg.parse({"wii_remote": {"enabled": False}})
+    o.gs, o.wii, o._wii_status = None, None, None
+
+    class View:
+        def set_theme(self, *a):
+            pass
+
+    class Pointer:
+        speed = 1.0
+
+    import queue
+
+    o.view, o.pointer, o.events = View(), Pointer(), queue.Queue()
+    o.apply_config()
+    assert o.wii is None
+    o.config = cfg.parse({"wii_remote": {"enabled": True, "hold": "sideways"}})
+    o.apply_config()
+    assert o.wii is not None and o.wii.sideways
+    o.config = cfg.parse({"wii_remote": {"enabled": False}})
+    o.apply_config()
+    assert o.wii is None

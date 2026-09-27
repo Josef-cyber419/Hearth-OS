@@ -34,7 +34,8 @@ QUICK_FAIL_SECONDS = 3
 TERM_TIMEOUT_SECONDS = 5
 
 
-def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None) -> str | None:
+def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None,
+           hold_seconds: float = homebutton.HOLD_SECONDS) -> str | None:
     """Run an app to completion. Returns an error message for the home screen."""
     log.info("launching %s: %s", app.id, " ".join(app.command))
     if dry_run:
@@ -67,7 +68,7 @@ def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None) -> 
         sent_home = True
         stop_app(proc, unit)
 
-    watcher = homebutton.Watcher(go_home) if app.home_button else None
+    watcher = homebutton.Watcher(go_home, hold_seconds=hold_seconds) if app.home_button else None
     if watcher:
         watcher.start()
     try:
@@ -241,7 +242,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                  input_blocked=lambda: session.read()["overlay_open"],
                  badge="Update ready: restart to finish" if ready else None,
                  running=set(current["background"]), livery=config.livery, motion=config.motion,
-                 intro=state["intro"])
+                 intro=state["intro"], clock=config.clock)
     state["message"] = None
     state["intro"] = None
     frames = stats.summary()
@@ -250,6 +251,14 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     if app is None:
         return "quit"
     state["last_id"] = app.id
+
+    if app.builtin:
+        from . import settings_app
+
+        # Runs in this window; it may hand back an app to open (Desktop Mode).
+        app = settings_app.run(state["surface"], args.config)
+        if app is None:
+            return None
 
     if app.background and not args.dry_run:
         # The home screen stays open behind it; the Quick Menu or a held
@@ -262,7 +271,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
         # as its window appears (see session.focus_order), instead of
         # showing black while it loads.
         ui.draw_loading(state["surface"], app, config.livery)
-        state["message"] = launch(app, dry_run=args.dry_run, gs=gs)
+        state["message"] = launch(app, dry_run=args.dry_run, gs=gs, hold_seconds=config.guide_hold)
         state["intro"] = "return"
         pygame.event.clear()  # drop input that queued up while the app ran
         return None
@@ -271,6 +280,6 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     # manages gamescope's focus itself and must not be covered).
     pygame.quit()
     state["surface"] = None
-    state["message"] = launch(app, dry_run=args.dry_run, gs=gs)
+    state["message"] = launch(app, dry_run=args.dry_run, gs=gs, hold_seconds=config.guide_hold)
     state["intro"] = "return"
     return None
