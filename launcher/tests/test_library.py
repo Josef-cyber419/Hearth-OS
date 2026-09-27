@@ -1,4 +1,3 @@
-import time
 from pathlib import Path
 
 import pygame
@@ -246,3 +245,18 @@ def test_new_settings_parse_and_validate():
         cfg.parse({"theme": {"safe_area": 40}})
     sub, offset = style.inset(pygame.Surface((1000, 500)), 5)
     assert sub.get_size() == (900, 450) and offset == (50, 25)
+
+
+def test_retroarch_menu_moves_off_guide_even_if_tuned_before(home, monkeypatch):
+    monkeypatch.setattr(library, "flatpak_installed", lambda app: app == "org.libretro.RetroArch")
+    cfg = home / ".var/app/org.libretro.RetroArch/config/retroarch/retroarch.cfg"
+    cfg.parent.mkdir(parents=True)
+    cfg.write_text('video_driver = "vulkan"\ninput_menu_toggle_btn = "nul"\n')
+    # Tuned by an earlier Hearth (recorded without a version): tuned again, once.
+    done = emutune.auto("1080p", {"org.libretro.RetroArch"})
+    assert "org.libretro.RetroArch@2" in done
+    text = cfg.read_text()
+    assert 'input_menu_toggle_btn = "63"' in text and 'input_menu_toggle_gamepad_combo = "2"' in text
+    cfg.write_text(text.replace('"2"', '"4"'))  # changed later in RetroArch
+    assert emutune.auto("1080p", done) == done
+    assert 'input_menu_toggle_gamepad_combo = "4"' in cfg.read_text()  # kept

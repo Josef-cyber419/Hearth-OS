@@ -1,0 +1,11 @@
+#!/usr/bin/bash
+# Leave the desktop for Game Mode, which starts Hearth (the same as the
+# desktop's "Return to Gaming Mode" shortcut). Used by hearth-desktop-guide.
+for select in /usr/libexec/os-session-select /usr/bin/steamos-session-select; do
+    [[ -x $select ]] && exec "$select" gamescope
+done
+if command -v steamosctl >/dev/null; then
+    exec steamosctl switch-to-game-mode
+fi
+echo "hearth-gamemode: no session switcher found; is this a Bazzite deck image?" >&2
+exit 1

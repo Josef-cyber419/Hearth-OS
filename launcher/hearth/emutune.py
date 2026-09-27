@@ -119,6 +119,13 @@ class Tune:
     name: str
     files: list[tuple[str, str, Callable[[int], dict]]]  # (path under ~/.var/app/<app>, "ini"|"cfg", changes)
     summary: Callable[[int], str]
+    # Raised when the settings change, so emulators tuned before get the new ones.
+    version: int = 1
+
+    @property
+    def key(self) -> str:
+        """How it's recorded in settings' "emulation_tuned" once applied."""
+        return self.app if self.version == 1 else f"{self.app}@{self.version}"
 
 
 def _dolphin_gfx(h: int) -> dict:
@@ -153,8 +160,13 @@ TUNES = [
     Tune("org.libretro.RetroArch", "RetroArch (retro consoles)", [
         ("config/retroarch/retroarch.cfg", "cfg", lambda h: {
             "video_driver": "vulkan", "video_fullscreen": "true", "video_vsync": "true",
-            "video_threaded": "false", "pause_nonactive": "false"}),
-    ], lambda h: "Vulkan, full screen, low-latency video"),
+            "video_threaded": "false", "pause_nonactive": "false",
+            # Guide belongs to Hearth (Quick Menu, hold for home). RetroArch's
+            # controller profiles put its menu on Guide too; a button set here
+            # overrides the profile, and no controller has a button 63. Its
+            # menu moves to clicking both sticks (L3 + R3).
+            "input_menu_toggle_btn": "63", "input_menu_toggle_gamepad_combo": "2"}),
+    ], lambda h: "Vulkan, full screen, low-latency video; menu on L3 + R3 (Guide is Hearth's)", version=2),
 ]
 
 
@@ -202,12 +214,12 @@ def auto(setting: str, done: set[str]) -> set[str]:
     Returns the updated set of tuned emulators."""
     height = target_height(setting)
     for tune in TUNES:
-        if tune.app in done or not installed(tune):
+        if tune.key in done or not installed(tune):
             continue
         if all(config_path(tune, rel).exists() for rel, _, _ in tune.files):
             try:
                 apply(tune, height)
-                done.add(tune.app)
+                done.add(tune.key)
             except OSError as e:
                 log.warning("tuning %s: %s", tune.name, e)
     return done

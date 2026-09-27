@@ -502,7 +502,7 @@ class SettingsApp:
         for tune in emutune.TUNES:
             if not emutune.installed(tune):
                 continue
-            state = results.get(tune.name) or (tune.summary(height) if tune.app in tuned
+            state = results.get(tune.name) or (tune.summary(height) if tune.key in tuned
                                                else "Tuned automatically after you first open it")
             items.append(Item(f"emu-{tune.app}", tune.name, "info", detail=state))
         items.append(Item("emu-more", "Cemu, Eden, Azahar, RPCS3, xemu", "info",
@@ -517,7 +517,7 @@ class SettingsApp:
             self.data["tune"] = results
             data = settings.load()
             done = set(data.get("emulation_tuned", []))
-            done |= {t.app for t in emutune.TUNES if results.get(t.name, "").startswith(("Vulkan",))}
+            done |= {t.key for t in emutune.TUNES if results.get(t.name, "").startswith(("Vulkan",))}
             data["emulation_tuned"] = sorted(done)
             settings.save(data)
             events.record("emulators_tuned", manual=True, results=results)

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Guide button
+Comment=Hold the controller's Guide button to go back to Hearth
+Exec=/usr/libexec/hearth/hearth-desktop-guide
+OnlyShowIn=KDE;GNOME;
+NoDisplay=true
+X-KDE-autostart-phase=2
