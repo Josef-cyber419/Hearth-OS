@@ -78,12 +78,22 @@ the menu is open), written under a file lock.
 | `launcher/hearth/audio.py` | Output/input devices, volumes and per-app streams via `pactl -f json` (PipeWire). |
 | `launcher/hearth/gamescope.py` | X11 properties: `STEAM_GAME` tags, `GAMESCOPECTRL_BASELAYER_APPID` focus, overlay flags. |
 | `launcher/hearth/session.py` | Shared state file, systemd scopes (spawn, freeze, thaw, stop), which app owns a PID. |
+| `launcher/hearth/library.py` | Games from Steam (appmanifests, `localconfig.vdf` play times, Steam's artwork cache) and from `~/ROMs` with ES-DE's gamelists (names, favourites, play times, scraped artwork). Launch commands follow ES-DE's defaults for the installed emulators. Builds the Continue and Pinned rows and the Library. |
+| `launcher/hearth/emutune.py` | Recommended emulator settings for the PC and TV: edits only its own keys in configs the emulator already wrote, with a backup. |
+| `launcher/hearth/settings_app.py` | The Settings app (the Settings tile, command `hearth:settings`): runs in the home screen's window; categories, options, on-screen keyboard, Wii Remote calibration; slow work in background threads. |
+| `launcher/hearth/settings.py` | Settings made in the app, in `~/.config/hearth/settings.json`, layered over `apps.toml` (a bad file is ignored rather than breaking the home screen). The Quick Menu process notices changes and applies them at once. |
+| `launcher/hearth/network.py` / `bluetooth.py` | Wi-Fi and connection status through NetworkManager (`nmcli`); pairing and connecting through `bluetoothctl`. |
+| `launcher/hearth/wiimote.py` | Wii Remotes on a DolphinBar (mode 4), read directly over hidraw: IR camera setup, buttons, and the sensor bar's dots turned into a pointer. |
+| `launcher/hearth/wiiinput.py` | Wii Remote → Quick Menu navigation, or keys and pointer (via XTest) for the app in front; Home tap/hold; hands the remotes to Dolphin while it runs. |
 | `launcher/hearth/pointer.py` | Controller → virtual mouse/keyboard (uinput) for apps without a TV interface. |
 | `launcher/hearth/updates.py` | OS version and staged updates (`rpm-ostree status`), running updates through `hearth-update`. |
 | `launcher/hearth/ctl.py` | `hearthctl`: status, doctor, logs, update, rollback, enable/disable, dev mode. |
-| `launcher/hearth/logs.py` | Log to the journal and `~/.local/state/hearth/hearth.log` (rotated). |
+| `launcher/hearth/logs.py` | Log to the journal and `~/.local/state/hearth/hearth.log` (rotated); stack traces of hard crashes to `crash-*.txt`. |
+| `launcher/hearth/events.py` | The event timeline (`~/.local/state/hearth/events.jsonl`): launches, exits and how they ended, time to first window, Quick Menu use, frame-rate summaries, crashes. |
+| `launcher/hearth/report.py` | `hearthctl report` / Quick Menu → Report a problem: one `.tar.gz` with system details, logs, the timeline and a screenshot, with personal details masked. |
 | `usr/libexec/hearth/hearth-update` | Root helper (narrow sudoers rule): run Bazzite's `uupd`, or `bootc rollback`. |
-| `launcher/hearth/ui.py` | Rendering (tiles, rows, header, confirm dialog). Sizes derived from screen height. |
+| `launcher/hearth/ui.py` | Rendering (tiles, rows, header, confirm dialog) and the intro and launch transitions. Sizes derived from screen height; above 1080p it draws at 1080p and SDL scales on the GPU. |
+| `launcher/hearth/style.py` | The shared look: liveries, the bundled Barlow typeface (SIL Open Font License, `launcher/hearth/fonts/`), stripes, roundels, and frame-rate independent easing. |
 | `launcher/hearth/model.py` | Navigation state (rows remember their column). No pygame, easy to test. |
 | `launcher/hearth/input.py` | Keyboard / CEC / FLIRC / gamepad → `Nav` actions, stick auto-repeat. |
 | `launcher/hearth/homebutton.py` | While an app runs, watches `/dev/input` (read-only) for Guide held 1.5s or `KEY_HOMEPAGE`, then closes the app. |
@@ -125,11 +135,15 @@ screen shows what went wrong).
 
 - **Real gamescope** (`tools/gamescope-lab/`, needs Docker): Hearth as the
   client of gamescope 3.16 in Steam mode, with real PipeWire, driven through a
-  scripted session with 17 checks and recorded to video. It confirms that
+  scripted session with 26 checks and recorded to video. It confirms that
   gamescope accepts and focuses Hearth's tagged windows, follows its
   front-app list between home, game and Discord, shows the Quick Menu overlay
   with input focus, and that audio switching, per-app volume, and Discord
-  mute/deafen change the real PipeWire streams.
+  mute/deafen change the real PipeWire streams, that pointing at a tile and
+  pressing A opens it (the path a Wii Remote's input takes), that the Settings
+  app opens from its tile and a livery change reaches the home screen and the
+  Quick Menu at once, and that a problem report captures the screen and
+  gamescope's state.
 
 What none of these cover is real GPU rendering, real controllers, and
 pausing games (systemd scopes). That's the list below.
@@ -164,10 +178,19 @@ These couldn't be tested without a real machine. Check them first, in this order
     through it; the game pauses (the user systemd manager can freeze scopes)
     and resumes; audio device switching and per-app volume work through
     `pactl`; closing a game from it returns home.
-11. **Discord**: starts in the background, comes to the front from the menu,
+11. **Wii Remotes** (DolphinBar in mode 4): `hearthctl doctor` finds the
+    slots; a paired remote rumbles and lights its LED; the pointer tracks the
+    screen the right way round (if not, Settings → Wii Remote → Calibrate the
+    pointer fixes direction, speed and offset); keys reach Kodi and ES-DE;
+    Dolphin gets the remotes while it runs and Hearth takes them back after.
+12. **Discord**: starts in the background, comes to the front from the menu,
     the controller moves a pointer there (needs write access to
     `/dev/uinput`), and mute/deafen affect its call.
-12. **Android tile** appears after `ujust setup-waydroid` (it looks for
+13. **Settings → Network**: the Wi-Fi list fills in, and connecting with a
+    password works without a password prompt from NetworkManager (it allows
+    the active local session by default). **Settings → Bluetooth**: a
+    controller in pairing mode shows up in a search and pairs.
+14. **Android tile** appears after `ujust setup-waydroid` (it looks for
    `/var/lib/waydroid/waydroid.cfg`) and Bazzite's `waydroid-launcher` displays
    under Hearth's gamescope session.
 

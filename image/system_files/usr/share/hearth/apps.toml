@@ -23,6 +23,27 @@
 
 title = "Hearth"
 
+# The look, after a classic racing livery:
+#   gulf     powder blue and marigold orange (default)
+#   martini  navy, light blue and red
+#   brg      British racing green with a yellow stripe
+#   rosso    racing red with a yellow stripe
+#   silver   silver-arrow grey
+[theme]
+livery = "gulf"
+# "reduced" turns off the intro, launch zoom and other decorative motion.
+motion = "full"
+
+# Wii Remotes through a Mayflash DolphinBar in mode 4: navigate with the
+# D-pad, A to open, B to go back, Home for the Quick Menu (hold: go home), and
+# point at a tile to pick it. Dolphin gets the remotes while it runs.
+[wii_remote]
+enabled = true
+# The pointer as a mouse (A clicks, 2 right-clicks): "apps" = apps with
+# pointer = true (Discord), "always", or "never". Quick Menu → System switches
+# it for the app in front.
+mouse = "apps"
+
 # The Quick Menu (tap the Guide button): audio, per-app volume, Discord, power.
 [quick_menu]
 # Pause the game while the menu is open, like a console's home menu.
@@ -41,6 +62,12 @@ title = "Play"
   home_button = false
   tag_windows = false
   color = "#1b2838"
+
+  [[rows.apps]]
+  id = "library"
+  name = "Library"
+  command = "hearth:library"   # built in: every Steam and emulated game, pin your favourites
+  color = "#3d4a5c"
 
   [[rows.apps]]
   # ES-DE: one menu, a tile per console you've added games for.
@@ -120,6 +147,12 @@ title = "Watch"
 
 [[rows]]
 title = "System"
+
+  [[rows.apps]]
+  id = "settings"
+  name = "Settings"
+  command = "hearth:settings"   # built into Hearth: look, Wii Remote, Bluetooth, Wi-Fi, ...
+  color = "#4a5068"
 
   [[rows.apps]]
   id = "desktop"

@@ -32,6 +32,8 @@ KEYS = {
     pygame.K_e: Nav.TAB_NEXT,
     pygame.K_PAGEUP: Nav.TAB_PREV,
     pygame.K_PAGEDOWN: Nav.TAB_NEXT,
+    pygame.K_o: Nav.OPTIONS,
+    pygame.K_F2: Nav.OPTIONS,
 }
 
 BUTTONS = {
@@ -45,10 +47,11 @@ BUTTONS = {
     pygame.CONTROLLER_BUTTON_GUIDE: Nav.MENU,
     pygame.CONTROLLER_BUTTON_LEFTSHOULDER: Nav.TAB_PREV,
     pygame.CONTROLLER_BUTTON_RIGHTSHOULDER: Nav.TAB_NEXT,
+    pygame.CONTROLLER_BUTTON_Y: Nav.OPTIONS,
 }
 
 # Fallback for devices SDL has no GameController mapping for (Linux xpad layout).
-JOY_BUTTONS = {0: Nav.SELECT, 1: Nav.BACK, 4: Nav.TAB_PREV, 5: Nav.TAB_NEXT, 7: Nav.MENU}
+JOY_BUTTONS = {0: Nav.SELECT, 1: Nav.BACK, 3: Nav.OPTIONS, 4: Nav.TAB_PREV, 5: Nav.TAB_NEXT, 7: Nav.MENU}
 
 AXIS_THRESHOLD = 0.6
 AXIS_REPEAT_DELAY_MS = 400
@@ -66,6 +69,7 @@ class InputMapper:
         self._held: Nav | None = None
         self._held_next_ms = 0
         self._devices: dict[int, object] = {}
+        self.swap_confirm = False  # Settings → Controllers → Confirm button: right (Nintendo)
 
     def open_devices(self) -> None:
         if not pygame.joystick.get_init():
@@ -87,6 +91,12 @@ class InputMapper:
             dev = pygame.joystick.Joystick(index)
             self._devices[dev.get_instance_id()] = dev
 
+    def _button(self, button: int) -> int:
+        """Nintendo layout: confirm with the right-hand button, back with the bottom one."""
+        if self.swap_confirm and button in (pygame.CONTROLLER_BUTTON_A, pygame.CONTROLLER_BUTTON_B):
+            return pygame.CONTROLLER_BUTTON_B if button == pygame.CONTROLLER_BUTTON_A else pygame.CONTROLLER_BUTTON_A
+        return button
+
     def _is_controller(self, instance_id: int) -> bool:
         dev = self._devices.get(instance_id)
         return dev is not None and not isinstance(dev, pygame.joystick.JoystickType)
@@ -103,9 +113,9 @@ class InputMapper:
                 self._open(event.device_index)
             return None
         if t == pygame.CONTROLLERBUTTONDOWN:
-            return self._press(BUTTONS.get(event.button), now_ms)
+            return self._press(BUTTONS.get(self._button(event.button)), now_ms)
         if t == pygame.CONTROLLERBUTTONUP:
-            self._release(BUTTONS.get(event.button))
+            self._release(BUTTONS.get(self._button(event.button)))
             return None
         if t == pygame.CONTROLLERAXISMOTION:
             if event.axis == pygame.CONTROLLER_AXIS_LEFTX:

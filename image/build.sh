@@ -59,6 +59,9 @@ JSON
 
 # --- sanity checks ------------------------------------------------------------
 visudo -cf /etc/sudoers.d/hearth
+if udevadm verify --help >/dev/null 2>&1; then
+    udevadm verify --resolve-names=never /usr/lib/udev/rules.d/70-hearth-*.rules
+fi
 python3 -m compileall -q /usr/lib/hearth/python
 PYTHONPATH=/usr/lib/hearth/python python3 -c \
     'import hearth.config as c; c.load(c.SYSTEM_CONFIG)'

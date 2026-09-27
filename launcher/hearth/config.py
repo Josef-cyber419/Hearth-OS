@@ -25,11 +25,12 @@ Put `replace = true` at the top to ignore the defaults entirely.
 from __future__ import annotations
 
 import glob
+import logging
 import os
 import shlex
 import shutil
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 SYSTEM_CONFIG = Path("/usr/share/hearth/apps.toml")
@@ -76,6 +77,14 @@ class App:
     # Hearth tags the app's windows so gamescope will show them. Off for Steam,
     # which does this itself.
     tag_windows: bool = True
+    # A game's artwork (fills the tile) and its platform ("PlayStation 2").
+    art: str | None = None
+    platform: str | None = None
+
+    @property
+    def builtin(self) -> bool:
+        """Part of Hearth itself (e.g. the Settings app), not a program to run."""
+        return bool(self.command) and self.command[0].startswith("hearth:")
 
     def missing(self) -> str | None:
         """Why this tile is hidden, or None if it can be shown."""
@@ -107,6 +116,34 @@ class Config:
     rows: tuple[Row, ...] = field(default_factory=tuple)
     # Freeze the game while the Quick Menu is open, like a console's home menu.
     pause_game: bool = True
+    # Colour scheme, after a classic racing livery (see style.LIVERIES).
+    livery: str = "gulf"
+    # "reduced" turns off the intro, launch zoom and other decorative motion.
+    motion: str = "full"
+    # Wii Remotes on a DolphinBar (mode 4) drive Hearth like a TV remote.
+    wii_remote: bool = True
+    # When the Wii Remote pointer works as a mouse: "apps" (those with
+    # pointer = true, e.g. Discord), "always", or "never". The Quick Menu can
+    # switch it for the app in front.
+    wii_mouse: str = "apps"
+    wii_bar: str = "below"  # where the sensor bar sits: "below" or "above" the TV
+    wii_speed: int = 100  # pointer speed, percent
+    wii_steadiness: int = 45  # pointer smoothing, percent
+    wii_hold: str = "upright"  # "upright" (pointing) or "sideways" (like an NES pad)
+    # Camera coordinates of two calibration targets (10% and 90% across and
+    # down the screen): x1, y1, x2, y2. None until calibrated.
+    wii_calibration: tuple[float, float, float, float] | None = None
+    clock: str = "24h"  # or "12h"
+    guide_hold: float = 1.5  # seconds to hold Guide to go home
+    mouse_speed: int = 100  # controller-as-mouse speed, percent
+    confirm: str = "south"  # which face button confirms: "south" (Xbox/PlayStation) or "east" (Nintendo)
+    prompts: str = "xbox"  # button names shown on screen: "xbox", "playstation" or "nintendo"
+    safe_area: int = 0  # percent kept clear at the screen's edges, for TVs that crop (overscan)
+    home_recent: bool = True  # the "Continue" row of recently played games
+    home_pins: bool = True  # the "Pinned" row
+    screensaver_minutes: int = 10  # 0 = never; protects OLED TVs from a still home screen
+    sleep_minutes: int = 0  # 0 = never; sleep after this long idle on the home screen
+    emulation_resolution: str = "auto"  # target for emulator upscaling: auto, 1080p, 1440p, 4k
 
     def app(self, app_id: str) -> App | None:
         return next((a for row in self.rows for a in row.apps if a.id == app_id), None)
@@ -118,7 +155,7 @@ class Config:
             apps = tuple(a for a in row.apps if a.available())
             if apps:
                 rows.append(Row(row.title, apps))
-        return Config(self.title, tuple(rows), self.pause_game)
+        return replace(self, rows=tuple(rows))
 
 
 def _parse_command(raw: dict, where: str) -> tuple[str, ...]:
@@ -180,11 +217,57 @@ def parse(data: dict) -> Config:
             apps.append(app)
         rows.append(Row(title, tuple(apps)))
     quick_menu = data.get("quick_menu", {})
+    theme = data.get("theme", {})
+    motion = theme.get("motion", "full")
+    if motion not in ("full", "reduced"):
+        raise ConfigError("theme.motion must be \"full\" or \"reduced\"")
+    wii = data.get("wii_remote", {})
+    controllers = data.get("controllers", {})
+    home_table = data.get("home", {})
+    wii_mouse = _choice(wii, "wii_remote", "mouse", ("apps", "always", "never"))
+    calibration = wii.get("calibration")
+    if calibration is not None and (not isinstance(calibration, (list, tuple)) or len(calibration) != 4):
+        raise ConfigError("wii_remote.calibration must be 4 numbers (or left out)")
     return Config(
         title=data.get("title", "Hearth"),
         rows=tuple(rows),
         pause_game=bool(quick_menu.get("pause_game", True)),
+        livery=str(theme.get("livery", "gulf")).lower(),
+        motion=motion,
+        wii_remote=bool(wii.get("enabled", True)),
+        wii_mouse=wii_mouse,
+        wii_bar=_choice(wii, "wii_remote", "sensor_bar", ("below", "above")),
+        wii_speed=int(_number(wii, "wii_remote", "speed", 100, 25, 300)),
+        wii_steadiness=int(_number(wii, "wii_remote", "steadiness", 45, 0, 90)),
+        wii_hold=_choice(wii, "wii_remote", "hold", ("upright", "sideways")),
+        wii_calibration=tuple(float(v) for v in calibration) if calibration else None,
+        clock=_choice(theme, "theme", "clock", ("24h", "12h")),
+        guide_hold=float(_number(controllers, "controllers", "guide_hold_seconds", 1.5, 0.5, 5)),
+        mouse_speed=int(_number(controllers, "controllers", "mouse_speed", 100, 25, 300)),
+        confirm=_choice(controllers, "controllers", "confirm", ("south", "east")),
+        prompts=_choice(controllers, "controllers", "prompts", ("xbox", "playstation", "nintendo")),
+        safe_area=int(_number(theme, "theme", "safe_area", 0, 0, 10)),
+        home_recent=bool(home_table.get("recent", True)),
+        home_pins=bool(home_table.get("pins", True)),
+        screensaver_minutes=int(_number(home_table, "home", "screensaver_minutes", 10, 0, 240)),
+        sleep_minutes=int(_number(home_table, "home", "sleep_minutes", 0, 0, 1440)),
+        emulation_resolution=_choice(data.get("emulation", {}), "emulation", "resolution",
+                                     ("auto", "1080p", "1440p", "4k")),
     )
+
+
+def _choice(table: dict, name: str, key: str, options: tuple[str, ...]) -> str:
+    value = table.get(key, options[0])
+    if value not in options:
+        raise ConfigError(f"{name}.{key} must be one of: {', '.join(options)}")
+    return value
+
+
+def _number(table: dict, name: str, key: str, default: float, low: float, high: float) -> float:
+    value = table.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not low <= value <= high:
+        raise ConfigError(f"{name}.{key} must be a number from {low} to {high}")
+    return value
 
 
 def _read(path: Path) -> dict:
@@ -199,8 +282,10 @@ def merge(base: dict, user: dict) -> dict:
     """Layer user changes over the defaults (see the module docstring)."""
     if user.get("replace"):
         return user
-    merged = {**base, **{k: v for k, v in user.items() if k not in ("rows", "hide", "quick_menu")}}
-    merged["quick_menu"] = {**base.get("quick_menu", {}), **user.get("quick_menu", {})}
+    tables = ("quick_menu", "theme", "wii_remote", "controllers", "home", "emulation")
+    merged = {**base, **{k: v for k, v in user.items() if k not in ("rows", "hide", *tables)}}
+    for table in tables:
+        merged[table] = {**base.get(table, {}), **user.get(table, {})}
     rows = [{**r, "apps": [dict(a) for a in r.get("apps", [])]} for r in base.get("rows", [])]
     by_title = {r.get("title"): r for r in rows}
     new_rows = []
@@ -225,12 +310,23 @@ def merge(base: dict, user: dict) -> dict:
     return merged
 
 
-def load(path: Path | None = None) -> Config:
-    """An explicit path is used as-is; otherwise defaults + your changes."""
+def load(path: Path | None = None, hide: bool = True) -> Config:
+    """An explicit path is used as-is; otherwise defaults + your changes.
+    Either way, choices made in the Settings app go on top. `hide=False`
+    keeps tiles hidden from the Settings app (for its own list of tiles)."""
+    from . import settings
+
     if path is not None:
-        return parse(_read(path))
-    user = user_config_path()
-    base = _read(SYSTEM_CONFIG) if SYSTEM_CONFIG.exists() else {}
-    if user.exists():
-        return parse(merge(base, _read(user)))
-    return parse(base)
+        data = _read(path)
+    else:
+        user = user_config_path()
+        data = _read(SYSTEM_CONFIG) if SYSTEM_CONFIG.exists() else {}
+        if user.exists():
+            data = merge(data, _read(user))
+    try:
+        return parse(settings.apply(data, settings.load(), hide=hide))
+    except ConfigError as e:
+        # A bad settings.json mustn't take the home screen (and the Settings
+        # tile, which is how you'd fix it) down with it.
+        logging.getLogger("hearth").warning("ignoring %s: %s", settings.path(), e)
+        return parse(data)

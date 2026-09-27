@@ -18,6 +18,7 @@ class Nav(Enum):
     MENU = auto()
     TAB_PREV = auto()
     TAB_NEXT = auto()
+    OPTIONS = auto()  # Y / the Menu-style "more" button: pin, hide, ...
 
 
 @dataclass

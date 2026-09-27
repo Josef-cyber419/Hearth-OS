@@ -45,9 +45,10 @@ The emulators are installed automatically on first boot (from
 [`emulators.list`](../image/system_files/usr/share/hearth/emulators.list)). ES-DE
 finds each one on its own.
 
-Performance is estimated for an **Intel Core i7-4790K** (the top Intel
-desktop chip that used DDR3) with an **RX 6750 XT** and 16 GB of RAM. The graphics card
-is plenty for everything here. The **CPU** limits the newest consoles.
+Performance is estimated for a **Ryzen 7 5800X3D** with an **RX 6750 XT** and
+24 GB of RAM. That's strong for emulation: the X3D's large cache particularly
+helps the PS3 and Switch emulators, and the graphics card upscales older
+consoles to 4K.
 
 | Console | Folder | Emulator | Needs from you | Expect |
 |---|---|---|---|---|
@@ -57,21 +58,60 @@ is plenty for everything here. The **CPU** limits the newest consoles.
 | Wii U | `wiiu` | Cemu | Keys for encrypted dumps | Very good |
 | Nintendo DS | `nds` | melonDS | DS BIOS/firmware (optional) | Perfect |
 | Nintendo 3DS | `n3ds` | Azahar | Decrypted games | Excellent |
-| **Nintendo Switch** | `switch` | Eden | `prod.keys` + firmware from **your** Switch | Lighter games good. Big 3D games may stutter or run below 30 fps on this CPU |
+| **Nintendo Switch** | `switch` | Eden | `prod.keys` + firmware from **your** Switch | Most games full speed at 1.5–2x resolution. The heaviest (e.g. Tears of the Kingdom) at 1x |
 | PlayStation | `psx` | DuckStation | PS1 BIOS | Perfect, upscaled |
 | PlayStation 2 | `ps2` | PCSX2 | PS2 BIOS | Excellent, 4K |
 | PSP | `psp` | PPSSPP | – | Perfect |
-| **PlayStation 3** | `ps3` | RPCS3 | PS3 firmware (free from Sony) | Many games playable. Demanding ones below full speed (RPCS3 wants 6+ cores) |
+| **PlayStation 3** | `ps3` | RPCS3 | PS3 firmware (free from Sony) | Most of the library full speed; a few very demanding games dip |
 | PS Vita | `psvita` | Vita3K (manual, below) | Vita firmware | Good for supported games |
 | **PlayStation 4** | `ps4` | shadPS4 | PS4 firmware modules | Experimental. A growing list of lighter games |
 | Original Xbox | `xbox` | xemu | Xbox BIOS, MCPX boot ROM, HDD image | Good |
-| **Xbox 360** | `xbox360` | Xenia (manual, below) | – | Experimental on Linux, and this CPU is weak for it |
+| **Xbox 360** | `xbox360` | Xenia (manual, below) | – | Experimental on Linux: some games great, many with glitches |
 | Arcade | `arcade`, `mame` | MAME / RetroArch | Matching ROM sets | Excellent |
 | Xbox One / Series, PS5, Switch 2 | – | No working emulators exist | – | Use the real console through the **HDMI Input** tile ([HARDWARE.md](HARDWARE.md#capture-card-play-real-consoles-through-hearth)) |
 
-Upgrading the CPU platform (for example a used Ryzen 5 5600 or 7 5700X3D board
-with DDR4) is the single biggest improvement for Switch, PS3, PS4 and Xbox 360.
-Everything else already runs great.
+## Tuned for your PC
+
+Hearth sets up the emulators for your hardware and TV, so games look sharp and
+don't stutter the first time an effect appears. It happens automatically once
+each emulator has run for the first time (it needs to create its own settings
+file first), and you can re-apply it any time from **Settings → Emulation**,
+where you also choose the target: *Auto* (your TV), 1080p, 1440p or 4K.
+
+What it sets (only these; everything else stays yours, and the first change
+keeps a `.hearth-backup` copy of the file):
+
+| Emulator | Graphics | Resolution (1080p / 1440p / 4K TV) | Also |
+|---|---|---|---|
+| DuckStation (PS1) | Vulkan | 5x / 6x / 9x | PGXP geometry correction (no wobbly polygons), starts full screen |
+| PCSX2 (PS2) | Vulkan | 3x / 4x / 5x | 16x texture filtering, multi-threaded VU (uses the extra cores), starts full screen |
+| Dolphin (GameCube, Wii) | Vulkan | 3x / 3x / 5x | Asynchronous "ubershaders" (no shader stutter), 16x filtering, full screen |
+| PPSSPP (PSP) | Vulkan | 4x / 6x / 8x | 16x filtering, full screen |
+| RetroArch (retro consoles) | Vulkan | native (pixel-perfect) | Full screen, low-latency video |
+
+For the rest, set these once in each emulator (Desktop Mode, or from ES-DE):
+
+| Emulator | Recommended on a 5800X3D + RX 6750 XT |
+|---|---|
+| **RPCS3** (PS3) | Renderer Vulkan (default). Resolution scale 150% (200% for lighter games). Keep SPU decoder *Recompiler (LLVM)* and *Async with Shader Interpreter* shaders, both defaults. |
+| **Eden** (Switch) | Vulkan, Docked mode, Resolution 2x (1.5x or 1x for the heaviest games), *Use asynchronous shader building* on, ASTC decoding on the GPU. |
+| **Cemu** (Wii U) | Vulkan, *Async shader compile* on, VSync *Match screen refresh rate*. Resolution through Graphic Packs: each game's *Resolution* pack at 1440p (4K is fine for most). |
+| **Azahar** (3DS) | Vulkan, internal resolution 5x (1440p) or 6x, *Async shader compilation* on, screen layout *Large screen* or *Side by side* for a TV. |
+| **xemu** (Xbox) | Vulkan, render scale 3x (4x for 4K). |
+
+### The Wii U GamePad screen
+
+Wii U games expect a second screen in your hands. Hearth shows one window at
+a time, so use Cemu's single-screen view: map a controller button to
+*Toggle GamePad view* in Cemu's input settings. When a game needs touch, the
+GamePad view accepts a mouse click as a tap, so a Wii Remote in mouse mode
+(Quick Menu → System → *Wii Remote pointer as mouse*) lets you point and tap
+the GamePad screen on your TV.
+
+A real Wii U GamePad can't practically be used with a PC: the projects that
+pair one (drc-sim, pc2drc) are unmaintained or archived, need a real Wii U to
+pair, a specific rt2800usb 5 GHz USB Wi-Fi adapter, and kernel patches that an
+immutable, auto-updating OS like this one can't keep applied.
 
 ### Not installed automatically
 

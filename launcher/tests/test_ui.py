@@ -68,7 +68,7 @@ def test_launch_success():
 
 def test_home_button_closes_running_app(monkeypatch):
     class FiresImmediately:
-        def __init__(self, on_home):
+        def __init__(self, on_home, *args, **options):
             self.on_home = on_home
 
         def start(self):

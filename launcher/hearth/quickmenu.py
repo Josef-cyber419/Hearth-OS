@@ -35,6 +35,19 @@ class Item:
     on_change: Callable[[Any], None] | None = None
     on_select: Callable[[], str | None] | None = None
     on_mute: Callable[[bool], None] | None = None
+    # Sliders: range, step, and how the value reads ("{}%", "{:.1f} s", ...).
+    low: float = 0
+    high: float = 100
+    step: float = STEP
+    unit: str = "{}%"
+
+    def shows(self, value: float) -> str:
+        return self.unit.format(round(value, 2) if isinstance(self.step, float) else round(value))
+
+    @property
+    def fraction(self) -> float:
+        span = self.high - self.low
+        return 0.0 if not span else max(0.0, min(1.0, ((self.value or 0) - self.low) / span))
 
     @property
     def selectable(self) -> bool:
@@ -78,6 +91,11 @@ class QuickMenu:
         key = self._selected.get(self.current.key)
         return next((i for i in self.current.items if i.key == key), None)
 
+    def select(self, key: str) -> None:
+        """Select an item in the current tab (e.g. the one a pointer is on)."""
+        if any(i.key == key and i.selectable for i in self.current.items):
+            self._selected[self.current.key] = key
+
     def _move(self, delta: int) -> None:
         items = [i for i in self.current.items if i.selectable]
         if not items:
@@ -103,7 +121,8 @@ class QuickMenu:
             return None
         if item.kind == "slider":
             if nav in (Nav.LEFT, Nav.RIGHT):
-                item.value = max(0, min(100, item.value + (STEP if nav is Nav.RIGHT else -STEP)))
+                value = item.value + (item.step if nav is Nav.RIGHT else -item.step)
+                item.value = max(item.low, min(item.high, round(value, 3)))
                 if item.on_change:
                     item.on_change(item.value)
             elif nav is Nav.SELECT and item.on_mute:
@@ -140,6 +159,8 @@ class Actions(Protocol):
     def stop_background(self, app_id: str) -> str | None: ...
     def power(self, action: str) -> str | None: ...
     def update(self) -> str | None: ...
+    def report(self) -> str | None: ...
+    def set_wii_mouse(self, on: bool) -> str | None: ...
 
 
 @dataclass
@@ -149,6 +170,8 @@ class Context:
     state: dict
     actions: Actions
     discord_available: bool = True
+    # Set while a Wii Remote is connected: {"mouse": bool, "app": name in front}
+    wii: dict | None = None
 
 
 def build_tabs(ctx: Context) -> list[Tab]:
@@ -264,10 +287,28 @@ def _system_tab(ctx: Context) -> Tab:
         tab.items.append(Item("home", "Close " + fg["name"], "action", confirm=True,
                               detail="Return to the home screen", on_select=act.go_home))
     tab.items.append(_update_item(ctx))
+    if ctx.wii is not None:
+        tab.items.append(Item("wii-mouse", "Wii Remote pointer as mouse", "toggle", value=ctx.wii["mouse"],
+                              detail=f"For {ctx.wii['app']}: point to move, A to click, 2 to right-click",
+                              on_change=act.set_wii_mouse))
+    tab.items.append(_report_item(ctx))
     tab.items.append(Item("sleep", "Sleep", "action", on_select=lambda: act.power("suspend")))
     tab.items.append(Item("restart", "Restart", "action", confirm=True, on_select=lambda: act.power("reboot")))
     tab.items.append(Item("poweroff", "Power off", "action", confirm=True, on_select=lambda: act.power("poweroff")))
     return tab
+
+
+def _report_item(ctx: Context) -> Item:
+    report = ctx.state.get("report") or {}
+    status = report.get("status")
+    if status == "running":
+        return Item("report", "Saving a report…", "info", detail="Takes about half a minute; keep playing")
+    detail = "Saves a screenshot and details for fixing a problem"
+    if status == "done":
+        detail = f"Saved {report.get('file')} in your hearth-reports folder"
+    elif status == "failed":
+        detail = "Couldn't save it; details: hearthctl logs"
+    return Item("report", "Report a problem", "action", detail=detail, on_select=ctx.actions.report)
 
 
 def _update_item(ctx: Context) -> Item:

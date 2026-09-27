@@ -71,3 +71,9 @@ class FakeActions:
 
     def update(self):
         return self._record("update")
+
+    def report(self):
+        return self._record("report")
+
+    def set_wii_mouse(self, on):
+        return self._record("wii_mouse", on)

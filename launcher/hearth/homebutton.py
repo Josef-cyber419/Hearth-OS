@@ -92,11 +92,13 @@ class Watcher(threading.Thread):
     """Calls `on_fire` when the gesture happens. With `repeat`, keeps
     watching afterwards (the Quick Menu); otherwise stops (going home)."""
 
-    def __init__(self, on_fire: Callable[[], None], gesture=HomeButton, repeat: bool = False) -> None:
+    def __init__(self, on_fire: Callable[[], None], gesture=HomeButton, repeat: bool = False,
+                 **options) -> None:
         super().__init__(daemon=True, name="hearth-guide-button")
         self.on_fire = on_fire
         self.gesture = gesture
         self.repeat = repeat
+        self.options = options  # for the gesture, e.g. hold_seconds
         self._stopping = threading.Event()
 
     def stop(self) -> None:
@@ -120,7 +122,7 @@ class Watcher(threading.Thread):
             log.info("guide button: no Guide/Home capable devices found")
             return
 
-        button = self.gesture()
+        button = self.gesture(**self.options)
         try:
             while not self._stopping.is_set():
                 fired = False

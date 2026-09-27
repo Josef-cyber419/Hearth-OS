@@ -16,13 +16,14 @@ import shutil
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
 import pygame
 
 from . import config as cfg
-from . import homebutton, logs, session, ui
+from . import events, homebutton, library, logs, session, style, ui, updates
 from .gamescope import HOME_APPID, Gamescope
 from .model import Home
 
@@ -34,7 +35,8 @@ QUICK_FAIL_SECONDS = 3
 TERM_TIMEOUT_SECONDS = 5
 
 
-def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None) -> str | None:
+def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None,
+           hold_seconds: float = homebutton.HOLD_SECONDS) -> str | None:
     """Run an app to completion. Returns an error message for the home screen."""
     log.info("launching %s: %s", app.id, " ".join(app.command))
     if dry_run:
@@ -47,9 +49,11 @@ def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None) -> 
         proc, unit = session.spawn("app", app.id, app.command)
     except OSError as e:
         log.error("failed to start %s: %s", app.id, e)
+        events.record("launch_failed", id=app.id, error=str(e))
         return f"Couldn't start {app.name}: {e.strerror or e}"
+    events.record("app_start", id=app.id, scope=bool(unit))
 
-    info = {"id": app.id, "name": app.name, "unit": unit, "pid": proc.pid,
+    info = {"id": app.id, "name": app.name, "unit": unit, "pid": proc.pid, "started": time.time(),
             "home_button": app.home_button, "tag_windows": app.tag_windows}
     state = session.update(lambda s: s.update(foreground=info, focus="foreground"))
     if gs:
@@ -65,7 +69,7 @@ def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None) -> 
         sent_home = True
         stop_app(proc, unit)
 
-    watcher = homebutton.Watcher(go_home) if app.home_button else None
+    watcher = homebutton.Watcher(go_home, hold_seconds=hold_seconds) if app.home_button else None
     if watcher:
         watcher.start()
     try:
@@ -74,11 +78,15 @@ def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None) -> 
         if watcher:
             watcher.stop()
         session.update(lambda s: s.update(foreground=None, focus="home", paused=False))
-    if sent_home:
-        return None
     elapsed = time.monotonic() - started
+    if sent_home:
+        events.record("app_exit", id=app.id, ended="guide", seconds=round(elapsed, 1))
+        return None
     log.info("%s exited with %s after %.1fs", app.id, returncode, elapsed)
-    if returncode != 0 and elapsed < QUICK_FAIL_SECONDS:
+    failed = returncode != 0 and elapsed < QUICK_FAIL_SECONDS
+    events.record("app_exit", id=app.id, ended="failed" if failed else "exited", code=returncode,
+                  seconds=round(elapsed, 1))
+    if failed:
         return f"{app.name} closed unexpectedly (exit code {returncode})"
     return None
 
@@ -124,7 +132,17 @@ def open_display(windowed: bool) -> pygame.Surface:
     pygame.mouse.set_visible(windowed)
     if windowed:
         return pygame.display.set_mode((1280, 720))
-    return pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    # Draw at up to 1080p and let SDL scale it on the GPU, so animation stays
+    # smooth on a 4K TV (the UI's sizes follow the screen height anyway).
+    info = pygame.display.Info()
+    if info.current_h > 1080:
+        size = (round(info.current_w * 1080 / info.current_h), 1080)
+        surface = pygame.display.set_mode(size, pygame.FULLSCREEN | pygame.SCALED)
+    else:
+        surface = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+    events.record("display", screen=f"{info.current_w}x{info.current_h}",
+                  drawn_at="x".join(map(str, surface.get_size())), driver=pygame.display.get_driver())
+    return surface
 
 
 def show_home(gs: Gamescope | None) -> None:
@@ -151,6 +169,7 @@ class OverlayProcess:
         if self.proc is None or self.proc.poll() not in (None, 0):
             if self.proc is not None:
                 log.warning("Quick Menu overlay exited (%s); restarting", self.proc.returncode)
+                events.record("overlay_restart", code=self.proc.returncode)
             self.proc = subprocess.Popen(self.args)
 
 
@@ -164,6 +183,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="run the Quick Menu overlay (default: on under gamescope)")
     args = parser.parse_args(argv)
     logs.setup("hub")
+    events.record("session_start", version=updates.hearth_version(), game_mode=bool(
+        os.environ.get("GAMESCOPE_WAYLAND_DISPLAY")), pygame=pygame.version.ver, sdl=".".join(
+        map(str, pygame.get_sdl_version())))
 
     in_gamescope = bool(os.environ.get("GAMESCOPE_WAYLAND_DISPLAY"))
     gs = Gamescope.connect() if in_gamescope else None
@@ -174,7 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         k: v for k, v in s["background"].items() if session.background_alive(v)}))
 
     dev_mode = args.windowed or args.dry_run
-    state = {"last_id": None, "message": None, "surface": None}
+    state = {"last_id": None, "message": None, "surface": None, "intro": "boot"}
     failures: list[float] = []
     while True:
         try:
@@ -194,16 +216,45 @@ def main(argv: list[str] | None = None) -> int:
             state["message"] = f"Something went wrong ({type(e).__name__}); details: hearthctl logs"
 
 
-def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: bool, state: dict) -> str | None:
-    """One round of: show the home screen, then run what was picked."""
+def home_config(args, state: dict | None = None) -> cfg.Config:
+    """The home screen's contents: apps.toml + settings, and your games on top."""
     try:
         config = cfg.load(args.config)
     except (OSError, cfg.ConfigError) as e:
         log.error("config: %s", e)
         config = cfg.Config(rows=())
-        state["message"] = f"Config error: {e}"
+        if state is not None:
+            state["message"] = f"Config error: {e}"
     if not args.show_all:
         config = config.visible()
+    try:
+        config = library.with_game_rows(config)
+    except Exception:  # never lose the home screen over the game library
+        log.exception("game rows")
+    return config
+
+
+def tune_emulators(resolution: str) -> None:
+    """Give each emulator recommended settings once it has created its own
+    config (after its first run). See emutune.py."""
+    from . import emutune, settings
+
+    try:
+        done = set(settings.load().get("emulation_tuned", []))
+        new = emutune.auto(resolution, set(done))
+        if new != done:
+            data = settings.load()
+            data["emulation_tuned"] = sorted(new)
+            settings.save(data)
+            events.record("emulators_tuned", emulators=sorted(new - done))
+    except Exception:
+        log.exception("tuning emulators")
+
+
+def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: bool, state: dict) -> str | None:
+    """One round of: show the home screen, then run what was picked."""
+    config = home_config(args, state)
+    style.set_prompts(config.prompts, config.confirm)
     if overlay:
         overlay.ensure()
 
@@ -213,17 +264,49 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
 
     if state["surface"] is None:
         state["surface"] = open_display(args.windowed)
+    if not state.get("tuned"):
+        state["tuned"] = True
+        threading.Thread(target=tune_emulators, args=(config.emulation_resolution,), daemon=True).start()
     show_home(gs)
     current = session.read()
     ready = (current.get("update") or {}).get("status") == "ready"
-    app = ui.run(state["surface"], home, config.title, message=state["message"], allow_quit=dev_mode,
-                 input_blocked=lambda: session.read()["overlay_open"],
+    stats = events.FrameStats()
+    view, offset = style.inset(state["surface"], config.safe_area)
+    common = dict(input_blocked=lambda: session.read()["overlay_open"], livery=config.livery, motion=config.motion,
+                  clock=config.clock, swap_confirm=config.confirm == "east", offset=offset,
+                  saver_after=config.screensaver_minutes * 60)
+    app = ui.run(view, home, config.title, message=state["message"], allow_quit=dev_mode, stats=stats,
                  badge="Update ready: restart to finish" if ready else None,
-                 running=set(current["background"]))
+                 running=set(current["background"]), intro=state["intro"],
+                 rebuild=lambda: home_config(args), sleep_after=config.sleep_minutes * 60, **common)
     state["message"] = None
+    state["intro"] = None
+    frames = stats.summary()
+    if frames:
+        events.record("home_frames", **frames)
     if app is None:
         return "quit"
     state["last_id"] = app.id
+
+    if app.command[0] == "hearth:settings":
+        from . import settings_app
+
+        # Runs in this window; it may hand back an app to open (Desktop Mode).
+        app = settings_app.run(view, args.config, offset=offset)
+        if app is None:
+            return None
+    elif app.command[0] == "hearth:library":
+        events.record("library_open")
+        library_home = Home(library.library_config())
+        app = ui.run(view, library_home, "Library", back_exits=True, rebuild=library.library_config,
+                     hints=(("A", "Play"), ("Y", "Pin"), ("B", "Back")), **common)
+        if app is None:
+            return None
+    elif app.builtin:
+        return None
+    key = library.key_of(app.id)
+    if key:
+        library.record_play(key)
 
     if app.background and not args.dry_run:
         # The home screen stays open behind it; the Quick Menu or a held
@@ -235,8 +318,9 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
         # Keep a "Starting…" screen up; gamescope switches to the app as soon
         # as its window appears (see session.focus_order), instead of
         # showing black while it loads.
-        ui.draw_loading(state["surface"], app)
-        state["message"] = launch(app, dry_run=args.dry_run, gs=gs)
+        ui.draw_loading(state["surface"], app, config.livery)
+        state["message"] = launch(app, dry_run=args.dry_run, gs=gs, hold_seconds=config.guide_hold)
+        state["intro"] = "return"
         pygame.event.clear()  # drop input that queued up while the app ran
         return None
 
@@ -244,5 +328,6 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     # manages gamescope's focus itself and must not be covered).
     pygame.quit()
     state["surface"] = None
-    state["message"] = launch(app, dry_run=args.dry_run, gs=gs)
+    state["message"] = launch(app, dry_run=args.dry_run, gs=gs, hold_seconds=config.guide_hold)
+    state["intro"] = "return"
     return None

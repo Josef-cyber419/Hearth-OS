@@ -22,6 +22,8 @@ import time
 from pathlib import Path
 from typing import Callable, Iterator
 
+from . import events
+
 UNIT_RE = re.compile(r"hearth-(app|bg)-(.+)_\d+\.scope")
 
 
@@ -41,11 +43,16 @@ def runtime_dir() -> Path:
 #   "overlay_open": bool,
 #   "paused": bool,
 #   "requests": ["menu" | "home", ...]   (from hearthctl; handled by the overlay)
-#   "update": {"status": "running" | "ready" | "current" | "failed", "version"} | null
+#   "update": {"status": "running" | "ready" | "current" | "failed", "version"} | null,
+#   "report": {"status": "running" | "done" | "failed", "file"} | null,
+#   "wii_mouse": {app id: bool},  (Quick Menu's per-app override of wii_remote.mouse)
+#   "wii": {"connected": [player, ...], "dolphin": bool} | null,  (from the overlay)
+#   "wii_raw": bool   (the Settings app is calibrating: the overlay writes wii-aim.json)
 # }
 
 DEFAULT_STATE = {"foreground": None, "background": {}, "focus": "home", "overlay_open": False,
-                 "paused": False, "requests": [], "update": None}
+                 "paused": False, "requests": [], "update": None, "report": None,
+                 "wii_mouse": {}, "wii": None, "wii_raw": False}
 
 
 def _state_path() -> Path:
@@ -57,6 +64,15 @@ def _locked() -> Iterator[None]:
     with open(runtime_dir() / "state.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
+
+
+def aim_path() -> Path:
+    """Where a Wii Remote is aiming, while the Settings app calibrates."""
+    return runtime_dir() / "wii-aim.json"
+
+
+def state_path() -> Path:
+    return _state_path()
 
 
 def _read_unlocked() -> dict:
@@ -170,6 +186,7 @@ def start_background(app) -> None:
     if app.id in state["background"] and background_alive(state["background"][app.id]):
         return
     proc, unit = spawn("bg", app.id, app.command)
+    events.record("background_start", id=app.id)
     info = {"name": app.name, "unit": unit, "pid": proc.pid, "wm_class": app.wm_class, "pointer": app.pointer}
     update(lambda s: s["background"].__setitem__(app.id, info))
 

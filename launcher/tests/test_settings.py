@@ -1,0 +1,295 @@
+import json
+import time
+
+import pygame
+import pytest
+
+from hearth import bluetooth, network, session, settings, settings_app, style, wiimote
+from hearth import config as cfg
+from hearth.model import Nav
+from hearth.settings_app import Calibration, Keyboard, SettingsApp, SettingsView
+
+
+# -- storage ---------------------------------------------------------------------
+
+
+def test_settings_layer_over_apps_toml(shipped_config):
+    assert cfg.load(shipped_config).livery == "gulf"
+    settings.put("theme", "livery", "martini")
+    settings.put("wii_remote", "sensor_bar", "above")
+    settings.set_hidden("kodi", True)
+    config = cfg.load(shipped_config)
+    assert config.livery == "martini" and config.wii_bar == "above"
+    assert config.app("kodi") is None and cfg.load(shipped_config, hide=False).app("kodi") is not None
+    settings.put("theme", "livery", None)  # back to the default
+    settings.set_hidden("kodi", False)
+    config = cfg.load(shipped_config)
+    assert config.livery == "gulf" and config.app("kodi") is not None
+
+
+def test_bad_settings_never_take_the_home_screen_down(shipped_config):
+    settings.put("wii_remote", "speed", 9000)
+    config = cfg.load(shipped_config)
+    assert config.app("settings") is not None and config.wii_speed == 100
+
+
+def test_settings_tile_is_built_in(shipped_config):
+    app = cfg.load(shipped_config).app("settings")
+    assert app.builtin and app.available()
+
+
+# -- network and bluetooth parsing -------------------------------------------------
+
+
+class Fake:
+    def __init__(self, responses):
+        self.responses, self.calls = responses, []
+
+    def __call__(self, argv):
+        self.calls.append(argv)
+        for prefix, result in self.responses.items():
+            if " ".join(argv).startswith(prefix):
+                return result
+        return (0, "", "")
+
+
+def test_nmcli_fields_unescape():
+    assert network.fields(r"*:My\:Net:80:WPA2") == ["*", "My:Net", "80", "WPA2"]
+
+
+def test_network_status_prefers_ethernet():
+    run = Fake({
+        "nmcli -t -f DEVICE,TYPE,STATE,CONNECTION device": (0, "wlp5s0:wifi:connected:Home\nenp3s0:ethernet:connected:Wired\n"
+                                                             "lo:loopback:connected (externally):lo\n", ""),
+        "nmcli -t -g IP4.ADDRESS device show enp3s0": (0, "192.168.1.9/24\n", ""),
+    })
+    s = network.status(run)
+    assert (s.kind, s.device, s.address) == ("ethernet", "enp3s0", "192.168.1.9")
+    assert s.describe() == "Ethernet · 192.168.1.9"
+    assert network.status(Fake({"nmcli -t -f": (0, "wlp5s0:wifi:disconnected:\n", "")})).describe() == "Not connected"
+
+
+def test_wifi_networks_deduped_and_sorted():
+    run = Fake({
+        "nmcli -t -f IN-USE,SSID,SIGNAL,SECURITY": (0, " :Cafe:40:--\n*:Home:70:WPA2\n :Home:90:WPA2\n :Far:20:WPA2\n"
+                                                    " ::60:WPA2\n", ""),
+        "nmcli -t -f NAME,TYPE connection show": (0, "Home:802-11-wireless\nWired:802-3-ethernet\n", ""),
+    })
+    nets = network.networks(run=run)
+    assert [n.ssid for n in nets] == ["Home", "Cafe", "Far"]  # the one in use first, hidden networks dropped
+    assert nets[0].in_use and nets[0].saved and not nets[1].secure
+
+
+def test_wifi_connect_messages():
+    ok = Fake({"nmcli device wifi connect": (0, "Device 'wlp5s0' successfully activated", "")})
+    assert network.connect("Home", "pw", run=ok) == (True, "Connected to Home")
+    assert ok.calls[0][-2:] == ["password", "pw"]
+    bad = Fake({"nmcli device wifi connect": (4, "", "Error: Connection activation failed: Secrets were required, "
+                                                     "but not provided.")})
+    assert network.connect("Home", "wrong", run=bad) == (False, "Wrong password?")
+    saved = Fake({})
+    network.connect("Home", saved=True, run=saved)
+    assert saved.calls[0] == ["nmcli", "connection", "up", "id", "Home"]
+
+
+INFO = """Device E4:17:D8:00:00:01 (public)
+	Name: 8BitDo Ultimate 2
+	Alias: 8BitDo Ultimate 2
+	Icon: input-gaming
+	Paired: yes
+	Connected: no
+"""
+
+
+def test_bluetooth_devices():
+    run = Fake({
+        "bluetoothctl devices": (0, "Device E4:17:D8:00:00:01 8BitDo Ultimate 2\nDevice 11:22:33:44:55:66 11-22-33-44-55-66\n", ""),
+        "bluetoothctl info E4:17:D8:00:00:01": (0, INFO, ""),
+        "bluetoothctl info 11:22:33:44:55:66": (0, "Device 11:22:33:44:55:66\n\tPaired: no\n", ""),
+    })
+    devs = bluetooth.devices(run)
+    assert devs[0].name == "8BitDo Ultimate 2" and devs[0].paired and not devs[0].connected
+    assert devs[0].describe() == "Controller · Paired"
+    assert bluetooth.powered(Fake({"bluetoothctl show": (0, "Controller 00:1A\n\tPowered: yes\n", "")})) is True
+    assert bluetooth.powered(Fake({"bluetoothctl show": (1, "", "No default controller available")})) is None
+
+
+def test_bluetooth_pair_trusts_and_connects():
+    run = Fake({"bluetoothctl --timeout 25 pair": (0, "Pairing successful", ""),
+                "bluetoothctl --timeout 15 connect": (0, "Connection successful", "")})
+    assert bluetooth.pair("E4:17:D8:00:00:01", run) == (True, "Paired and connected")
+    assert ["bluetoothctl", "trust", "E4:17:D8:00:00:01"] in run.calls
+
+
+# -- keyboard and calibration ---------------------------------------------------------
+
+
+def test_on_screen_keyboard():
+    kb = Keyboard("Password", secret=True)
+    assert kb.key_at(1, 0) == "q"
+    kb.handle(Nav.SELECT)  # q
+    kb.handle(Nav.TAB_NEXT)  # shift
+    kb.handle(Nav.RIGHT)
+    kb.handle(Nav.SELECT)  # W, then back to lower case
+    kb.type("x!")
+    assert kb.text == "qWx!" and kb.layer == "lower"
+    kb.handle(Nav.BACK)
+    assert kb.text == "qWx"
+    for _ in range(3):  # to the bottom row: the special keys
+        kb.handle(Nav.DOWN)
+    assert kb.row == 4 and kb.special[kb.col] in kb.special
+    assert kb.handle(Nav.MENU) == "done"
+    assert Keyboard("x").handle(Nav.BACK) == "cancel"
+
+
+def test_calibration_maps_targets_exactly():
+    cal = Calibration()
+    assert cal.capture(None) is None and "Can't see" in cal.message
+    assert cal.capture((700.0, 200.0)) is None
+    result = cal.capture((300.0, 560.0))
+    aim = wiimote.Aim(calibration=result, smoothing=0)
+    assert aim.to_screen(700, 200) == pytest.approx((0.1, 0.1))
+    assert aim.to_screen(300, 560) == pytest.approx((0.9, 0.9))
+    assert aim.to_screen(500, 380) == pytest.approx((0.5, 0.5))
+    lazy = Calibration()
+    lazy.capture((500.0, 380.0))
+    assert lazy.capture((505.0, 383.0)) == "retry" and lazy.points == []
+
+
+# -- the app ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def offline(monkeypatch):
+    """No real nmcli or bluetoothctl: canned answers instead."""
+    monkeypatch.setattr(network, "available", lambda: True)
+    monkeypatch.setattr(network, "status", lambda run=None: network.Status(True, "wifi", "Home", "wlp5s0", "10.0.0.2"))
+    monkeypatch.setattr(network, "wifi_enabled", lambda run=None: True)
+    monkeypatch.setattr(network, "networks", lambda rescan=False, run=None: [
+        network.Network("Home", 80, True, True, True), network.Network("Guest", 50, True)])
+    connects = []
+    monkeypatch.setattr(network, "connect", lambda ssid, password=None, saved=False, run=None: (
+        connects.append((ssid, password)), (True, f"Connected to {ssid}"))[1])
+    monkeypatch.setattr(bluetooth, "available", lambda: True)
+    monkeypatch.setattr(bluetooth, "powered", lambda run=None: True)
+    monkeypatch.setattr(bluetooth, "devices", lambda run=None: [
+        bluetooth.Device("AA:00:00:00:00:01", "Pad", True, True, "input-gaming")])
+    return connects
+
+
+def wait_jobs(app):
+    for _ in range(100):
+        if not app.jobs._running:
+            break
+        time.sleep(0.02)
+    app.tick()
+    app.refresh()
+
+
+def test_navigation_and_live_changes(shipped_config, offline):
+    app = SettingsApp(shipped_config)
+    assert app.zone == "nav" and app.menu.current.key == "appearance"
+    app.handle(Nav.SELECT)
+    assert app.zone == "items" and app.menu.selected.key == "livery"
+    app.handle(Nav.RIGHT)  # next livery
+    assert settings.load()["theme"]["livery"] == "martini" and app.config.livery == "martini"
+    app.handle(Nav.BACK)
+    assert app.zone == "nav"
+    assert app.handle(Nav.BACK) == "exit"
+
+
+def test_hiding_a_tile(shipped_config, offline):
+    app = SettingsApp(shipped_config)
+    app.handle(Nav.DOWN)  # Home screen
+    app.handle(Nav.RIGHT)
+    app.menu.select(next(i.key for i in app.menu.current.items if i.key.startswith("tile-")))
+    first = app.menu.selected
+    assert first.kind == "toggle" and first.value
+    app.handle(Nav.SELECT)
+    assert settings.load()["hide"] == [first.key.removeprefix("tile-")]
+    assert "tile-settings" not in [i.key for i in app.menu.current.items]  # can't hide your way out
+    assert "tile-library" not in [i.key for i in app.menu.current.items]
+
+
+def test_wifi_password_flow(shipped_config, offline):
+    app = SettingsApp(shipped_config)
+    app.menu.tab = [c[0] for c in settings_app.CATEGORIES].index("network")
+    app.load_for("network")
+    wait_jobs(app)
+    app.zone = "items"
+    app.menu.select("wifi-Guest")
+    app.handle(Nav.SELECT)
+    assert app.keyboard is not None and app.keyboard.secret
+    app.keyboard.type("hunter22")
+    app.handle(Nav.MENU)  # Start = done
+    wait_jobs(app)
+    assert offline == [("Guest", "hunter22")]
+    assert app.jobs.messages["wifi-Guest"] == "Connected to Guest"
+
+
+def test_calibration_flow_uses_the_overlays_aim(shipped_config, offline):
+    app = SettingsApp(shipped_config)
+    app.start_calibration()
+    assert session.read()["wii_raw"] is True
+    for raw in ((700, 200), (300, 560)):
+        session.aim_path().write_text(json.dumps({"raw": raw, "t": time.time()}))
+        app.handle(Nav.SELECT)
+    assert app.calibrating is None and session.read()["wii_raw"] is False
+    assert settings.load()["wii_remote"]["calibration"] == [700, 200, 300, 560]
+    assert cfg.load(shipped_config).wii_calibration == (700.0, 200.0, 300.0, 560.0)
+
+
+def test_livery_preview_is_live(shipped_config, offline):
+    pygame.display.init()
+    pygame.font.init()
+    try:
+        surface = pygame.display.set_mode((640, 360))
+        app = SettingsApp(shipped_config)
+        view = SettingsView((640, 360))
+        view.draw_settings(surface, app)
+        app.handle(Nav.SELECT)
+        app.handle(Nav.RIGHT)
+        view.draw_settings(surface, app)
+        assert view.lv is style.LIVERIES["martini"]
+    finally:
+        pygame.quit()
+
+
+@pytest.mark.parametrize("livery", sorted(style.LIVERIES))
+def test_every_page_renders(shipped_config, offline, livery):
+    pygame.display.init()
+    pygame.font.init()
+    try:
+        surface = pygame.display.set_mode((1280, 720))
+        settings.put("theme", "livery", livery)
+        app = SettingsApp(shipped_config)
+        view = SettingsView((1280, 720), livery)
+        for i, (key, *_) in enumerate(settings_app.CATEGORIES):
+            app.menu.tab = i
+            app.load_for(key)
+            wait_jobs(app)
+            for zone in ("nav", "items"):
+                app.zone = zone
+                view.draw_settings(surface, app)
+        hit = next(h for r, h in view.hits if h[0] == "item")
+        app.point(hit)
+        assert app.zone == "items"
+        app.open_keyboard("Name", lambda t: None)
+        view.draw_settings(surface, app)
+        app.keyboard = None
+        app.calibrating = Calibration()
+        view.draw_settings(surface, app)
+    finally:
+        pygame.quit()
+
+
+def test_run_loop_exits_on_back(shipped_config, offline):
+    pygame.display.init()
+    pygame.font.init()
+    try:
+        surface = pygame.display.set_mode((1280, 720))
+        for key in (pygame.K_DOWN, pygame.K_ESCAPE):
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN, key=key, unicode="", mod=0))
+        assert settings_app.run(surface, shipped_config, max_frames=30, input_blocked=lambda: False) is None
+    finally:
+        pygame.quit()

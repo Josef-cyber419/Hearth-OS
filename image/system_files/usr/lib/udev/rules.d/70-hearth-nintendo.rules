@@ -1,0 +1,13 @@
+# Let the person at the TV (the logged-in seat) use Nintendo controllers
+# directly, as Dolphin and Hearth need to.
+#
+# Wii Remote and Wii Remote Plus: through a Mayflash DolphinBar in mode 4
+# (USB) or paired over Bluetooth. Dolphin talks to them for Wii games; Hearth
+# uses them as a remote and pointer (hearth/wiimote.py) while Dolphin isn't running.
+KERNEL=="hidraw*", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="0306", TAG+="uaccess"
+KERNEL=="hidraw*", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="0330", TAG+="uaccess"
+KERNEL=="hidraw*", KERNELS=="*:057E:0306.*", TAG+="uaccess"
+KERNEL=="hidraw*", KERNELS=="*:057E:0330.*", TAG+="uaccess"
+
+# Official GameCube controller adapter (Dolphin's "GameCube Adapter for Wii U").
+SUBSYSTEM=="usb", ATTRS{idVendor}=="057e", ATTRS{idProduct}=="0337", TAG+="uaccess"

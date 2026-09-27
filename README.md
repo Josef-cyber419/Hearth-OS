@@ -37,11 +37,26 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 - **TV home screen**: rows of tiles (Play / Watch / System), clock, confirm
   dialogs for power actions. Scales cleanly from 720p to 4K.
+- **Your games up front**: a **Continue** row of what you played last and a
+  **Pinned** row of favourites, across Steam and every emulated console, with
+  their artwork. Press Y on any game to pin it. The **Library** tile lists
+  every installed Steam game and every ROM, by platform. Games start directly:
+  Steam ones open Big Picture and launch, emulated ones open their emulator.
+- **Emulators tuned for your PC and TV**: Vulkan, upscaling to your TV's
+  resolution, stutter-free shaders ([docs/EMULATION.md](docs/EMULATION.md#tuned-for-your-pc)).
+- **Heritage racing look**: tiles painted like period race cars (deep enamel,
+  twin stripes, a number roundel), condensed signwriter type, and a choice of
+  liveries: Gulf, Martini, British Racing Green, Rosso, Silver Arrow. Motion is
+  eased and frame-rate independent: a stripe sweep at power-on, tiles that
+  cascade in, a focus stripe that glides between tiles, and a launch where the
+  tile opens out to fill the screen. `motion = "reduced"` turns the decoration off.
 - **Works with anything you hold**: Xbox/PlayStation/8BitDo controllers (SDL
-  GameController mappings), TV remotes over HDMI-CEC, IR remotes via FLIRC, and
-  keyboards.
+  GameController mappings), TV remotes over HDMI-CEC, IR remotes via FLIRC,
+  keyboards, and **Wii Remotes** on a DolphinBar: point at a tile to pick it,
+  and use the pointer as a mouse where you want one. Dolphin gets them back
+  for Wii games.
 - **Quick Menu, over any game**: tap the controller's **Guide** button for a
-  frosted-glass panel over whatever's playing, with the game paused. Switch audio
+  panel over whatever's playing, in the same livery, with the game paused. Switch audio
   output and microphone, set volumes, mix per-app volume, run Discord in the
   background (mute, deafen, voice volume, or bring it up with the controller as a
   mouse), and sleep/restart/power off. See [docs/QUICK_MENU.md](docs/QUICK_MENU.md).
@@ -53,6 +68,16 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   services aren't there, and the options for adding them).
 - **Your TV follows the PC**: with a CEC adapter, the TV turns on and switches
   input when the PC wakes, and goes to standby when it sleeps.
+- **Settings app, with the remote**: a Settings tile with everything in one
+  place: livery, motion and clock; which tiles show; the Guide button and
+  controller-as-mouse speed; the Wii Remote (sensor bar position, pointer
+  speed and steadiness, sideways hold, mouse mode, and a two-target pointer
+  calibration); emulator tuning; Bluetooth pairing; Wi-Fi with an on-screen
+  keyboard and a connection test; hardware, temperatures, storage, updates and
+  problem reports. Also the things TVs and consoles are expected to have: a
+  screen saver (OLED-friendly), sleep when idle, screen edges for TVs that
+  crop, Nintendo-style confirm button, and Xbox, PlayStation or Nintendo
+  button names on screen. Changes apply at once.
 - **Customisable without rebuilding**: copy
   [`apps.toml`](image/system_files/usr/share/hearth/apps.toml) to
   `~/.config/hearth/apps.toml` and edit. Tiles for apps that aren't installed are
@@ -61,8 +86,10 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   home screen tells you when a restart will finish one), or on demand from the
   Quick Menu. Every update can be rolled back.
 - **Easy to fix**: `hearthctl doctor` checks the whole setup and tells you how to
-  fix problems; `hearthctl logs` has the details. See
-  [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+  fix problems; `hearthctl logs` has the details. **Report a problem** (Quick
+  Menu → System, or `hearthctl report`) saves logs, hardware details, a
+  screenshot and a timeline of what happened into one file you can send, with
+  personal details masked. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 
 ## Getting started
 
@@ -101,7 +128,7 @@ tools/gamescope-lab/run.sh   # needs Docker → tools/gamescope-lab/out/hearth-d
 ```
 
 Runs Hearth inside real gamescope (Steam mode) with real PipeWire, plays
-through a session with 17 checks, and records a video. See
+through a session with 26 checks, and records a video. See
 [tools/gamescope-lab](tools/gamescope-lab/README.md).
 
 ## Project status

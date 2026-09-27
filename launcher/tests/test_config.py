@@ -130,3 +130,17 @@ def test_replace_ignores_defaults(tmp_path, monkeypatch, shipped_config):
     (tmp_path / "hearth/apps.toml").write_text('replace = true\ntitle = "Mine"\n')
     config = cfg.load()
     assert config.title == "Mine" and config.rows == ()
+
+
+def test_theme_defaults_and_user_override():
+    config = cfg.parse({})
+    assert (config.livery, config.motion) == ("gulf", "full")
+    merged = cfg.merge({"theme": {"livery": "gulf", "motion": "full"}, "rows": []}, {"theme": {"livery": "Martini"}})
+    config = cfg.parse(merged)
+    assert (config.livery, config.motion) == ("martini", "full")
+    assert config.visible().livery == "martini"  # filtering keeps the theme
+
+
+def test_theme_motion_is_checked():
+    with pytest.raises(cfg.ConfigError, match="motion"):
+        cfg.parse({"theme": {"motion": "fast"}})

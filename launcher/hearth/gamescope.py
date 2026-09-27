@@ -150,6 +150,22 @@ class Gamescope:
 
     # -- overlay ---------------------------------------------------------------
 
+    def request_screenshot(self, kind: int = 3) -> None:
+        """Ask gamescope to save the screen to /tmp/gamescope.png. kind 3 is
+        the full composition: the app plus any overlays on top of it."""
+        self._set_cardinals(self.root, "GAMESCOPECTRL_REQUEST_SCREENSHOT", [kind])
+
+    def set_click_through(self, win, through: bool) -> None:
+        """While the Quick Menu is hidden its window still covers the screen;
+        an empty input shape lets the mouse reach the app underneath."""
+        from Xlib.ext import shape
+
+        if through:
+            win.shape_rectangles(shape.SO.Set, shape.SK.Input, 0, 0, 0, [])
+        else:
+            win.shape_mask(shape.SO.Set, shape.SK.Input, 0, 0, 0)  # 0 = None: back to the whole window
+        self.d.sync()
+
     def make_overlay(self, win) -> None:
         self._set_cardinals(win, "STEAM_OVERLAY", [1])
         self.set_overlay_visible(win, False)
@@ -158,4 +174,8 @@ class Gamescope:
         self._set_cardinals(win, "_NET_WM_WINDOW_OPACITY", [int(OPAQUE * opacity) if visible else 0])
         # 1 = the overlay gets keyboard/mouse input, like Steam's Quick Access menu.
         self._set_cardinals(win, "STEAM_INPUT_FOCUS", [1 if visible else 0])
+        try:
+            self.set_click_through(win, not visible)
+        except Exception as e:  # no SHAPE extension: only the pointer is affected
+            log.debug("click-through: %s", e)
         self.d.sync()  # wait until the X server has applied it
