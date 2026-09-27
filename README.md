@@ -60,8 +60,13 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   output and microphone, set volumes, mix per-app volume, run Discord in the
   background (mute, deafen, voice volume, or bring it up with the controller as a
   mouse), and sleep/restart/power off. See [docs/QUICK_MENU.md](docs/QUICK_MENU.md).
+- **Quick Resume, like an Xbox**: hold **Guide** in a game and it pauses where
+  you are and you're back home; it waits in a **Quick Resume** row on top (up to
+  3 games), and picking it carries on instantly, with nothing reloading. Y on
+  it closes it. Steam manages its own games and isn't paused this way.
 - **Always a way home**: hold the controller's **Guide** button for 1.5s, or
-  press **Home** on a remote, to close the current app and return. In Steam, use
+  press **Home** on a remote, to go home (keeping the game paused, or closing
+  it: Settings → Controllers). In Steam, use
   *Power → Switch to Desktop*, which Hearth turns into "back to home".
 - **Remote-friendly apps only**: every default tile uses a TV/console interface
   (see [Streaming services](docs/STREAMING.md) for why Netflix and similar

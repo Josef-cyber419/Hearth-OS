@@ -4,7 +4,7 @@ Tap Guide in any app (or on the home screen) to open it. Tabs:
   Audio   output/input device, volume, mic mute
   Mixer   per-app volume for everything playing sound
   Discord start/show Discord, mute your mic, deafen, voice volume
-  System  resume, go home, sleep, restart, power off
+  System  resume, go home (Quick Resume), sleep, restart, power off
 
 This module has no drawing code; quickmenu_view.py renders it.
 """
@@ -154,6 +154,7 @@ class QuickMenu:
 class Actions(Protocol):
     def resume(self) -> str | None: ...
     def go_home(self) -> str | None: ...
+    def quick_resume(self) -> str | None: ...
     def start_background(self, app_id: str) -> str | None: ...
     def show(self, target: str) -> str | None: ...
     def stop_background(self, app_id: str) -> str | None: ...
@@ -283,6 +284,10 @@ def _system_tab(ctx: Context) -> Tab:
     act, fg = ctx.actions, ctx.state.get("foreground")
     tab = Tab("system", "System", "power")
     tab.items.append(Item("resume", "Resume", "action", on_select=act.resume))
+    if fg and fg.get("resumable"):
+        tab.items.append(Item("quick-resume", "Home, keep " + fg["name"] + " paused", "action",
+                              detail="Quick Resume: pick it up later right where you left off",
+                              on_select=act.quick_resume))
     if fg:
         tab.items.append(Item("home", "Close " + fg["name"], "action", confirm=True,
                               detail="Return to the home screen", on_select=act.go_home))

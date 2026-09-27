@@ -13,8 +13,9 @@ key (e.g. programmed on a FLIRC) opens it too.
 | A | Toggle, mute a slider, run an action |
 | B, Start, or tap Guide | Close |
 
-**Hold Guide** (1.5 s) to close the current app and go home, or to leave
-Discord and go back to your game.
+**Hold Guide** (1.5 s) to go home with the game paused for **Quick Resume**
+(or closed, if you set Settings → Controllers → *Holding Guide in a game* to
+close), or to leave Discord and go back to your game.
 
 ## Tabs
 
@@ -29,7 +30,9 @@ Discord and go back to your game.
   Discord hidden. Mute and deafen last for the current call. (PipeWire
   remembers app volumes between sessions, but Hearth clears a remembered
   Discord mute, so a new call never starts silently muted.)
-- **System**: resume, close the current app, check for updates, report a
+- **System**: resume, **Home, keep <game> paused** (Quick Resume: it waits
+  in a row on the home screen and carries on where you were), close the
+  current app, check for updates, report a
   problem, sleep, restart, power off. With a Wii Remote connected, also
   *Wii Remote pointer as mouse* for the app in front. Anything that ends what
   you're doing asks you to press A again.

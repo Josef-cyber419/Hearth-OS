@@ -61,7 +61,16 @@ start their own sessions and would escape a process group. That enables:
 - **Pause**: the Quick Menu freezes the game's cgroup while it's open
   (`systemctl --user freeze`) and thaws it on close. Turn this off with
   `[quick_menu] pause_game = false` in `apps.toml`.
-- **Close**: "Close <game>" and holding Guide stop the whole scope.
+- **Quick Resume**: holding Guide (or the Quick Menu's "Home, keep … paused",
+  or `hearthctl pause`) sets `suspend_request`; the hub freezes the scope,
+  moves the game from `foreground` to `suspended` in the state file and
+  shows the home screen with a Quick Resume row. Picking it thaws the scope
+  and the hub waits on it again, exactly as after a launch. With more than
+  `[home] quick_resume` games paused, the oldest is closed (the home screen
+  asks first). Without systemd scopes the process group gets SIGSTOP/SIGCONT
+  instead. Frozen games keep their RAM and VRAM, which is why the limit is
+  small; they survive the hub restarting and the PC sleeping, not a reboot.
+- **Close**: "Close <game>" (and holding Guide, when set to close) stop the whole scope.
 - **Window ownership**: `/proc/<pid>/cgroup` names the scope, so the app ID.
 
 State shared between the hub and the overlay lives in
@@ -178,6 +187,9 @@ These couldn't be tested without a real machine. Check them first, in this order
     through it; the game pauses (the user systemd manager can freeze scopes)
     and resumes; audio device switching and per-app volume work through
     `pactl`; closing a game from it returns home.
+    **Quick Resume**: holding Guide in a game pauses it (`hearthctl status`
+    lists it; `systemctl --user status hearth-app-*` shows the scope frozen)
+    and picking its tile brings it back at the same spot, sound included.
 11. **Wii Remotes** (DolphinBar in mode 4): `hearthctl doctor` finds the
     slots; a paired remote rumbles and lights its LED; the pointer tracks the
     screen the right way round (if not, Settings → Wii Remote → Calibrate the

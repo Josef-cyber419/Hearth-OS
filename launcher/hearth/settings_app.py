@@ -405,6 +405,10 @@ class SettingsApp:
             Item("home-pins", "Pinned games", "toggle", value=c.home_pins,
                  detail="Press Y on a game to pin it; ES-DE favourites show here too",
                  on_change=lambda on: self.put("home", "pins", bool(on))),
+            Item("quick-resume", "Quick Resume", "choice", value=c.quick_resume,
+                 options=("Off", "Keep 1 game paused", "Keep 2 games paused", "Keep 3 games paused"),
+                 detail="Hold Guide in a game to pause it and go home; it waits in a row up top",
+                 on_change=lambda i: self.put("home", "quick_resume", int(i))),
             Item("saver", "Screen saver", "choice",
                  value=saver.index(c.screensaver_minutes) if c.screensaver_minutes in saver else 2,
                  options=tuple("Never" if m == 0 else f"After {m} minutes" if m < 60 else "After 1 hour"
@@ -456,8 +460,13 @@ class SettingsApp:
                           detail=", ".join(names) if names else "None right now"))
         items.append(Item("guide-hold", "Hold Guide to go home", "slider", value=c.guide_hold,
                           low=0.5, high=3.0, step=0.25, unit="{:g} s",
-                          detail="How long to hold before the app closes",
+                          detail="How long to hold before you're back home",
                           on_change=lambda v: self.put("controllers", "guide_hold_seconds", float(v))))
+        items.append(Item("guide-action", "Holding Guide in a game", "choice",
+                          value=0 if c.guide_hold_action == "resume" else 1,
+                          options=("Keeps it paused (Quick Resume)", "Closes it"),
+                          detail="Quick Resume must be on to keep games paused",
+                          on_change=lambda i: self.put("controllers", "guide_hold", ("resume", "close")[i])))
         items.append(Item("mouse-speed", "Controller mouse speed", "slider", value=c.mouse_speed,
                           low=25, high=300, step=25, detail="Discord and other pointer apps",
                           on_change=lambda v: self.put("controllers", "mouse_speed", int(v))))

@@ -49,6 +49,16 @@ mouse = "apps"
 # Pause the game while the menu is open, like a console's home menu.
 pause_game = true
 
+# Quick Resume, like an Xbox: holding Guide in a game pauses it and goes home;
+# it waits in a "Quick Resume" row on top, and picking it carries on exactly
+# where you were. Starting another game when the slots are full closes the
+# oldest paused one (the home screen asks first). Steam isn't paused this way.
+[home]
+quick_resume = 2        # games kept paused, 0-3 (0 = off: holding Guide closes)
+
+[controllers]
+guide_hold = "resume"   # holding Guide in a game: "resume" (keep it paused) or "close"
+
 [[rows]]
 title = "Play"
 

@@ -212,6 +212,10 @@ class HomeScreen:
         self.background = self._make_background()
         self._fade_bottom = self._make_fade()
         self.confirming: App | None = None
+        self.confirm_caption = "ARE YOU SURE?"
+        # Asked before opening a tile: a question to confirm first, or None
+        # (e.g. starting a game would close the oldest Quick Resume game).
+        self.ask: Callable[[App], str | None] | None = None
         self.message: str | None = None
         self.badge: str | None = None
         self.running: set[str] = set()  # background apps, marked on their tiles
@@ -304,7 +308,11 @@ class HomeScreen:
         key = library.key_of(app.id)
         prefs = settings.load()
         choices: list[tuple[str, Callable[[], None]]] = []
-        if key:
+        if app.command[0] == "hearth:resume":
+            from . import hub
+
+            choices.append((f"Close {app.name}", lambda: hub.close_paused(app.command[1])))
+        elif key:
             if key in prefs.get("pins", []):
                 choices.append(("Unpin from home", lambda: settings.toggle_in("pins", key, False)))
             else:
@@ -366,8 +374,10 @@ class HomeScreen:
             return app if nav is Nav.SELECT else None
         if nav is Nav.SELECT:
             app = self.home.selected
-            if app is not None and app.confirm:
+            question = self.ask(app) if app is not None and self.ask else None
+            if app is not None and (app.confirm or question):
                 self.confirming = app
+                self.confirm_caption = question or "ARE YOU SURE?"
                 self._confirm_t0 = time.monotonic()
                 return None
             return app
@@ -606,6 +616,17 @@ class HomeScreen:
             dot = (rect.right - int(26 * th.u), rect.y + int(26 * th.u))
             style.circle(s, (0, 0, 0), dot, 10 * th.u)
             style.circle(s, RUNNING, dot, 7 * th.u)
+        if app.command and app.command[0] == "hearth:resume" and app.platform and load_art(app.art) is None:
+            # Quick Resume: "‖ PAUSED · 5 MIN" (tiles with artwork show it in their own badge).
+            text = style.tracked(th.type(16, "cond", "semibold"), app.platform.upper(), th.lv.text, 0.18)
+            pad, bar = int(10 * th.u), max(2, int(4 * th.u))
+            pill = pygame.Surface((text.get_width() + pad * 3 + bar * 3, text.get_height() + pad), pygame.SRCALPHA)
+            pill.fill((0, 0, 0, 150))
+            for i in (0, 2):
+                pygame.draw.rect(pill, (*th.lv.accent, 255), (pad + i * bar, pad // 2 + 2, bar, text.get_height() - 4))
+            pill.blit(text, (pad * 2 + bar * 3, pad // 2))
+            style.rounded(pill, pill.get_height() // 2)
+            s.blit(pill, (rect.right - pill.get_width() - int(14 * th.u), rect.y + int(14 * th.u)))
 
     def _draw_indicator(self, tile: pygame.Rect) -> None:
         """The livery stripe under the focused tile; it glides between tiles."""
@@ -718,7 +739,7 @@ class HomeScreen:
         style.rounded(card, th.radius)
         pygame.draw.rect(card, (*lv.text, 40), card.get_rect(), width=max(1, int(th.u)), border_radius=th.radius)
         x = int(34 * th.u) + stripe_w + int(40 * th.u)
-        caption = style.tracked(th.font_date, "ARE YOU SURE?", lv.dim, 0.3)
+        caption = style.fit(style.tracked(th.font_date, self.confirm_caption, lv.dim, 0.3), box.w - x - int(30 * th.u))
         card.blit(caption, (x, int(box.h * 0.2)))
         title = style.fit(style.tracked(th.font_title, app.name.upper(), lv.text, 0.06), box.w - x - int(30 * th.u))
         card.blit(title, (x, int(box.h * 0.2) + caption.get_height() + int(4 * th.u)))
@@ -799,6 +820,7 @@ def run(
     swap_confirm: bool = False,
     offset: tuple[int, int] = (0, 0),
     hints: tuple | None = None,
+    ask: Callable[[App], str | None] | None = None,
 ) -> App | None:
     """Show the home screen until the user picks an app.
 
@@ -811,12 +833,14 @@ def run(
     (the Library). After `saver_after` seconds without input the screen saver
     shows; after `sleep_after` the PC sleeps (0 = never). `offset` is where
     this surface sits on the screen (a safe-area inset), for the pointer.
+    `ask` may return a question to confirm before a tile opens.
     """
     screen = HomeScreen(surface, home, title, livery=livery, motion=motion, intro=intro)
     screen.message = message
     screen.clock = clock
     screen.rebuild = rebuild
     screen.back_exits = back_exits
+    screen.ask = ask
     if hints:
         screen.hints = hints
     screen.badge = badge
@@ -871,7 +895,8 @@ def run(
                 chosen = app
                 break
         if chosen is not None:
-            if not chosen.background and not chosen.confirm and not chosen.builtin:
+            if not chosen.background and not chosen.confirm and (not chosen.builtin
+                                                                 or chosen.command[0] == "hearth:resume"):
                 screen.play_launch(chosen)
             return chosen
         if blocked:

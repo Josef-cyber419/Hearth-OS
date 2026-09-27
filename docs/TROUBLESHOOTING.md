@@ -16,6 +16,7 @@ Everything below is run from a terminal: Desktop Mode (System → Desktop Mode
 | `hearthctl update` | Install OS and app updates now. Restart to finish. |
 | `hearthctl rollback` | Go back to the previous OS version on the next restart. |
 | `hearthctl menu` / `home` | Open the Quick Menu / close the current app, e.g. over SSH if a controller dies. |
+| `hearthctl pause` | Go home and keep the game paused (Quick Resume). `hearthctl status` lists paused games. |
 | `hearthctl disable` / `enable` | Make Game Mode start Steam directly / Hearth again. |
 | `hearthctl dev PATH` / `dev --off` | Run the launcher from a source checkout (see below). |
 
