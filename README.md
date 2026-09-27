@@ -66,8 +66,9 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   it closes it. Steam manages its own games and isn't paused this way.
 - **Always a way home**: hold the controller's **Guide** button for 1.5s, or
   press **Home** on a remote, to go home (keeping the game paused, or closing
-  it: Settings → Controllers). In Steam, use
-  *Power → Switch to Desktop*, which Hearth turns into "back to home".
+  it: Settings → Controllers). In Steam, use *Power → Switch to Desktop*, which
+  Hearth turns into "back to home". In Desktop Mode, holding Guide goes back
+  to Hearth too.
 - **Remote-friendly apps only**: every default tile uses a TV/console interface
   (see [Streaming services](docs/STREAMING.md) for why Netflix and similar
   services aren't there, and the options for adding them).

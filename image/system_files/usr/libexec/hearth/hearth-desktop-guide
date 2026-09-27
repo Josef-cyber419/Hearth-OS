@@ -1,0 +1,8 @@
+#!/usr/bin/bash
+# Desktop Mode: hold the controller's Guide button to go back to Hearth.
+export PYTHONPATH="/usr/lib/hearth/python${PYTHONPATH:+:$PYTHONPATH}"
+dev=$(cat "${XDG_CONFIG_HOME:-$HOME/.config}/hearth/dev-path" 2>/dev/null)
+if [[ -n $dev && -f $dev/hearth/__init__.py ]]; then
+    export PYTHONPATH="$dev:$PYTHONPATH"
+fi
+exec /usr/bin/python3 -m hearth.desktopguide

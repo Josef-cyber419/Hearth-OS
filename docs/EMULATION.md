@@ -135,6 +135,9 @@ Do this once in Desktop Mode, from the app menu:
   (Settings → Controllers).
 - **BIOS / firmware / keys**: each emulator has a setting for where these
   live. Point it at the matching folder in `~/BIOS`.
+- **RetroArch's own menu** (save states, shaders, core options): click **both
+  sticks** (L3 + R3). Guide stays Hearth's (tap: Quick Menu, hold: home), so
+  Hearth moves RetroArch's menu off it.
 - **Exit shortcut**: set a controller shortcut to quit the game back to ES-DE,
   e.g. Select + Start. RetroArch, PCSX2, DuckStation and Dolphin all support one.
 
