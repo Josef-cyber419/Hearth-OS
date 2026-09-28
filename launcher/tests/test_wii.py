@@ -90,6 +90,41 @@ def test_remote_starts_on_status_report():
     assert not r.connected and r.pointer is None
 
 
+def test_remote_already_on_is_set_up_too():
+    """A remote that was already on (or that Dolphin just let go of) sends
+    button reports before any status report. It still gets its IR camera
+    switched on, or the pointer never moves."""
+    slot = Slot()
+    r = wiimote.Remote("/fake", fd=slot.host.detach(), aim=wiimote.Aim(offset=0))
+    slot.dev.send(bytes([0x30, 0x00, 0x08]))  # plain buttons report: A
+    r.read(now=1.0)
+    assert r.connected and r.buttons == A
+    sent = slot.sent()
+    assert bytes([0x13, 0x04]) in sent and sent[-1] == bytes([0x12, 0x04, 0x33])
+    slot.dev.send(report_33(0, [(412, 384, 2), (612, 384, 2)]))
+    r.read(now=1.1)
+    assert r.pointer == (0.5, 0.5)
+
+
+def test_remote_stuck_without_ir_reports_is_set_up_again():
+    """If the remote keeps sending plain button reports (it missed the setup,
+    or something else changed its mode), send the setup again."""
+    slot = Slot()
+    r = wiimote.Remote("/fake", fd=slot.host.detach(), aim=wiimote.Aim(offset=0))
+    slot.dev.send(bytes([0x20, 0, 0, 0, 0, 0, 0x60]))
+    r.read(now=1.0)
+    slot.sent()
+    for t in (1.5, 2.0, 2.5, 3.0, 3.5):
+        slot.dev.send(bytes([0x30, 0x00, 0x00]))
+        r.read(now=t)
+    assert bytes([0x12, 0x04, 0x33]) in slot.sent()  # set up again
+    # With IR reports arriving it's left alone.
+    for t in (4.0, 4.5, 5.0, 5.5, 6.0, 6.5):
+        slot.dev.send(report_33(0, []))
+        r.read(now=t)
+    assert slot.sent() == []
+
+
 class Sink:
     def __init__(self):
         self.calls = []
@@ -256,3 +291,35 @@ def test_wii_support_switches_on_and_off_live():
     o.config = cfg.parse({"wii_remote": {"enabled": False}})
     o.apply_config()
     assert o.wii is None
+
+
+def test_wii_test_command_shows_buttons_and_dots(monkeypatch):
+    from hearth import ctl
+
+    slot = Slot()
+    fd = slot.host.detach()
+    monkeypatch.setattr(wiimote, "find", lambda: ["/fake"])
+    monkeypatch.setattr(wiimote.Remote, "open", lambda self: setattr(self, "fd", fd) or True)
+    monkeypatch.setattr(wiimote.time, "sleep", lambda s: None)
+    t = [0.0]
+    script = {0.1: bytes([0x30, 0x00, 0x08]), 0.3: report_33(A, [(412, 384, 2), (612, 384, 2)])}
+
+    def clock():
+        t[0] = round(t[0] + 0.05, 2)
+        if t[0] in script:
+            slot.dev.send(script[t[0]])
+        return t[0]
+
+    lines = []
+    assert ctl.cmd_wii_test(1.0, clock=clock, sleep=lambda s: None, out=lines.append) == 0
+    text = "\n".join(lines)
+    assert "remote 1: buttons [a]  camera: no IR reports (camera off)" in text
+    assert "remote 1: buttons [a]  camera: sees 2 dot(s) aim 0.50," in text
+
+
+def test_wii_test_without_dolphinbar(monkeypatch):
+    from hearth import ctl
+
+    monkeypatch.setattr(wiimote, "find", lambda: [])
+    lines = []
+    assert ctl.cmd_wii_test(1.0, out=lines.append) == 1 and "mode 4" in lines[0]

@@ -34,6 +34,10 @@ IR_WIDTH, IR_HEIGHT = 1024, 768
 # The Wii's own "level 3" camera sensitivity.
 IR_SENSITIVITY = (bytes([0x02, 0x00, 0x00, 0x71, 0x01, 0x00, 0xAA, 0x00, 0x64]), bytes([0x63, 0x03]))
 QUIET_SECONDS = 3.0  # no reports for this long: the remote went to sleep or out of range
+# Connected but no IR reports for this long after setting it up: set it up again
+# (it missed the setup, or something else changed its mode), a few times at most.
+IR_SETUP_RETRY_SECONDS = 2.0
+IR_SETUP_RETRIES = 3
 
 
 @dataclass
@@ -88,8 +92,10 @@ class Aim:
     y: float | None = None
     raw: tuple[float, float] | None = None  # the bar's middle, in camera coordinates
     _pair: tuple[Dot, Dot] | None = None  # the last two dots seen together, left one first
+    seen: int = 0  # how many dots the camera saw last time (for hearthctl wii-test)
 
     def update(self, dots: list[Dot]) -> tuple[float, float] | None:
+        self.seen = len(dots)
         if not dots:
             self.x = self.y = self.raw = None
             return None
@@ -160,6 +166,9 @@ class Remote:
     _last_report: float = 0.0
     _last_probe: float = 0.0
     player: int = 1
+    _set_up_at: float | None = None  # when start() last ran for this connection
+    _setups: int = 0
+    _ir_at: float = -1e9  # last report carrying IR
 
     def open(self) -> bool:
         try:
@@ -176,9 +185,15 @@ class Remote:
             except OSError:
                 pass
         self.fd = None
+        self._disconnected()
+
+    def _disconnected(self) -> None:
         self.connected = False
         self.buttons = 0
         self.pointer = None
+        self._set_up_at = None
+        self._setups = 0
+        self._ir_at = -1e9
 
     def send(self, *data: int) -> bool:
         if self.fd is None:
@@ -201,12 +216,13 @@ class Remote:
             self._last_probe = now
             self.send(0x15, 0x00)
 
-    def start(self) -> None:
+    def start(self, rumble: bool = True) -> None:
         """Player LED, a short rumble so you know it's working, IR camera on,
         and continuous reports of buttons + IR."""
         led = 0x10 << ((self.player - 1) % 4)
-        self.send(0x11, led | 0x01)  # bit 0 of every output report is the rumble motor
-        time.sleep(0.12)
+        if rumble:
+            self.send(0x11, led | 0x01)  # bit 0 of every output report is the rumble motor
+            time.sleep(0.12)
         self.send(0x11, led)
         self.send(0x13, 0x04)
         self.send(0x1A, 0x04)
@@ -241,21 +257,30 @@ class Remote:
                 # Status report: after one, the remote stops sending until
                 # the reporting mode is set again (an extension was plugged in,
                 # or we probed a newly paired remote).
-                if not self.connected:
-                    self.connected = True
-                    self.start()
-                else:
+                self.connected = True
+                if self._set_up_at is not None:
                     self.set_reporting()
             buttons = buttons_of(report)
             if buttons is not None:
                 self.connected = True
                 self.buttons = buttons
             if report[0] == REPORT_BUTTONS_ACCEL_IR:
+                self._ir_at = now
+                self._setups = min(self._setups, 1)  # working: allow retries if it stops later
                 self.pointer = self.aim.update(ir_dots(report))
+        if self.connected and self._set_up_at is None:
+            # Newly connected, whatever it sent first: a status report (just
+            # paired, or answering our probe) or buttons (it was already on,
+            # or Dolphin just let go of it). Either way it needs the setup.
+            self.start()
+            self._set_up_at, self._setups = now, 1
+        elif (self.connected and got and self._setups < IR_SETUP_RETRIES
+              and now - max(self._set_up_at, self._ir_at) > IR_SETUP_RETRY_SECONDS):
+            log.info("wii remote: player %d isn't sending IR; setting it up again", self.player)
+            self.start(rumble=False)
+            self._set_up_at, self._setups = now, self._setups + 1
         if self.connected and now - self._last_report > QUIET_SECONDS:
-            self.connected = False
-            self.buttons = 0
-            self.pointer = None
+            self._disconnected()
         return got
 
 
