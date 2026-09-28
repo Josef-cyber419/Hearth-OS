@@ -98,3 +98,47 @@ def test_launch_records_foreground_while_running(tmp_path):
     during = json.loads(marker.read_text())
     assert during["foreground"]["id"] == "probe" and during["focus"] == "foreground"
     assert session.read()["foreground"] is None and session.read()["focus"] == "home"
+
+
+def test_pointer_at_the_bottom_or_top_scrolls_the_rows(surface, shipped_config):
+    config = cfg.load(shipped_config)
+    screen = ui.HomeScreen(surface, Home(config), config.title)
+    rows = len(config.rows)
+    assert rows >= 3
+    screen._pointer, screen._pointer_at = (960, 1060), 100.0  # resting near the bottom
+    screen.edge_scroll(100.0)
+    screen.edge_scroll(100.0 + ui.EDGE_FIRST / 2)
+    assert screen.home.row == 0  # not straight away
+    t = 100.0 + ui.EDGE_FIRST
+    screen.edge_scroll(t)
+    assert screen.home.row == 1
+    for _ in range(rows + 2):
+        t += ui.EDGE_REPEAT
+        screen.edge_scroll(t)
+    assert screen.home.row == rows - 1  # stops at the last row
+
+    screen._pointer, screen._pointer_at = (960, 20), t  # now near the top
+    screen.edge_scroll(t)
+    screen.edge_scroll(t + ui.EDGE_FIRST)
+    assert screen.home.row == rows - 2
+
+    screen._pointer = (960, 540)  # the middle: no scrolling
+    before = screen.home.row
+    for step in range(5):
+        screen.edge_scroll(t + ui.EDGE_FIRST + step)
+    assert screen.home.row == before
+
+
+def test_edge_scroll_waits_for_dialogs_and_a_hidden_pointer(surface, shipped_config):
+    config = cfg.load(shipped_config)
+    screen = ui.HomeScreen(surface, Home(config), config.title)
+    screen._pointer, screen._pointer_at = (960, 1060), 0.0
+    t = ui.POINTER_SECONDS + 1  # pointer not moved for a while: hidden
+    screen.edge_scroll(t)
+    screen.edge_scroll(t + ui.EDGE_FIRST)
+    assert screen.home.row == 0
+    screen._pointer_at = 50.0
+    screen.confirming = config.rows[0].apps[0]
+    screen.edge_scroll(50.0)
+    screen.edge_scroll(50.0 + ui.EDGE_FIRST)
+    assert screen.home.row == 0
