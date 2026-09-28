@@ -16,6 +16,7 @@ Everything below is run from a terminal: Desktop Mode (System → Desktop Mode
 | `hearthctl update` | Install OS and app updates now. Restart to finish. |
 | `hearthctl rollback` | Go back to the previous OS version on the next restart. |
 | `hearthctl menu` / `home` | Open the Quick Menu / close the current app, e.g. over SSH if a controller dies. |
+| `hearthctl buttons` | Live view of the buttons Hearth acts on (Guide, a remote's Home/Menu, the Windows key): which devices have them, every press and release, and what Hearth makes of it (tap = Quick Menu, hold = home). Controllers that connect or wake while it runs show up. If Guide stops working, run it (over SSH, or in Desktop Mode) and press Guide: no line means the press never reaches Hearth. |
 | `hearthctl wii-test` | Live view of each Wii Remote on the DolphinBar: the buttons Hearth reads, and how many sensor-bar dots its camera sees (2 when aimed at the TV). Run it in Desktop Mode. |
 | `hearthctl emulation-setup` | Make ES-DE use Hearth's emulators and download missing RetroArch cores ("can't find emulator core"). |
 | `hearthctl pause` | Go home and keep the game paused (Quick Resume). `hearthctl status` lists paused games. |

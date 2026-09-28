@@ -12,6 +12,7 @@ or over SSH from another computer).
   hearthctl pause           go home, keep the game paused (Quick Resume)
   hearthctl emulation-setup point ES-DE at the installed emulators, fetch RetroArch cores
   hearthctl wii-test        show live what each Wii Remote sends (buttons, sensor bar dots)
+  hearthctl buttons         show live the Guide/Home/Menu presses Hearth sees, and from which device
   hearthctl disable|enable  boot Game Mode straight into Steam / into Hearth
   hearthctl dev PATH|--off  run the launcher from a source checkout
 """
@@ -388,6 +389,100 @@ def cmd_wii_test(seconds: float, clock=time.monotonic, sleep=time.sleep, out=pri
     return 0
 
 
+KEY_NAMES = {0x13C: "Guide", 172: "Home (remote)", 139: "Menu (remote)", 125: "Windows", 126: "Windows"}
+
+
+def cmd_buttons(seconds: float, clock=time.monotonic, out=print, evdev=None) -> int:
+    """Live view of the buttons Hearth acts on: which devices have them, each
+    press and release, and what Hearth makes of it (tap = Quick Menu, hold =
+    home). Devices plugged in or woken while it runs are picked up."""
+    import selectors
+
+    from . import homebutton
+
+    evdev = evdev or homebutton.evdev
+    if evdev is None:
+        out("python-evdev isn't installed, so Hearth can't see the Guide button. Try: hearthctl doctor")
+        return 1
+    wanted = homebutton.GuideTap.keys | homebutton.HomeButton.keys
+    sel = selectors.DefaultSelector()
+    watched: dict[str, object] = {}
+    skipped: set[str] = set()
+
+    def scan(first: bool) -> None:
+        paths = set(evdev.list_devices())
+        for path in list(watched):
+            if path not in paths:
+                out(f"  - {watched.pop(path).name} went away")
+        skipped.intersection_update(paths)
+        for path in sorted(paths - set(watched) - skipped):
+            try:
+                dev = evdev.InputDevice(path)
+                keys = set(dev.capabilities().get(homebutton.EV_KEY, [])) & wanted
+            except OSError as e:
+                if first:
+                    out(f"  ! can't open {path}: {e.strerror or e} (permissions? try: hearthctl doctor)")
+                skipped.add(path)
+                continue
+            if not keys:
+                dev.close()
+                skipped.add(path)
+                continue
+            watched[path] = dev
+            sel.register(dev, selectors.EVENT_READ, path)
+            names = ", ".join(sorted({KEY_NAMES.get(k, str(k)) for k in keys}))
+            out(f"  + {dev.name} ({path}): {names}")
+
+    out("Devices with the buttons Hearth uses:")
+    scan(first=True)
+    if not watched:
+        out("  none yet. Turn the controller on; it'll show up here.")
+    out(f"Press Guide (tap, then hold {homebutton.HOLD_SECONDS:.1f} s) for {seconds:.0f} s. (Ctrl+C stops.)")
+    tapper, holder = homebutton.GuideTap(), homebutton.HomeButton()
+    end, scanned, last_gesture = clock() + seconds, clock(), -1.0
+    try:
+        while clock() < end:
+            if clock() - scanned >= homebutton.RESCAN_SECONDS:
+                scanned = clock()
+                scan(first=False)
+            if not watched:
+                time.sleep(0.1)
+                continue
+            for key, _ in sel.select(timeout=0.1):
+                dev = watched.get(key.data)
+                try:
+                    events = list(key.fileobj.read())
+                except OSError:
+                    sel.unregister(key.fileobj)
+                    out(f"  - {watched.pop(key.data).name} went away")
+                    continue
+                for ev in events:
+                    if ev.type != homebutton.EV_KEY or ev.code not in wanted or ev.value == 2:
+                        continue
+                    now = clock()
+                    out(f"{now % 1000:8.2f}  {dev.name}: {KEY_NAMES.get(ev.code, ev.code)} "
+                        f"{'down' if ev.value else 'up'}")
+                    gestures = []
+                    if tapper.key(ev.code, ev.value, now):
+                        gestures.append("tap -> Quick Menu")
+                    if holder.key(ev.code, ev.value, now):
+                        gestures.append("home")
+                    for g in gestures:
+                        dup = " (ignored: same press from another device)" if now - last_gesture < \
+                            homebutton.DEBOUNCE_SECONDS else ""
+                        last_gesture = now
+                        out(f"          => {g}{dup}")
+            if holder.tick(clock()):
+                out(f"          => held {homebutton.HOLD_SECONDS:.1f} s -> home")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for dev in watched.values():
+            dev.close()
+        sel.close()
+    return 0
+
+
 def cmd_emulation_setup(download: bool, quiet: bool) -> int:
     from . import esde
 
@@ -453,6 +548,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("disable")
     p = sub.add_parser("wii-test")
     p.add_argument("--seconds", type=float, default=30)
+    p = sub.add_parser("buttons")
+    p.add_argument("--seconds", type=float, default=60)
     p = sub.add_parser("emulation-setup")
     p.add_argument("--no-download", action="store_true", help="don't download RetroArch cores")
     p.add_argument("--quiet", action="store_true")
@@ -481,6 +578,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_enable(args.cmd == "enable")
     if args.cmd == "wii-test":
         return cmd_wii_test(args.seconds)
+    if args.cmd == "buttons":
+        return cmd_buttons(args.seconds)
     if args.cmd == "emulation-setup":
         return cmd_emulation_setup(not args.no_download, args.quiet)
     if args.cmd == "dev":
