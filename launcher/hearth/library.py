@@ -9,6 +9,9 @@ internet:
   own cache (appcache/librarycache).
 - Emulation: game files in ~/ROMs/<system>/, names, favourites and play
   history from ES-DE's gamelists, artwork ES-DE's scraper downloaded.
+- PC games that aren't in Steam (AppImages, e.g. a decompiled port): each
+  AppImage in ~/Games/, or each folder in ~/Games/ holding one (see
+  port_games).
 
 ES-DE can't be asked to start one particular game, so Hearth starts pinned
 and recent games itself, with the same emulators and arguments ES-DE uses
@@ -30,6 +33,7 @@ from pathlib import Path
 log = logging.getLogger("hearth")
 
 STEAM_LAUNCHER = "/usr/libexec/hearth/hearth-steam"
+RUN_GAME = "/usr/libexec/hearth/hearth-run-game"
 RECENT = 10  # games in the Continue row
 
 
@@ -176,6 +180,7 @@ RA = "org.libretro.RetroArch"
 # In order of preference, following ES-DE's defaults for what Hearth installs.
 SYSTEMS: dict[str, tuple] = {
     "steam": ("Steam", []),
+    "pc": ("PC", []),
     "nes": ("NES", [(RA, "-L {core} {rom}", "mesen_libretro"), (RA, "-L {core} {rom}", "nestopia_libretro")]),
     "snes": ("SNES", [(RA, "-L {core} {rom}", "snes9x_libretro")]),
     "n64": ("Nintendo 64", [("com.github.Rosalie241.RMG", "--nogui -q {rom}", None),
@@ -321,6 +326,79 @@ def rom_games() -> list[Game]:
     return games
 
 
+# -- PC games (AppImages) ------------------------------------------------------
+
+ART = (".png", ".jpg", ".jpeg", ".webp")
+SCRIPTS = ("start.sh", "launch.sh", "run.sh")
+# Build details in AppImage names: "Dusk-v1.2.0-x86_64" -> "Dusk".
+_BUILD = re.compile(r"^(x86[_-]64|amd64|x64|linux|appimage|v?\d+(\.\d+)*[a-z]?|release|nightly)$", re.I)
+
+
+def ports_dir() -> Path:
+    return home() / "Games"
+
+
+def _title(stem: str) -> str:
+    stem = re.sub(r"x86[_-]64", " ", stem, flags=re.I)
+    words = [w for w in re.split(r"[\s_-]+", stem) if w]
+    kept = [w for w in words if not _BUILD.match(w)]
+    return pretty(" ".join(kept or words))
+
+
+def _art(*candidates: Path) -> str | None:
+    for base in candidates:
+        for ext in ART:
+            if base.with_suffix(ext).is_file():
+                return str(base.with_suffix(ext))
+    return None
+
+
+def _is_appimage(path: Path) -> bool:
+    return path.suffix.lower() == ".appimage" and path.is_file()
+
+
+def _folder_program(folder: Path) -> Path | None:
+    """The program in a game's folder: its AppImage, else a start script."""
+    try:
+        entries = sorted(folder.iterdir())
+    except OSError:
+        return None
+    images = [e for e in entries if _is_appimage(e)]
+    if images:
+        return images[0]
+    return next((folder / n for n in SCRIPTS if (folder / n).is_file()), None)
+
+
+def port_games() -> list[Game]:
+    """PC games outside Steam, from ~/Games/:
+
+    - Name.AppImage, with optional artwork next to it (Name.png)
+    - Name/ holding an AppImage (or start.sh), with optional cover.png: the
+      folder's name is the title, so it can be anything you like. Keep the
+      game's data files in the folder too; it's started from there.
+    """
+    base = ports_dir()
+    games: list[Game] = []
+    try:
+        entries = sorted(base.iterdir())
+    except OSError:
+        return games
+    for entry in entries:
+        if entry.name.startswith("."):
+            continue
+        if _is_appimage(entry):
+            program, title, art = entry, _title(entry.stem), _art(entry)
+        elif entry.is_dir():
+            program = _folder_program(entry)
+            if program is None:
+                continue
+            title, art = entry.name, _art(entry / "cover", entry / "art", program)
+        else:
+            continue
+        games.append(Game(f"pc:{entry.name}", title, "pc", (RUN_GAME, str(program)), art=art))
+    return games
+
+
 # -- pins and play history -------------------------------------------------------
 
 
@@ -361,6 +439,10 @@ def all_games() -> list[Game]:
         games += rom_games()
     except Exception:
         log.exception("reading ROMs")
+    try:
+        games += port_games()
+    except Exception:
+        log.exception("reading ~/Games")
     ours = played()
     games = [g if ours.get(g.key, 0) <= g.last_played else
              Game(g.key, g.title, g.system, g.command, ours[g.key], g.art, g.favorite) for g in games]
@@ -382,7 +464,7 @@ def pinned(games: list[Game], pins: list[str]) -> list[Game]:
 
 # -- as home screen tiles ------------------------------------------------------
 
-COLORS = {"steam": "#1b2838", "psx": "#3b3f8c", "ps2": "#1f3d8a", "ps3": "#26262e", "psp": "#2d2d38",
+COLORS = {"steam": "#1b2838", "pc": "#3a4a5c", "psx": "#3b3f8c", "ps2": "#1f3d8a", "ps3": "#26262e", "psp": "#2d2d38",
           "gc": "#4b2a8a", "wii": "#5a6470", "wiiu": "#1f7a9c", "switch": "#b0202a", "n64": "#2f7a3a",
           "snes": "#5a4a8a", "nes": "#8a2a2a", "nds": "#5a5a5a", "n3ds": "#9c2a2a", "xbox": "#2f7a2f",
           "gba": "#4a3a8a", "gb": "#6a7a3a", "gbc": "#7a3a8a", "genesis": "#2a2a2a", "megadrive": "#2a2a2a",
@@ -410,8 +492,6 @@ def with_game_rows(config, games: list[Game] | None = None):
     from . import settings
     from .config import Row
 
-    if not (config.home_recent or config.home_pins):
-        return config
     games = all_games() if games is None else games
     prefs = settings.load()
     rows = []
@@ -423,6 +503,10 @@ def with_game_rows(config, games: list[Game] | None = None):
         apps = tuple(as_app(g) for g in pinned(games, prefs.get("pins", [])))
         if apps:
             rows.append(Row("Pinned", apps))
+    # Your own PC games (~/Games) get a row of their own: nothing else lists them.
+    apps = tuple(as_app(g) for g in sorted(games, key=lambda g: g.title.lower()) if g.system == "pc")
+    if apps:
+        rows.append(Row("PC games", apps))
     return replace(config, rows=tuple(rows) + config.rows)
 
 
@@ -443,7 +527,7 @@ def library_config(games: list[Game] | None = None):
     by_system: dict[str, list[Game]] = {}
     for g in sorted(games, key=lambda g: g.title.lower()):
         by_system.setdefault(g.system, []).append(g)
-    order = ["steam"] + [s for s in SYSTEMS if s != "steam"]
+    order = ["steam", "pc"] + [s for s in SYSTEMS if s not in ("steam", "pc")]
     for system in order:
         if system in by_system:
             rows.append(Row(SYSTEMS[system][0], tuple(as_app(g) for g in by_system[system])))

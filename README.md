@@ -71,6 +71,9 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   Hearth turns into "back to home", or hold **Guide for 4 s**, which closes
   Steam whatever state it's in. In Desktop Mode, holding Guide goes back to
   Hearth too.
+- **PC ports and AppImages as tiles**: drop an AppImage (e.g. a decompiled
+  Twilight Princess port) in `~/Games` and it gets a tile in a **PC games**
+  row. See [EMULATION.md](docs/EMULATION.md#pc-ports-appimages-straight-on-the-home-screen).
 - **Quit just the game in ES-DE**: Quick Menu → System → *Quit game, back to
   ES-DE* closes the emulator and leaves you on your game list.
 - **Remote-friendly apps only**: every default tile uses a TV/console interface

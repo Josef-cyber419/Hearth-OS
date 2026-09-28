@@ -1,0 +1,24 @@
+#!/usr/bin/bash
+# Start a PC game from ~/Games (an AppImage or a start script), from its own
+# folder: ports of decompiled games often look for their data files next to
+# themselves.
+set -u
+program=${1:?usage: hearth-run-game PROGRAM [ARGS...]}
+shift
+cd "$(dirname "$program")" || exit 1
+
+# Downloads often lose the "executable" permission.
+[[ -x $program ]] || chmod u+x "$program" 2>/dev/null
+
+case ${program,,} in
+*.appimage)
+    # Without FUSE an AppImage can still run by unpacking itself first.
+    if ! command -v fusermount >/dev/null && ! command -v fusermount3 >/dev/null; then
+        export APPIMAGE_EXTRACT_AND_RUN=1
+    fi
+    exec "$program" "$@" ;;
+*.sh)
+    exec bash "$program" "$@" ;;
+*)
+    exec "$program" "$@" ;;
+esac

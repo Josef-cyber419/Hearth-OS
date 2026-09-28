@@ -15,7 +15,7 @@ pkg = next(p for p in stable["packages"] if p["name"] == "LinuxAppImage")
 print(stable["version"], pkg["url"], pkg["md5"])')
 
 # Where ES-DE looks for games, and where BIOS/firmware files go.
-mkdir -p "$HOME/ROMs" "$HOME/BIOS"
+mkdir -p "$HOME/ROMs" "$HOME/BIOS" "$HOME/Games"
 
 if [[ -x $dest && -f $state && $(<"$state") == "$version" ]]; then
     exit 0
