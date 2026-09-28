@@ -7,8 +7,8 @@ without cores, so ES-DE says it can't find the emulator core. Two fixes:
 
 - Where Hearth installed a standalone emulator, select it for that console,
   the same way ES-DE's own Other settings → Alternative emulators does (an
-  <alternativeEmulator> entry in the console's gamelist.xml). Done once per
-  console, so a different choice made later in ES-DE sticks.
+  <alternativeEmulator> entry at the top of the console's gamelist.xml). Done
+  once per console, so a different choice made later in ES-DE sticks.
 - For consoles only RetroArch covers, download the core ES-DE uses by
   default from libretro's buildbot (what RetroArch's own updater uses).
 """
@@ -62,45 +62,92 @@ def gamelist(system: str) -> Path:
     return library.esde_dir() / "gamelists" / system / "gamelist.xml"
 
 
-def has_alternative(path: Path) -> bool | None:
-    """Whether a gamelist already names an emulator (None: can't tell)."""
-    if not path.exists() or path.stat().st_size == 0:
-        return False
-    text = path.read_text(errors="replace")
-    if "<alternativeEmulator" in text:
-        return True
-    try:
-        ET.fromstring(text)
-    except ET.ParseError:
-        return None
-    return False
+# ES-DE (3.4) reads the emulator choice from an <alternativeEmulator> element
+# before <gameList>, at the top level of the file (not quite standard XML):
+#
+#   <?xml version="1.0"?>
+#   <alternativeEmulator>
+#   	<label>Dolphin (Standalone)</label>
+#   </alternativeEmulator>
+#   <gameList>...</gameList>
+#
+# Its development code also accepts it inside <gameList>, but releases don't.
+
+
+def _split(text: str) -> tuple[str | None, str]:
+    """(top-level <alternativeEmulator> block or None, the rest from <gameList> on)."""
+    at = text.find("<gameList")
+    head, rest = (text, "") if at < 0 else (text[:at], text[at:])
+    start = head.find("<alternativeEmulator")
+    if start < 0:
+        return None, rest
+    stop = head.find("</alternativeEmulator>", start)
+    return (head[start:stop + len("</alternativeEmulator>")] if stop >= 0 else None), rest
+
+
+def _write(path: Path, label: str, game_list: str) -> None:
+    alt = ET.Element("alternativeEmulator")
+    ET.SubElement(alt, "label").text = label
+    ET.indent(alt, "\t")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".xml.hearth-tmp")
+    tmp.write_text('<?xml version="1.0"?>\n' + ET.tostring(alt, encoding="unicode") + "\n"
+                   + game_list.rstrip() + "\n")
+    os.replace(tmp, path)
+
+
+def _inner_alternative(game_list: str) -> tuple[str | None, str]:
+    """An <alternativeEmulator> inside <gameList> (what an earlier Hearth wrote):
+    (its label, the gameList without it). (None, unchanged) if there isn't one."""
+    root = ET.fromstring(game_list)
+    inner = root.find("alternativeEmulator")
+    if root.tag != "gameList" or inner is None:
+        return None, game_list
+    label = inner.findtext("label")
+    root.remove(inner)
+    ET.indent(root, "\t")
+    return label, ET.tostring(root, encoding="unicode")
 
 
 def select_emulator(system: str, label: str) -> bool:
-    """Set a console's emulator in its gamelist.xml. Returns True if written."""
+    """Set a console's emulator in its gamelist.xml, unless one is already
+    chosen. Returns True if written."""
     path = gamelist(system)
-    state = has_alternative(path)
-    if state is not False:
-        return False  # already chosen (by ES-DE or earlier), or a file we can't safely edit
-    if path.exists() and path.stat().st_size:
-        root = ET.fromstring(path.read_text(errors="replace"))
-        if root.tag != "gameList":
-            return False
-    else:
-        root = ET.Element("gameList")
-    alt = ET.Element("alternativeEmulator")
-    ET.SubElement(alt, "label").text = label
-    root.insert(0, alt)
-    ET.indent(root, "\t")
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".xml.hearth-tmp")
-    tmp.write_text('<?xml version="1.0"?>\n' + ET.tostring(root, encoding="unicode") + "\n")
-    os.replace(tmp, path)
+    text = path.read_text(errors="replace") if path.exists() else ""
+    top, game_list = _split(text)
+    if top is not None:
+        return False  # already chosen (in ES-DE, or by Hearth before)
+    if not game_list.strip():
+        game_list = "<gameList />"
+    inner, game_list = _inner_alternative(game_list)
+    _write(path, inner or label, game_list)
+    return True
+
+
+def fix_layout(system: str) -> bool:
+    """Move an emulator choice an earlier Hearth wrote inside <gameList> to
+    where ES-DE reads it. Returns True if the file changed."""
+    path = gamelist(system)
+    if not path.exists():
+        return False
+    top, game_list = _split(path.read_text(errors="replace"))
+    if top is not None or not game_list.strip():
+        return False
+    inner, game_list = _inner_alternative(game_list)
+    if inner is None:
+        return False
+    _write(path, inner, game_list)
     return True
 
 
 def select_standalone(done: set[str]) -> set[str]:
     """Select Hearth's standalone emulators in ES-DE, once per console."""
+    for system in STANDALONE:
+        try:
+            if fix_layout(system):
+                log.info("ES-DE: moved %s's emulator choice to where ES-DE reads it", system)
+        except (OSError, ET.ParseError) as e:
+            log.warning("ES-DE: couldn't check %s's gamelist: %s", system, e)
     for system, (app, label) in STANDALONE.items():
         if system in done or not library.flatpak_installed(app):
             continue

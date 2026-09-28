@@ -17,8 +17,14 @@ def home(tmp_path, monkeypatch):
 
 
 def label(system):
-    root = ET.parse(esde.gamelist(system)).getroot()
-    return root.findtext("alternativeEmulator/label")
+    """The emulator ES-DE 3.4 will use: only a top-level <alternativeEmulator> counts."""
+    top, _ = esde._split(esde.gamelist(system).read_text())
+    return ET.fromstring(top).findtext("label") if top else None
+
+
+def games(system):
+    _, rest = esde._split(esde.gamelist(system).read_text())
+    return [g.findtext("name") for g in ET.fromstring(rest).iter("game")]
 
 
 def test_selects_standalone_emulators(home):
@@ -42,15 +48,40 @@ def test_keeps_existing_games_and_the_users_choice(home):
     before = chosen.read_text()
 
     esde.setup(download=False)
-    root = ET.parse(path).getroot()
-    assert root.findtext("alternativeEmulator/label") == "Dolphin (Standalone)"
-    assert root.findtext("game/name") == "Zelda"
+    assert label("gc") == "Dolphin (Standalone)"
+    assert games("gc") == ["Zelda"]
     assert chosen.read_text() == before  # set in ES-DE: left alone
+
+
+def test_written_the_way_esde_writes_it(home):
+    esde.setup(download=False)
+    text = esde.gamelist("wii").read_text()
+    assert text == ('<?xml version="1.0"?>\n<alternativeEmulator>\n\t<label>Dolphin (Standalone)</label>\n'
+                    '</alternativeEmulator>\n<gameList />\n')
+
+
+def test_moves_a_choice_an_earlier_hearth_put_inside_gamelist(home):
+    # Exactly what the first version wrote (ES-DE 3.4 ignores it there).
+    settings.save({"esde_emulators_set": sorted(esde.STANDALONE)})
+    path = esde.gamelist("gc")
+    path.parent.mkdir(parents=True)
+    path.write_text('<?xml version="1.0"?>\n<gameList>\n\t<alternativeEmulator>\n'
+                    '\t\t<label>Dolphin (Standalone)</label>\n\t</alternativeEmulator>\n'
+                    '\t<game>\n\t\t<path>./Twilight Princess.ciso</path>\n\t\t<name>Twilight Princess</name>\n'
+                    '\t</game>\n</gameList>\n')
+    esde.setup(download=False)
+    assert label("gc") == "Dolphin (Standalone)"
+    assert games("gc") == ["Twilight Princess"]
+    _, rest = esde._split(path.read_text())
+    assert "alternativeEmulator" not in rest
+    before = path.read_text()
+    esde.setup(download=False)
+    assert path.read_text() == before  # done once
 
 
 def test_only_once_so_a_later_change_in_esde_sticks(home):
     esde.setup(download=False)
-    esde.gamelist("gc").write_text('<?xml version="1.0"?>\n<gameList />\n')  # back to ES-DE's default
+    esde.gamelist("gc").write_text('<?xml version="1.0"?>\n<gameList />\n')  # ES-DE: back to its default
     esde.setup(download=False)
     assert label("gc") is None
 
