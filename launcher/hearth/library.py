@@ -330,6 +330,10 @@ def rom_games() -> list[Game]:
 
 ART = (".png", ".jpg", ".jpeg", ".webp")
 SCRIPTS = ("start.sh", "launch.sh", "run.sh")
+# GameCube/Wii disc images. Ports of disc games (Dusklight, for Twilight
+# Princess) take one as their argument; otherwise they open a file picker
+# first, which has nowhere to show in Game Mode.
+DISCS = (".iso", ".gcm", ".ciso", ".gcz", ".rvz", ".wbfs", ".wia", ".nfs", ".tgc")
 # Build details in AppImage names: "Dusk-v1.2.0-x86_64" -> "Dusk".
 _BUILD = re.compile(r"^(x86[_-]64|amd64|x64|linux|appimage|v?\d+(\.\d+)*[a-z]?|release|nightly)$", re.I)
 
@@ -369,13 +373,21 @@ def _folder_program(folder: Path) -> Path | None:
     return next((folder / n for n in SCRIPTS if (folder / n).is_file()), None)
 
 
+def _disc(folder: Path) -> Path | None:
+    try:
+        return next((e for e in sorted(folder.iterdir()) if e.suffix.lower() in DISCS and e.is_file()), None)
+    except OSError:
+        return None
+
+
 def port_games() -> list[Game]:
     """PC games outside Steam, from ~/Games/:
 
     - Name.AppImage, with optional artwork next to it (Name.png)
     - Name/ holding an AppImage (or start.sh), with optional cover.png: the
       folder's name is the title, so it can be anything you like. Keep the
-      game's data files in the folder too; it's started from there.
+      game's data files in the folder too; it's started from there. A disc
+      image in the folder is passed to it (see DISCS).
     """
     base = ports_dir()
     games: list[Game] = []
@@ -386,6 +398,7 @@ def port_games() -> list[Game]:
     for entry in entries:
         if entry.name.startswith("."):
             continue
+        args: tuple[str, ...] = ()
         if _is_appimage(entry):
             program, title, art = entry, _title(entry.stem), _art(entry)
         elif entry.is_dir():
@@ -393,9 +406,11 @@ def port_games() -> list[Game]:
             if program is None:
                 continue
             title, art = entry.name, _art(entry / "cover", entry / "art", program)
+            disc = _disc(entry)
+            args = (str(disc),) if disc else ()
         else:
             continue
-        games.append(Game(f"pc:{entry.name}", title, "pc", (RUN_GAME, str(program)), art=art))
+        games.append(Game(f"pc:{entry.name}", title, "pc", (RUN_GAME, str(program), *args), art=art))
     return games
 
 
