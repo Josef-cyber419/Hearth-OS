@@ -57,35 +57,41 @@ def wait_for(predicate, timeout=10.0):
 def test_switch_to_desktop_returns_home(env):
     proc = start(env)
     dropin = env["run"] / DROPIN
-    assert wait_for(dropin.exists)
-    assert "RefuseManualStop=yes" in dropin.read_text()  # Steam's logout will be refused
-    time.sleep(0.3)
+    time.sleep(0.5)
     assert proc.poll() is None  # Steam is running
+    assert not dropin.exists()  # the logout isn't blocked (that could hang Steam)
 
     # Steam asks SteamOS Manager for the desktop: it writes a one-time login.
     (env["sddm"] / "zzt-steamos-temp-login.conf").write_text("[Autologin]\nSession=plasma.desktop\n")
     proc.wait(timeout=10)
 
-    assert not (env["sddm"] / "zzt-steamos-temp-login.conf").exists()  # no KDE at next login
-    assert not dropin.exists()  # logouts work normally again
-    calls = env["log"].read_text()
-    assert "steam -shutdown" in calls and "systemctl --user daemon-reload" in calls
+    assert not (env["sddm"] / "zzt-steamos-temp-login.conf").exists()  # next login: Hearth, not KDE
+    assert "steam -shutdown" in env["log"].read_text()
 
 
-def test_steam_exiting_normally_cleans_up(env):
-    proc = start(env)
+def test_a_leftover_logout_block_is_removed(env):
     dropin = env["run"] / DROPIN
-    assert wait_for(dropin.exists)
+    dropin.parent.mkdir(parents=True)
+    dropin.write_text("[Unit]\nRefuseManualStop=yes\n")  # from the earlier version
+    proc = start(env)
+    assert wait_for(lambda: not dropin.exists())
+    assert "systemctl --user daemon-reload" in env["log"].read_text()
     (env["tmp"] / "quit").touch()
     proc.wait(timeout=10)
-    assert not dropin.exists()
+
+
+def test_steam_exiting_normally(env):
+    proc = start(env)
+    time.sleep(0.3)
+    (env["tmp"] / "quit").touch()
+    proc.wait(timeout=10)
+    assert "steam -shutdown" not in env["log"].read_text()
 
 
 def test_a_game_mode_login_is_left_alone(env):
     game = env["sddm"] / "zzt-steamos-temp-login.conf"
     game.write_text("[Autologin]\nSession=gamescope-wayland.desktop\n")
     proc = start(env)
-    assert wait_for((env["run"] / DROPIN).exists)
     time.sleep(1.2)
     assert proc.poll() is None and game.exists()  # not a desktop request
     (env["tmp"] / "quit").touch()
@@ -126,3 +132,42 @@ def test_desktop_tile_clears_a_leftover_dropin(env):
     subprocess.run(["bash", str(env["tmp"] / "desktop")], env=env["env"], check=True)
     assert not dropin.exists()
     assert "steamosctl switch-to-desktop-mode" in env["log"].read_text()
+
+
+def marker(env):
+    return env["tmp"] / "state/hearth/steam-in-hearth"
+
+
+def test_marker_while_steam_runs_kept_on_logout(env):
+    env["env"]["XDG_STATE_HOME"] = str(env["tmp"] / "state")
+    proc = start(env)
+    assert wait_for(marker(env).exists)
+    first = marker(env).stat().st_mtime
+    time.sleep(1.2)
+    assert marker(env).stat().st_mtime > first  # kept fresh
+    proc.terminate()  # the session logging out stops it from outside
+    proc.wait(timeout=10)
+    assert marker(env).exists()  # so the desktop knows to send you back
+
+
+def test_marker_removed_when_steam_closes_itself(env):
+    env["env"]["XDG_STATE_HOME"] = str(env["tmp"] / "state")
+    proc = start(env)
+    assert wait_for(marker(env).exists)
+    (env["tmp"] / "quit").touch()
+    proc.wait(timeout=10)
+    assert not marker(env).exists()
+
+
+def test_desktop_tile_clears_the_marker(env):
+    env["env"]["XDG_STATE_HOME"] = str(env["tmp"] / "state")
+    marker(env).parent.mkdir(parents=True)
+    marker(env).touch()
+    fake_bin = env["tmp"] / "bin"
+    (fake_bin / "steamosctl").write_text("#!/usr/bin/bash\n")
+    (fake_bin / "steamosctl").chmod(0o755)
+    script = (LIBEXEC / "hearth-desktop").read_text().replace(
+        "/usr/libexec/os-session-select /usr/bin/steamos-session-select", "/nonexistent")
+    (env["tmp"] / "desktop").write_text(script)
+    subprocess.run(["bash", str(env["tmp"] / "desktop")], env=env["env"], check=True)
+    assert not marker(env).exists()

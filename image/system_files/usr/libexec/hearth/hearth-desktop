@@ -9,6 +9,9 @@ if [[ -e $dropin ]]; then
     systemctl --user daemon-reload
 fi
 
+# A deliberate trip to the desktop: don't let it bounce back to Game Mode.
+rm -f "${XDG_STATE_HOME:-$HOME/.local/state}/hearth/steam-in-hearth"
+
 for select in /usr/libexec/os-session-select /usr/bin/steamos-session-select; do
     [[ -x $select ]] && exec "$select" plasma
 done

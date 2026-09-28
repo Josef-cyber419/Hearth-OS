@@ -109,7 +109,7 @@ the menu is open), written under a file lock.
 | `launcher/hearth/config.py` | `apps.toml` parsing and "is this app installed?" checks. |
 | `usr/libexec/hearth/hearth-steam` | Runs Steam's console UI inside the current gamescope. |
 | `usr/libexec/hearth/shims/steamos-session-select` | On `PATH` for apps started by Hearth. Turns an app's `steamos-session-select plasma` into "exit Steam → Hearth home" (older Steam clients). |
-| `usr/libexec/hearth/hearth-steam`, `hearth-session` | Runs Steam. Current Steam asks SteamOS Manager (D-Bus `SwitchToDesktopMode`) to write a one-time desktop login to `/etc/sddm.conf.d/zzt-steamos-temp-login.conf` and stop `graphical-session.target`. While Steam runs from Hearth, a runtime drop-in sets `RefuseManualStop=yes` on that target so the logout fails; `hearth-steam` sees the desktop login appear, clears it with the `hearth-session` root helper (sudoers: that one action) and asks Steam to exit, which lands back home. `hearth-desktop` removes the drop-in first. |
+| `usr/libexec/hearth/hearth-steam`, `hearth-session` | Runs Steam. Steam's "Switch to Desktop" logs out; to come back, `hearth-steam` keeps `~/.local/state/hearth/steam-in-hearth` fresh while Steam runs (kept if the session stops it, removed if Steam closes itself), and the desktop's `hearth-desktop-guide` switches straight back to Game Mode if it finds it under a minute old (used once, so it can't loop). If SteamOS Manager's one-time desktop login file (`/etc/sddm.conf.d/zzt-steamos-temp-login.conf`) appears, it's cleared through the `hearth-session` root helper. The logout isn't blocked: an earlier version refused it, which hung Steam. |
 | `usr/libexec/hearth/hearth-desktop` | Real Desktop Mode, via Bazzite's session switcher. |
 | `usr/libexec/hearth/hearth-cec` + udev/systemd units | Pulse-Eight USB-CEC: register as a playback device, wake/standby the TV on resume/suspend/shutdown. |
 | `usr/libexec/hearth/hearth-esde-update` + user timer | Installs/updates the ES-DE AppImage in `~/Applications` (checksum-verified) and creates `~/ROMs` and `~/BIOS`. |
@@ -170,9 +170,11 @@ These couldn't be tested without a real machine. Check them first, in this order
    the front.
 3. **Steam from the tile** behaves like normal Game Mode: Quick Access menu,
    performance overlay, sleep, game launching.
-4. **Steam → Switch to Desktop** returns to the Hearth home screen, not KDE,
-   and Quick Resume games survive (see `hearth-steam`). The journal shows
-   "hearth-steam: Steam asked for the desktop".
+4. **Steam → Switch to Desktop** never hangs and lands back in Hearth: the
+   session logs out, the desktop starts, and `hearth-desktop-guide` finds
+   `hearth-steam`'s fresh marker (`~/.local/state/hearth/steam-in-hearth`) and
+   switches straight back to Game Mode (journal: "came from Steam's Switch to
+   Desktop"). Hearth's own Desktop Mode tile clears the marker first.
 5. **Hold Guide** closes VacuumTube/Kodi/ES-DE and returns home. The session user
    needs read access to controller event devices. logind normally grants this
    to the active seat, but confirm it.

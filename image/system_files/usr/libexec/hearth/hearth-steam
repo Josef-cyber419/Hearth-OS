@@ -2,21 +2,29 @@
 # Steam in its console UI (the Steam Deck / Big Picture interface), running
 # inside the current gamescope session. When Steam exits, Hearth comes back.
 #
-# Steam's "Switch to Desktop" asks SteamOS Manager to log out into the
-# desktop: it writes a one-time login session (Session=plasma...) to
-# $sddm_dir/zzt-steamos-temp-login.conf, then stops graphical-session.target,
-# which would end Hearth and any Quick Resume games. Inside Hearth it should
-# just mean "leave Steam". So while Steam runs here:
-#   - a runtime drop-in refuses manual stops of graphical-session.target,
-#     so the logout fails and the session stays up;
-#   - when that one-time desktop login appears, it's cleared (hearth-session,
-#     through sudo) and Steam is asked to exit, which lands back home.
-# hearth-desktop removes the drop-in before a deliberate switch to the desktop.
+# Steam's "Switch to Desktop": with upstream SteamOS Manager it writes a
+# one-time login session (Session=plasma...) to
+# $sddm_dir/zzt-steamos-temp-login.conf and logs out. If that file appears
+# while Steam runs here, it's cleared (hearth-session, through sudo), so the
+# login that follows is Game Mode (Hearth) rather than the desktop, and Steam
+# is asked to exit.
+#
+# Whatever path the switch takes, the desktop it lands on sends you back:
+# while Steam runs, $marker is touched every half second, and the desktop's
+# hearth-desktop-guide (desktopguide.py) switches straight back to Game Mode
+# if it finds a fresh one when the desktop starts.
+#
+# An earlier version also refused the logout (RefuseManualStop on
+# graphical-session.target) to keep the session up. Bazzite doesn't always go
+# through that file, and then nothing brought you home: Steam hung on
+# "Switching to Desktop". The logout is no longer blocked; the leftover
+# drop-in (if any) is removed.
 
 sddm_dir=${HEARTH_SDDM_DIR:-/etc/sddm.conf.d}
 temp_login=$sddm_dir/zzt-steamos-temp-login.conf
 dropin_dir=${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd/user/graphical-session.target.d
 dropin=$dropin_dir/50-hearth-steam.conf
+marker=${XDG_STATE_HOME:-$HOME/.local/state}/hearth/steam-in-hearth
 
 # Bazzite's Game Mode may run the "ogui-steam" session, which doesn't carry
 # the stock Steam session's feature flags (HDR, VRR, tearing controls...).
@@ -44,17 +52,21 @@ cleanup() {
 # Left over from before (e.g. Steam was killed mid-switch): not a new request.
 desktop_requested && clear_desktop_login
 
-mkdir -p "$dropin_dir"
-printf '[Unit]\n# Hearth: Steam is running inside Hearth; see hearth-steam.\nRefuseManualStop=yes\n' >"$dropin"
-systemctl --user daemon-reload 2>/dev/null
-trap cleanup EXIT
-trap 'kill -TERM "$steam_pid" 2>/dev/null' TERM INT HUP
+# From an earlier version that blocked the logout; never leave it behind.
+[[ -e $dropin ]] && cleanup
+# Stopped from outside (the session is logging out): keep the marker. Steam
+# closed by itself: remove it, so a later trip to the desktop isn't bounced.
+ending=no
+trap 'ending=yes; kill -TERM "$steam_pid" 2>/dev/null' TERM INT HUP
+trap '[[ $ending == no ]] && rm -f "$marker"' EXIT
+mkdir -p "$(dirname "$marker")"
 
 steam -gamepadui -steamos3 -steampal -steamdeck "$@" &
 steam_pid=$!
 
 left=no
 while kill -0 "$steam_pid" 2>/dev/null; do
+    touch "$marker"
     if [[ $left == no ]] && desktop_requested; then
         echo "hearth-steam: Steam asked for the desktop; returning to Hearth instead" >&2
         clear_desktop_login
