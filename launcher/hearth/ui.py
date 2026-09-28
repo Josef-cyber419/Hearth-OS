@@ -28,6 +28,10 @@ RETURN_SECONDS = 0.55
 LAUNCH_SECONDS = 0.42
 CONFIRM_SECONDS = 0.18
 POINTER_SECONDS = 2.5  # the pointer hides this long after it last moved
+# Resting the pointer near the top or bottom edge scrolls the rows.
+EDGE_ZONE = 0.12  # fraction of the screen's height at each edge
+EDGE_FIRST = 0.35  # seconds at the edge before the first step
+EDGE_REPEAT = 0.55  # then one row this often
 SLANT = 0.45  # the lean of the big livery stripes, as a fraction of height
 
 
@@ -233,6 +237,7 @@ class HomeScreen:
         self._focus_since = self._last
         self._hits: list[tuple[pygame.Rect, int, int]] = []  # tiles on screen, for the pointer
         self._pointer: tuple[int, int] | None = None
+        self._edge: tuple[Nav, float] | None = None  # scrolling at an edge: (direction, next step)
         self._pointer_at = 0.0
         self.options: tuple[App, list, int] | None = None
         self.rebuild: Callable[[], object] | None = None  # fresh contents after a change
@@ -407,6 +412,28 @@ class HomeScreen:
             if hit:
                 self.home.row, self.home.cols[hit[0]] = hit
                 self.intro = None
+
+    def edge_scroll(self, now: float) -> None:
+        """With the pointer resting near the top or bottom, step through the rows."""
+        if (self._pointer is None or self.confirming is not None or self.options is not None
+                or now - self._pointer_at > POINTER_SECONDS):
+            self._edge = None
+            return
+        y, h = self._pointer[1], self.theme.height
+        direction = Nav.UP if y < h * EDGE_ZONE else Nav.DOWN if y > h * (1 - EDGE_ZONE) else None
+        if direction is None:
+            self._edge = None
+            return
+        if self._edge is None or self._edge[0] is not direction:
+            self._edge = (direction, now + EDGE_FIRST)
+            return
+        if now >= self._edge[1]:
+            before = self.home.row
+            self.home.move(direction)
+            if self.home.row != before:
+                self._pointer_at = now  # keep the pointer showing while it scrolls
+                self.intro = None
+            self._edge = (direction, now + EDGE_REPEAT)
 
     def click(self, pos: tuple[int, int]) -> App | None:
         """A click on a tile opens it (or answers the confirm dialog)."""
@@ -914,6 +941,7 @@ def run(
             pygame.display.flip()
             clock.tick(10)
             continue
+        screen.edge_scroll(time.monotonic())
         screen.draw()
         pygame.display.flip()
         if stats is not None:

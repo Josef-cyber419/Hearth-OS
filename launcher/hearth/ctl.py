@@ -11,6 +11,7 @@ or over SSH from another computer).
   hearthctl menu | home     open the Quick Menu / close the app and go home
   hearthctl pause           go home, keep the game paused (Quick Resume)
   hearthctl emulation-setup point ES-DE at the installed emulators, fetch RetroArch cores
+  hearthctl wii-test        show live what each Wii Remote sends (buttons, sensor bar dots)
   hearthctl disable|enable  boot Game Mode straight into Steam / into Hearth
   hearthctl dev PATH|--off  run the launcher from a source checkout
 """
@@ -24,6 +25,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -344,6 +346,48 @@ def cmd_rollback(yes: bool) -> int:
     return 0 if ok else 1
 
 
+def cmd_wii_test(seconds: float, clock=time.monotonic, sleep=time.sleep, out=print) -> int:
+    """Live view of the Wii Remotes on a DolphinBar: buttons as Hearth reads
+    them, and the sensor bar's dots as the remote's camera sees them."""
+    from . import wiimote
+
+    paths = wiimote.find()
+    if not paths:
+        out("No DolphinBar Wii Remote slots found. Is the DolphinBar plugged in and in mode 4?")
+        return 1
+    remotes = [wiimote.Remote(p, player=i + 1) for i, p in enumerate(paths)]
+    opened = [r for r in remotes if r.open()]
+    if not opened:
+        out("Can't open the DolphinBar's slots (permissions?). Try: hearthctl doctor")
+        return 1
+    out(f"Watching {len(opened)} slots for {seconds:.0f} s. Press buttons and aim at the TV. (Ctrl+C stops.)")
+    last: dict[str, str] = {}
+    end = clock() + seconds
+    try:
+        while clock() < end:
+            now = clock()
+            for r in opened:
+                r.read(now)
+                if not r.connected:
+                    r.probe(now)
+                    continue
+                pressed = [name for bit, name in wiimote.NAMES.items() if r.buttons & bit]
+                ir = ("no IR reports (camera off)" if now - r._ir_at > 1 else
+                      f"sees {r.aim.seen} dot(s)" + ("" if r.aim.seen >= 2 else ": aim at the DolphinBar"))
+                aim = f" aim {r.pointer[0]:.2f},{r.pointer[1]:.2f}" if r.pointer else ""
+                line = f"remote {r.player}: buttons [{' '.join(pressed) or '-'}]  camera: {ir}{aim}"
+                if last.get(r.path) != line:
+                    last[r.path] = line
+                    out(line)
+            sleep(0.05)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for r in opened:
+            r.close()
+    return 0
+
+
 def cmd_emulation_setup(download: bool, quiet: bool) -> int:
     from . import esde
 
@@ -407,6 +451,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("pause")
     sub.add_parser("enable")
     sub.add_parser("disable")
+    p = sub.add_parser("wii-test")
+    p.add_argument("--seconds", type=float, default=30)
     p = sub.add_parser("emulation-setup")
     p.add_argument("--no-download", action="store_true", help="don't download RetroArch cores")
     p.add_argument("--quiet", action="store_true")
@@ -433,6 +479,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_request(args.cmd)
     if args.cmd in ("enable", "disable"):
         return cmd_enable(args.cmd == "enable")
+    if args.cmd == "wii-test":
+        return cmd_wii_test(args.seconds)
     if args.cmd == "emulation-setup":
         return cmd_emulation_setup(not args.no_download, args.quiet)
     if args.cmd == "dev":

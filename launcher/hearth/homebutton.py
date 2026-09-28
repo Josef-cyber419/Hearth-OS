@@ -2,7 +2,8 @@
 whatever app has focus:
 
 - hold Guide (or press a remote's Home key): return to the home screen
-- tap Guide (or press a remote's Menu key): open the Quick Menu
+- tap Guide (or press a remote's Menu key, or tap a keyboard's Windows key):
+  open the Quick Menu
 
 Reads input devices directly with python-evdev (read-only, no grab), so it
 works whatever app has focus. Optional: without evdev this is a no-op.
@@ -24,6 +25,7 @@ HOLD_SECONDS = 1.5
 BTN_MODE = 0x13C  # Guide / Xbox / PS button
 KEY_HOMEPAGE = 172  # "Home" key on media remotes and FLIRC
 KEY_MENU = 139  # "Menu" key on media remotes and FLIRC
+KEY_LEFTMETA, KEY_RIGHTMETA = 125, 126  # the keyboard's Windows / Super keys
 HOLD_KEYS = {BTN_MODE}
 TAP_KEYS = {KEY_HOMEPAGE}
 # A Guide press shorter than this is a tap.
@@ -64,24 +66,28 @@ class HomeButton:
 
 
 class GuideTap:
-    """Decides when the Quick Menu gesture happened: a short Guide press."""
+    """Decides when the Quick Menu gesture happened: a short Guide press, or
+    the Windows key tapped on its own (not as part of a shortcut)."""
 
-    keys = {BTN_MODE, KEY_MENU}
+    tapped_keys = {BTN_MODE, KEY_LEFTMETA, KEY_RIGHTMETA}
+    keys = tapped_keys | {KEY_MENU}
 
     def __init__(self, tap_max: float = TAP_MAX_SECONDS) -> None:
         self.tap_max = tap_max
-        self._pressed_at: float | None = None
+        self._pressed: tuple[int, float] | None = None  # (key, when)
 
     def key(self, code: int, value: int, now: float) -> bool:
         if code == KEY_MENU:
             return value == 1
-        if code == BTN_MODE:
+        if code in self.tapped_keys:
             if value == 1:
-                self._pressed_at = now
-            elif value == 0 and self._pressed_at is not None:
-                tapped = now - self._pressed_at <= self.tap_max
-                self._pressed_at = None
+                self._pressed = (code, now)
+            elif value == 0 and self._pressed is not None and self._pressed[0] == code:
+                tapped = now - self._pressed[1] <= self.tap_max
+                self._pressed = None
                 return tapped
+        elif value == 1:
+            self._pressed = None  # another key with it: a shortcut, not a tap
         return False
 
     def tick(self, now: float) -> bool:

@@ -3,7 +3,8 @@
 **Tap the Guide button** (Xbox / PS / Home button) in any app, or on the home
 screen, and the Quick Menu slides in over what's playing. The game shows
 through behind it and is paused until you close the menu. A remote's **Menu**
-key (e.g. programmed on a FLIRC) opens it too.
+key (e.g. programmed on a FLIRC) opens it too, and so does tapping a keyboard's
+**Windows** key on its own (not as part of a shortcut).
 
 | Button | Does |
 |---|---|

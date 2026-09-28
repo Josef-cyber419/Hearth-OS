@@ -52,11 +52,12 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   tile opens out to fill the screen. `motion = "reduced"` turns the decoration off.
 - **Works with anything you hold**: Xbox/PlayStation/8BitDo controllers (SDL
   GameController mappings), TV remotes over HDMI-CEC, IR remotes via FLIRC,
-  keyboards, and **Wii Remotes** on a DolphinBar: point at a tile to pick it,
-  and use the pointer as a mouse where you want one. Dolphin gets them back
+  keyboards, and **Wii Remotes** on a DolphinBar: point at a tile to pick it
+  (rest the pointer near the top or bottom edge to scroll the rows), and use
+  the pointer as a mouse where you want one. Dolphin gets them back
   for Wii games.
-- **Quick Menu, over any game**: tap the controller's **Guide** button for a
-  panel over whatever's playing, in the same livery, with the game paused. Switch audio
+- **Quick Menu, over any game**: tap the controller's **Guide** button (or a
+  keyboard's **Windows** key) for a panel over whatever's playing, in the same livery, with the game paused. Switch audio
   output and microphone, set volumes, mix per-app volume, run Discord in the
   background (mute, deafen, voice volume, or bring it up with the controller as a
   mouse), and sleep/restart/power off. See [docs/QUICK_MENU.md](docs/QUICK_MENU.md).
