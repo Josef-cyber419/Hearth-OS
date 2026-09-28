@@ -40,9 +40,19 @@ def test_appimages_and_folders(home):
     assert set(found) == {"Dusk", "Twilight Princess", "Ship of Harkinian"}
     assert found["Dusk"].art == str(games / "Dusk-v1.2.0-x86_64.png")
     assert found["Twilight Princess"].art == str(tp / "cover.jpg")
-    assert found["Twilight Princess"].command == (library.RUN_GAME, str(tp / "dusk-linux.AppImage"))
-    assert found["Ship of Harkinian"].command[1] == str(scripted / "start.sh")
+    # The disc goes to the game, so it skips its file picker (Dusklight).
+    assert found["Twilight Princess"].command == (library.RUN_GAME, str(tp / "dusk-linux.AppImage"),
+                                                  str(tp / "game.iso"))
+    assert found["Ship of Harkinian"].command == (library.RUN_GAME, str(scripted / "start.sh"))  # no disc
     assert found["Dusk"].platform == "PC"
+
+
+def test_compressed_disc_images_count(home):
+    tp = home / "Games/Twilight Princess"
+    tp.mkdir()
+    (tp / "Dusklight-x86_64.AppImage").write_bytes(b"")
+    (tp / "GZ2E01.RVZ").write_bytes(b"")
+    assert library.port_games()[0].command[-1] == str(tp / "GZ2E01.RVZ")
 
 
 def test_no_games_folder(tmp_path, monkeypatch):

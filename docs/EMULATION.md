@@ -54,6 +54,21 @@ involved. In `~/Games/` (on Desktop Mode's file manager: Home → Games):
   `cover.png` or `cover.jpg` in it is the artwork. The game starts from inside
   its folder.
 
+**Ports that need a disc (Dusklight for Twilight Princess):** put your disc
+image in the game's folder too (`.iso`, `.rvz`, `.ciso`, `.gcz`, `.wbfs`...),
+next to the AppImage. Hearth hands it to the game, which then skips its
+"Select Disc Image" screen and goes straight in. Without it the game opens a
+file picker first, and in Game Mode that picker has nowhere to show, so it
+looks stuck (hold Guide to get out). A link works too if the disc lives in
+`~/ROMs/gc`: `ln -s ~/ROMs/gc/"Twilight Princess.rvz" ~/Games/"Twilight Princess"/`.
+
+```
+~/Games/Twilight Princess/
+    Dusklight-x86_64.AppImage
+    Twilight Princess.rvz
+    cover.png               (optional)
+```
+
 They appear in a **PC games** row on the home screen and under **PC** in the
 Library. Pin one (Y → *Pin to home*) and it shows in **Continue** once played.
 Guide works like any game: tap for the Quick Menu, hold to go home (Quick
