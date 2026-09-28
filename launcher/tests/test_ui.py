@@ -82,6 +82,34 @@ def test_home_button_closes_running_app(monkeypatch):
     assert hub.launch(app) is None  # closed quietly, no error shown
 
 
+def test_long_guide_hold_closes_steam(monkeypatch, tmp_path):
+    """Steam keeps Guide for itself, but a long hold still gets you out (if
+    it hangs, e.g. on "Switching to Desktop")."""
+    holds = []
+
+    class FiresImmediately:
+        def __init__(self, on_home, *args, hold_seconds=None, **options):
+            self.on_home = on_home
+            holds.append(hold_seconds)
+
+        def start(self):
+            self.on_home()
+
+        def stop(self):
+            pass
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    marker = tmp_path / "hearth/steam-in-hearth"
+    marker.parent.mkdir()
+    marker.touch()
+    monkeypatch.setattr(hub.homebutton, "Watcher", FiresImmediately)
+    app = cfg.App(id="steam", name="Steam", command=(sys.executable, "-c", "import time; time.sleep(30)"),
+                  home_button=False)
+    assert hub.launch(app, hold_seconds=1.5) is None
+    assert holds == [hub.ESCAPE_HOLD_SECONDS]
+    assert not marker.exists()  # not a trip to the desktop: don't bounce the next one
+
+
 def test_launch_records_foreground_while_running(tmp_path):
     from hearth import session
 

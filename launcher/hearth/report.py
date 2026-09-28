@@ -139,8 +139,8 @@ def gpu_samples(count: int = 6, interval: float = 0.5) -> str:
             busy = _read(dev / "gpu_busy_percent")
             if busy is None:
                 continue
-            sclk = next((l for l in (_read(dev / "pp_dpm_sclk") or "").splitlines() if "*" in l), "?")
-            mclk = next((l for l in (_read(dev / "pp_dpm_mclk") or "").splitlines() if "*" in l), "?")
+            sclk = next((line for line in (_read(dev / "pp_dpm_sclk") or "").splitlines() if "*" in line), "?")
+            mclk = next((line for line in (_read(dev / "pp_dpm_mclk") or "").splitlines() if "*" in line), "?")
             vram_used, vram_total = _read(dev / "mem_info_vram_used"), _read(dev / "mem_info_vram_total")
             hw = next(iter((dev / "hwmon").glob("hwmon*")), None) if (dev / "hwmon").exists() else None
             temp = _read(hw / "temp1_input") if hw else None
@@ -300,7 +300,7 @@ def summary(sections: dict[str, str]) -> str:
         f"Uptime:  {uptime}",
         "",
         "Screens:",
-        *("  " + l for l in sections.get("graphics/displays.txt", "").splitlines() if "connected," in l),
+        *("  " + line for line in sections.get("graphics/displays.txt", "").splitlines() if "connected," in line),
         "",
         "Recent failures (from the event timeline):",
         *(["  " + events.describe(e) for e in crashes[-15:]] or ["  none recorded"]),
@@ -309,7 +309,7 @@ def summary(sections: dict[str, str]) -> str:
         *(["  " + events.describe(e) for e in evts[-25:]] or ["  none recorded"]),
         "",
         "Health check (hearthctl doctor):",
-        *("  " + l for l in sections.get("hearth/doctor.txt", "").splitlines()),
+        *("  " + line for line in sections.get("hearth/doctor.txt", "").splitlines()),
         "",
         "Everything else is in the folders next to this file.",
     ]

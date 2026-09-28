@@ -341,8 +341,11 @@ def record_play(key: str) -> None:
     data = played()
     data[key] = time.time()
     try:
-        _played_path().parent.mkdir(parents=True, exist_ok=True)
-        _played_path().write_text(json.dumps(data))
+        path = _played_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data))
+        os.replace(tmp, path)  # never a half-written file
     except OSError as e:
         log.debug("can't record play: %s", e)
 

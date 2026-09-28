@@ -26,12 +26,13 @@ import pygame
 
 from . import bluetooth, events, network, session, settings, style, updates, wiimote
 from . import config as cfg
+from . import input as input_
 from .config import App
 from .input import InputMapper
 from .model import Nav
 from .quickmenu import Item, QuickMenu, Tab
 from .quickmenu_view import QuickMenuView
-from .style import ease_out, mix
+from .style import mix
 
 log = logging.getLogger("hearth")
 
@@ -467,6 +468,10 @@ class SettingsApp:
                           options=("Keeps it paused (Quick Resume)", "Closes it"),
                           detail="Quick Resume must be on to keep games paused",
                           on_change=lambda i: self.put("controllers", "guide_hold", ("resume", "close")[i])))
+        items.append(Item("deadzone", "Stick dead zone", "slider", value=c.stick_deadzone,
+                          low=5, high=40, step=5, unit="{:g}%",
+                          detail="Raise it if a worn stick drifts in Hearth's menus or moves the pointer on its own",
+                          on_change=lambda v: self.put("controllers", "stick_deadzone", int(v))))
         items.append(Item("mouse-speed", "Controller mouse speed", "slider", value=c.mouse_speed,
                           low=25, high=300, step=25, detail="Discord and other pointer apps",
                           on_change=lambda v: self.put("controllers", "mouse_speed", int(v))))
@@ -1089,6 +1094,7 @@ def run(surface: pygame.Surface, config_path: Path | None = None, max_frames: in
             app.tick()
             mapper.swap_confirm = app.config.confirm == "east"
             style.set_prompts(app.config.prompts, app.config.confirm)
+            input_.set_deadzone(app.config.stick_deadzone)
             view.draw_settings(surface, app)
             pygame.display.flip()
             clock.tick(60)

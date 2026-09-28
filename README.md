@@ -68,16 +68,19 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Always a way home**: hold the controller's **Guide** button for 1.5s, or
   press **Home** on a remote, to go home (keeping the game paused, or closing
   it: Settings → Controllers). In Steam, use *Power → Switch to Desktop*, which
-  Hearth turns into "back to home". In Desktop Mode, holding Guide goes back
-  to Hearth too.
+  Hearth turns into "back to home", or hold **Guide for 4 s**, which closes
+  Steam whatever state it's in. In Desktop Mode, holding Guide goes back to
+  Hearth too.
+- **Quit just the game in ES-DE**: Quick Menu → System → *Quit game, back to
+  ES-DE* closes the emulator and leaves you on your game list.
 - **Remote-friendly apps only**: every default tile uses a TV/console interface
   (see [Streaming services](docs/STREAMING.md) for why Netflix and similar
   services aren't there, and the options for adding them).
 - **Your TV follows the PC**: with a CEC adapter, the TV turns on and switches
   input when the PC wakes, and goes to standby when it sleeps.
 - **Settings app, with the remote**: a Settings tile with everything in one
-  place: livery, motion and clock; which tiles show; the Guide button and
-  controller-as-mouse speed; the Wii Remote (sensor bar position, pointer
+  place: livery, motion and clock; which tiles show; the Guide button,
+  stick dead zone and controller-as-mouse speed; the Wii Remote (sensor bar position, pointer
   speed and steadiness, sideways hold, mouse mode, and a two-target pointer
   calibration); emulator tuning; Bluetooth pairing; Wi-Fi with an on-screen
   keyboard and a connection test; hardware, temperatures, storage, updates and

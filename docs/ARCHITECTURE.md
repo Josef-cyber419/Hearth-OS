@@ -174,7 +174,9 @@ These couldn't be tested without a real machine. Check them first, in this order
    session logs out, the desktop starts, and `hearth-desktop-guide` finds
    `hearth-steam`'s fresh marker (`~/.local/state/hearth/steam-in-hearth`) and
    switches straight back to Game Mode (journal: "came from Steam's Switch to
-   Desktop"). Hearth's own Desktop Mode tile clears the marker first.
+   Desktop"). Hearth's own Desktop Mode tile clears the marker first. If Steam
+   hangs anyway, holding Guide for 4 s (hub's `ESCAPE_HOLD_SECONDS`) stops
+   Steam's scope and returns home.
 5. **Hold Guide** closes VacuumTube/Kodi/ES-DE and returns home. The session user
    needs read access to controller event devices. logind normally grants this
    to the active seat, but confirm it.

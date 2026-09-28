@@ -37,11 +37,11 @@ BUTTONS = {
 }
 
 
-def curve(v: float) -> float:
+def curve(v: float, deadzone: float = DEADZONE) -> float:
     """Deadzone plus a quadratic response: precise when gentle, fast when pushed."""
-    if abs(v) < DEADZONE:
+    if abs(v) < deadzone:
         return 0.0
-    m = min(1.0, (abs(v) - DEADZONE) / (1 - DEADZONE))
+    m = min(1.0, (abs(v) - deadzone) / (1 - deadzone))
     return math.copysign(m * m, v)
 
 
@@ -63,6 +63,7 @@ class Pointer:
     def __init__(self, device) -> None:
         self.dev = device
         self.speed = 1.0  # the Settings app's "controller mouse speed"
+        self.deadzone = DEADZONE  # ... and "stick dead zone"
         self.axes = {"lx": 0.0, "ly": 0.0, "ry": 0.0}
         self._carry = {"x": 0.0, "y": 0.0, "wheel": 0.0}
 
@@ -88,9 +89,9 @@ class Pointer:
         if self.dev is None:
             return
         moves = {
-            "x": curve(self.axes["lx"]) * SPEED * self.speed * dt,
-            "y": curve(self.axes["ly"]) * SPEED * self.speed * dt,
-            "wheel": -curve(self.axes["ry"]) * SCROLL_RATE * dt,
+            "x": curve(self.axes["lx"], self.deadzone) * SPEED * self.speed * dt,
+            "y": curve(self.axes["ly"], self.deadzone) * SPEED * self.speed * dt,
+            "wheel": -curve(self.axes["ry"], self.deadzone) * SCROLL_RATE * dt,
         }
         wrote = False
         for key, code in (("x", REL_X), ("y", REL_Y), ("wheel", REL_WHEEL)):

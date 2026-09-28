@@ -23,7 +23,8 @@ from pathlib import Path
 import pygame
 
 from . import config as cfg
-from . import events, homebutton, library, logs, session, style, ui, updates
+from . import input as input_
+from . import desktopguide, events, homebutton, library, logs, session, style, ui, updates
 from .gamescope import HOME_APPID, Gamescope
 from .model import Home
 
@@ -33,6 +34,11 @@ log = logging.getLogger("hearth")
 QUICK_FAIL_SECONDS = 3
 # Grace period between asking an app to quit and killing it.
 TERM_TIMEOUT_SECONDS = 5
+# Apps that handle Guide themselves (Steam) still close, back to Hearth, when
+# Guide is held this long: a way out if the app hangs (e.g. Steam stuck on
+# "Switching to Desktop"). Long enough not to get in the way of the app's own
+# Guide hold.
+ESCAPE_HOLD_SECONDS = 4.0
 
 
 def resumable(app: cfg.App, config: cfg.Config | None) -> bool:
@@ -96,9 +102,26 @@ def run_foreground(info: dict, gs: Gamescope | None, hold_seconds: float, config
         else:
             session.stop_entry(info)
 
-    watcher = homebutton.Watcher(go_home, hold_seconds=hold_seconds) if info.get("home_button") else None
-    if watcher:
-        watcher.start()
+    def escape() -> None:
+        current = session.read()
+        if current["focus"] in current["background"]:
+            return
+        log.info("%s: Guide held %.0fs, closing it", info["id"], ESCAPE_HOLD_SECONDS)
+        outcome["sent_home"] = True
+        # hearth-steam keeps its "Steam was in Hearth" marker when stopped
+        # from outside; this isn't a trip to the desktop.
+        desktopguide.steam_marker().unlink(missing_ok=True)
+        if proc is not None:
+            stop_app(proc, info.get("unit"))
+        else:
+            session.stop_entry(info)
+        desktopguide.steam_marker().unlink(missing_ok=True)
+
+    if info.get("home_button"):
+        watcher = homebutton.Watcher(go_home, hold_seconds=hold_seconds)
+    else:
+        watcher = homebutton.Watcher(escape, hold_seconds=max(ESCAPE_HOLD_SECONDS, hold_seconds))
+    watcher.start()
     returncode = None
     suspended = False
     try:
@@ -116,8 +139,7 @@ def run_foreground(info: dict, gs: Gamescope | None, hold_seconds: float, config
                 session.update(lambda s: s.__setitem__("suspend_request", False))
             time.sleep(0.1)
     finally:
-        if watcher:
-            watcher.stop()
+        watcher.stop()
         session.update(lambda s: s.update(foreground=None, focus="home", paused=False, suspend_request=False))
     if suspended:
         return None
@@ -387,6 +409,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     """One round of: show the home screen, then run what was picked."""
     config = home_config(args, state)
     style.set_prompts(config.prompts, config.confirm)
+    input_.set_deadzone(config.stick_deadzone)
     if overlay:
         overlay.ensure()
 

@@ -16,7 +16,9 @@ key (e.g. programmed on a FLIRC) opens it too, and so does tapping a keyboard's
 
 **Hold Guide** (1.5 s) to go home with the game paused for **Quick Resume**
 (or closed, if you set Settings → Controllers → *Holding Guide in a game* to
-close), or to leave Discord and go back to your game.
+close), or to leave Discord and go back to your game. In Steam, Guide is
+Steam's own; hold it for **4 s** to close Steam and come home (a way out if
+Steam ever hangs).
 
 ## Tabs
 
@@ -31,7 +33,9 @@ close), or to leave Discord and go back to your game.
   Discord hidden. Mute and deafen last for the current call. (PipeWire
   remembers app volumes between sessions, but Hearth clears a remembered
   Discord mute, so a new call never starts silently muted.)
-- **System**: resume, **Home, keep <game> paused** (Quick Resume: it waits
+- **System**: resume, **Quit game, back to ES-DE** (while a game runs from
+  ES-DE: closes just the emulator, ES-DE stays on your list), **Home, keep
+  <game> paused** (Quick Resume: it waits
   in a row on the home screen and carries on where you were), close the
   current app, check for updates, report a
   problem, sleep, restart, power off. With a Wii Remote connected, also

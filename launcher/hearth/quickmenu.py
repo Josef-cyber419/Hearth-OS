@@ -154,6 +154,7 @@ class QuickMenu:
 class Actions(Protocol):
     def resume(self) -> str | None: ...
     def go_home(self) -> str | None: ...
+    def quit_game(self) -> str | None: ...
     def quick_resume(self) -> str | None: ...
     def start_background(self, app_id: str) -> str | None: ...
     def show(self, target: str) -> str | None: ...
@@ -173,6 +174,8 @@ class Context:
     discord_available: bool = True
     # Set while a Wii Remote is connected: {"mouse": bool, "app": name in front}
     wii: dict | None = None
+    # Set while a game runs inside a frontend (ES-DE): the frontend's name
+    frontend: str | None = None
 
 
 def build_tabs(ctx: Context) -> list[Tab]:
@@ -284,6 +287,9 @@ def _system_tab(ctx: Context) -> Tab:
     act, fg = ctx.actions, ctx.state.get("foreground")
     tab = Tab("system", "System", "power")
     tab.items.append(Item("resume", "Resume", "action", on_select=act.resume))
+    if fg and ctx.frontend:
+        tab.items.append(Item("quit-game", f"Quit game, back to {ctx.frontend}", "action", confirm=True,
+                              detail="Closes the game; your game list stays open", on_select=act.quit_game))
     if fg and fg.get("resumable"):
         tab.items.append(Item("quick-resume", "Home, keep " + fg["name"] + " paused", "action",
                               detail="Quick Resume: pick it up later right where you left off",

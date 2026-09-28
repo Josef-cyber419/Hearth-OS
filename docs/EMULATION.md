@@ -138,8 +138,11 @@ Do this once in Desktop Mode, from the app menu:
 - **RetroArch's own menu** (save states, shaders, core options): click **both
   sticks** (L3 + R3). Guide stays Hearth's (tap: Quick Menu, hold: home), so
   Hearth moves RetroArch's menu off it.
-- **Exit shortcut**: set a controller shortcut to quit the game back to ES-DE,
-  e.g. Select + Start. RetroArch, PCSX2, DuckStation and Dolphin all support one.
+- **Quit the game, stay in ES-DE**: tap Guide → System → *Quit game, back to
+  ES-DE* (press A twice). The emulator closes (asked nicely first, forced
+  after 3 s) and you're back on your game list. Save in-game first. Emulators'
+  own exit shortcuts (e.g. Select + Start, set in RetroArch, PCSX2,
+  DuckStation or Dolphin) do the same.
 
 **Holding the Guide button always gets you back to the Hearth home screen.** With
 Quick Resume on (the default), the game is paused, not closed: it waits in the

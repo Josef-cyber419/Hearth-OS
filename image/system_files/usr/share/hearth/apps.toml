@@ -58,6 +58,7 @@ quick_resume = 2        # games kept paused, 0-3 (0 = off: holding Guide closes)
 
 [controllers]
 guide_hold = "resume"   # holding Guide in a game: "resume" (keep it paused) or "close"
+# stick_deadzone = 15   # % of stick travel ignored (5-40); raise it if a worn stick drifts
 
 [[rows]]
 title = "Play"

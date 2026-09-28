@@ -1,4 +1,5 @@
 import pygame
+import pytest
 
 from hearth.input import AXIS_REPEAT_DELAY_MS, AXIS_REPEAT_RATE_MS, InputMapper
 from hearth.model import Nav
@@ -60,3 +61,24 @@ def test_held_key_repeats_but_select_does_not():
     assert m.repeat(AXIS_REPEAT_DELAY_MS) is Nav.DOWN
     m.reset()
     assert m.repeat(9000) is None
+
+
+def test_stick_dead_zone_setting():
+    from hearth import input as input_, pointer
+
+    try:
+        input_.set_deadzone(15)
+        assert input_.axis_threshold() == input_.AXIS_THRESHOLD  # menus: unchanged by default
+        input_.set_deadzone(40)
+        assert input_.axis_threshold() == pytest.approx(0.65)  # a drifting stick needs a bigger push
+        assert pointer.curve(0.3, 0.4) == 0.0 and pointer.curve(0.3, 0.15) > 0
+        assert pointer.curve(1.0, 0.4) == 1.0
+    finally:
+        input_.set_deadzone(15)
+
+
+def test_stick_dead_zone_is_a_setting():
+    from hearth import config as cfg
+
+    assert cfg.parse({"rows": []}).stick_deadzone == 15
+    assert cfg.parse({"rows": [], "controllers": {"stick_deadzone": 30}}).stick_deadzone == 30

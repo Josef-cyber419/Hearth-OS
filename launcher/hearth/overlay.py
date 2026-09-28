@@ -24,6 +24,7 @@ import time
 from pathlib import Path
 
 from . import config as cfg
+from . import input as input_
 from . import events, homebutton, logs, session, settings, style, updates
 from .audio import Audio, Snapshot, reset_restored_discord_mutes
 from .gamescope import Gamescope, appid_for
@@ -58,6 +59,15 @@ class Actions:
             session.stop_entry(state["foreground"])
         elif state["focus"] != "home":  # e.g. Discord in front of the home screen
             self.show("home")
+        return "close"
+
+    def quit_game(self):
+        """Close the game running inside ES-DE; ES-DE stays, on its list."""
+        game = session.frontend_game(session.read()["foreground"])
+        if game:
+            self.o.thaw()  # a paused game can't hear the request to quit
+            events.record("quit_game", frontend=game[0], processes=len(game[1]))
+            threading.Thread(target=session.quit_game, args=(game[1],), daemon=True).start()
         return "close"
 
     def quick_resume(self):
@@ -192,6 +202,8 @@ class Overlay:
         style.set_prompts(c.prompts, c.confirm)
         self.mapper.swap_confirm = c.confirm == "east"
         self.pointer.speed = c.mouse_speed / 100
+        self.pointer.deadzone = c.stick_deadzone / 100
+        input_.set_deadzone(c.stick_deadzone)
         if c.wii_remote and self.wii is None:
             from .wiiinput import WiiInput, XTestSink
 
@@ -236,8 +248,10 @@ class Overlay:
             snapshot = Snapshot()
         discord = self.config.app("discord")
         wii = {"mouse": self.wii_mouse(), "app": self.title()} if self.wii and self.wii.active else None
+        game = session.frontend_game(self.state.get("foreground"))
         ctx = Context(self.audio, snapshot, self.state, self.actions,
-                      discord_available=bool(discord and discord.available()), wii=wii)
+                      discord_available=bool(discord and discord.available()), wii=wii,
+                      frontend=game[0] if game else None)
         self.menu.set_tabs(build_tabs(ctx))
 
     # -- updates ---------------------------------------------------------------
