@@ -94,6 +94,16 @@ class GuideTap:
         return False
 
 
+# Controllers come and go (a wireless pad sleeps and reconnects as a new
+# device; Steam adds virtual ones), so the watcher looks for new devices this
+# often, and doesn't give up when none are there yet.
+RESCAN_SECONDS = 2.0
+# Two devices can report the same press (a controller and Steam's virtual
+# copy of it): one gesture within this long of the last counts once, so a tap
+# doesn't open and at once close the Quick Menu.
+DEBOUNCE_SECONDS = 0.3
+
+
 class Watcher(threading.Thread):
     """Calls `on_fire` when the gesture happens. With `repeat`, keeps
     watching afterwards (the Quick Menu); otherwise stops (going home)."""
@@ -106,51 +116,89 @@ class Watcher(threading.Thread):
         self.repeat = repeat
         self.options = options  # for the gesture, e.g. hold_seconds
         self._stopping = threading.Event()
+        self._open: dict[str, object] = {}  # path: device we're reading
+        self._ignored: set[str] = set()  # paths without the keys we need
 
     def stop(self) -> None:
         self._stopping.set()
 
-    def run(self) -> None:
-        if evdev is None:
+    def devices(self) -> list[str]:
+        """Names of the devices being watched (for diagnostics)."""
+        return [getattr(d, "name", p) for p, d in list(self._open.items())]
+
+    def _scan(self, sel: selectors.BaseSelector) -> None:
+        try:
+            paths = set(evdev.list_devices())
+        except OSError:
             return
-        sel = selectors.DefaultSelector()
-        for path in evdev.list_devices():
+        self._ignored &= paths  # a path can come back as a different device
+        for path in sorted(paths - set(self._open) - self._ignored):
             try:
                 dev = evdev.InputDevice(path)
                 keys = set(dev.capabilities().get(EV_KEY, []))
             except OSError:
                 continue
             if keys & self.gesture.keys:
-                sel.register(dev, selectors.EVENT_READ)
+                sel.register(dev, selectors.EVENT_READ, path)
+                self._open[path] = dev
+                log.info("guide button (%s): watching %s (%s)", self.gesture.__name__, dev.name, path)
             else:
                 dev.close()
-        if not sel.get_map():
-            log.info("guide button: no Guide/Home capable devices found")
-            return
+                self._ignored.add(path)
 
+    def _drop(self, sel: selectors.BaseSelector, path: str) -> None:
+        dev = self._open.pop(path, None)
+        if dev is None:
+            return
+        try:
+            sel.unregister(dev)
+        except (KeyError, ValueError):
+            pass
+        try:
+            dev.close()
+        except OSError:
+            pass
+        log.info("guide button (%s): %s went away", self.gesture.__name__, getattr(dev, "name", path))
+
+    def run(self) -> None:
+        if evdev is None:
+            return
+        sel = selectors.DefaultSelector()
         button = self.gesture(**self.options)
+        scanned = -RESCAN_SECONDS
+        last_fire = -DEBOUNCE_SECONDS
         try:
             while not self._stopping.is_set():
+                now = time.monotonic()
+                if now - scanned >= RESCAN_SECONDS:
+                    scanned = now
+                    self._scan(sel)
+                if not sel.get_map():
+                    self._stopping.wait(0.1)
+                    continue
                 fired = False
                 for key, _ in sel.select(timeout=0.1):
                     try:
                         events = list(key.fileobj.read())
-                    except OSError:  # device unplugged
-                        sel.unregister(key.fileobj)
+                    except OSError:  # unplugged, or asleep and reconnecting
+                        self._drop(sel, key.data)
                         continue
                     for ev in events:
                         if ev.type == EV_KEY and button.key(ev.code, ev.value, time.monotonic()):
                             fired = True
-                fired = button.tick(time.monotonic()) or fired
-                if fired:
+                now = time.monotonic()
+                fired = button.tick(now) or fired
+                if fired and now - last_fire >= DEBOUNCE_SECONDS:
+                    last_fire = now
                     self._fire()
                     if not self.repeat:
                         return
         finally:
-            for key in list(sel.get_map().values()):
-                key.fileobj.close()
+            for path in list(self._open):
+                self._drop(sel, path)
             sel.close()
 
     def _fire(self) -> None:
         if not self._stopping.is_set():
+            log.info("guide button: %s", self.gesture.__name__)
             self.on_fire()
