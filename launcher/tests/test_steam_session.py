@@ -132,3 +132,42 @@ def test_desktop_tile_clears_a_leftover_dropin(env):
     subprocess.run(["bash", str(env["tmp"] / "desktop")], env=env["env"], check=True)
     assert not dropin.exists()
     assert "steamosctl switch-to-desktop-mode" in env["log"].read_text()
+
+
+def marker(env):
+    return env["tmp"] / "state/hearth/steam-in-hearth"
+
+
+def test_marker_while_steam_runs_kept_on_logout(env):
+    env["env"]["XDG_STATE_HOME"] = str(env["tmp"] / "state")
+    proc = start(env)
+    assert wait_for(marker(env).exists)
+    first = marker(env).stat().st_mtime
+    time.sleep(1.2)
+    assert marker(env).stat().st_mtime > first  # kept fresh
+    proc.terminate()  # the session logging out stops it from outside
+    proc.wait(timeout=10)
+    assert marker(env).exists()  # so the desktop knows to send you back
+
+
+def test_marker_removed_when_steam_closes_itself(env):
+    env["env"]["XDG_STATE_HOME"] = str(env["tmp"] / "state")
+    proc = start(env)
+    assert wait_for(marker(env).exists)
+    (env["tmp"] / "quit").touch()
+    proc.wait(timeout=10)
+    assert not marker(env).exists()
+
+
+def test_desktop_tile_clears_the_marker(env):
+    env["env"]["XDG_STATE_HOME"] = str(env["tmp"] / "state")
+    marker(env).parent.mkdir(parents=True)
+    marker(env).touch()
+    fake_bin = env["tmp"] / "bin"
+    (fake_bin / "steamosctl").write_text("#!/usr/bin/bash\n")
+    (fake_bin / "steamosctl").chmod(0o755)
+    script = (LIBEXEC / "hearth-desktop").read_text().replace(
+        "/usr/libexec/os-session-select /usr/bin/steamos-session-select", "/nonexistent")
+    (env["tmp"] / "desktop").write_text(script)
+    subprocess.run(["bash", str(env["tmp"] / "desktop")], env=env["env"], check=True)
+    assert not marker(env).exists()

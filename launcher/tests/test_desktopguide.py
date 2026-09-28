@@ -64,3 +64,32 @@ def test_goes_to_game_mode_on_hold(monkeypatch):
     monkeypatch.setattr(desktopguide.subprocess, "call", lambda argv: called.append(argv) or 0)
     assert desktopguide.main() == 0
     assert called == [[desktopguide.GAME_MODE]]
+
+
+def test_back_to_hearth_after_steams_switch_to_desktop(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    monkeypatch.delenv("GAMESCOPE_WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setattr(homebutton, "evdev", None)  # even without controller support
+    called = []
+    monkeypatch.setattr(desktopguide.subprocess, "call", lambda argv: called.append(argv) or 0)
+    m = desktopguide.steam_marker()
+    m.parent.mkdir(parents=True)
+    m.touch()
+    assert desktopguide.main() == 0
+    assert called == [[desktopguide.GAME_MODE]]
+    assert not m.exists()  # used up: can't loop
+    assert desktopguide.main() == 0 and len(called) == 1
+
+
+def test_a_stale_marker_is_ignored(tmp_path, monkeypatch):
+    import os
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path))
+    m = desktopguide.steam_marker()
+    m.parent.mkdir(parents=True)
+    m.touch()
+    old = m.stat().st_mtime - desktopguide.STEAM_MARKER_SECONDS - 5
+    os.utime(m, (old, old))
+    assert not desktopguide.came_from_steam()
+    assert not m.exists()
+    assert not desktopguide.came_from_steam()  # none: nothing to do

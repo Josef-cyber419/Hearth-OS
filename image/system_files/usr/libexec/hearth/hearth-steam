@@ -9,6 +9,11 @@
 # login that follows is Game Mode (Hearth) rather than the desktop, and Steam
 # is asked to exit.
 #
+# Whatever path the switch takes, the desktop it lands on sends you back:
+# while Steam runs, $marker is touched every half second, and the desktop's
+# hearth-desktop-guide (desktopguide.py) switches straight back to Game Mode
+# if it finds a fresh one when the desktop starts.
+#
 # An earlier version also refused the logout (RefuseManualStop on
 # graphical-session.target) to keep the session up. Bazzite doesn't always go
 # through that file, and then nothing brought you home: Steam hung on
@@ -19,6 +24,7 @@ sddm_dir=${HEARTH_SDDM_DIR:-/etc/sddm.conf.d}
 temp_login=$sddm_dir/zzt-steamos-temp-login.conf
 dropin_dir=${XDG_RUNTIME_DIR:-/run/user/$UID}/systemd/user/graphical-session.target.d
 dropin=$dropin_dir/50-hearth-steam.conf
+marker=${XDG_STATE_HOME:-$HOME/.local/state}/hearth/steam-in-hearth
 
 # Bazzite's Game Mode may run the "ogui-steam" session, which doesn't carry
 # the stock Steam session's feature flags (HDR, VRR, tearing controls...).
@@ -48,13 +54,19 @@ desktop_requested && clear_desktop_login
 
 # From an earlier version that blocked the logout; never leave it behind.
 [[ -e $dropin ]] && cleanup
-trap 'kill -TERM "$steam_pid" 2>/dev/null' TERM INT HUP
+# Stopped from outside (the session is logging out): keep the marker. Steam
+# closed by itself: remove it, so a later trip to the desktop isn't bounced.
+ending=no
+trap 'ending=yes; kill -TERM "$steam_pid" 2>/dev/null' TERM INT HUP
+trap '[[ $ending == no ]] && rm -f "$marker"' EXIT
+mkdir -p "$(dirname "$marker")"
 
 steam -gamepadui -steamos3 -steampal -steamdeck "$@" &
 steam_pid=$!
 
 left=no
 while kill -0 "$steam_pid" 2>/dev/null; do
+    touch "$marker"
     if [[ $left == no ]] && desktop_requested; then
         echo "hearth-steam: Steam asked for the desktop; returning to Hearth instead" >&2
         clear_desktop_login
