@@ -250,6 +250,72 @@ def background_alive(info: dict) -> bool:
         return False
 
 
+# -- games inside a frontend (ES-DE) ---------------------------------------------
+
+FRONTENDS = {"es-de": "ES-DE"}  # process name: what to call it
+
+
+def _processes(proc: Path) -> dict[int, tuple[int, str]]:
+    """pid: (parent pid, name), for every process we can see."""
+    out = {}
+    for stat in proc.glob("[0-9]*/stat"):
+        try:
+            text = stat.read_text()
+        except OSError:
+            continue
+        # "pid (name) state ppid ...": the name may contain spaces and brackets.
+        name = text[text.find("(") + 1:text.rfind(")")]
+        fields = text[text.rfind(")") + 2:].split()
+        out[int(stat.parent.name)] = (int(fields[1]), name)
+    return out
+
+
+def _descendants(pid: int, procs: dict[int, tuple[int, str]]) -> list[int]:
+    children: dict[int, list[int]] = {}
+    for p, (parent, _) in procs.items():
+        children.setdefault(parent, []).append(p)
+    out, todo = [], list(children.get(pid, []))
+    while todo:
+        p = todo.pop()
+        out.append(p)
+        todo.extend(children.get(p, []))
+    return out
+
+
+def frontend_game(info: dict | None, proc: Path = Path("/proc")) -> tuple[str, list[int]] | None:
+    """If the app in front is a frontend (ES-DE) running a game: (frontend
+    name, the game's processes). Closing those leaves the frontend's list."""
+    if not info or not info.get("pid"):
+        return None
+    procs = _processes(proc)
+    for pid in [info["pid"], *_descendants(info["pid"], procs)]:
+        name = procs.get(pid, (0, ""))[1]
+        if name in FRONTENDS:
+            game = _descendants(pid, procs)
+            return (FRONTENDS[name], game) if game else None
+    return None
+
+
+def quit_game(pids: list[int], wait: float = 3.0, kill=os.kill, alive=None, sleep=time.sleep) -> None:
+    """Ask the game's processes to quit (emulators save and exit on SIGTERM),
+    then force the ones that don't."""
+    alive = alive or (lambda p: Path(f"/proc/{p}").exists())
+    for pid in pids:
+        try:
+            kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline and any(alive(p) for p in pids):
+        sleep(0.1)
+    for pid in pids:
+        if alive(pid):
+            try:
+                kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
+
+
 def stop_entry(info: dict) -> None:
     """Close an app (foreground or background) and everything it started."""
     if info.get("unit") and stop(info["unit"]):

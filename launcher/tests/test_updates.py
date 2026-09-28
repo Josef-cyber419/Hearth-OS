@@ -37,7 +37,9 @@ def system_tab(update):
 
 
 def test_update_entry_states():
-    item = lambda menu: next(i for i in menu.current.items if i.key == "update")
+    def item(menu):
+        return next(i for i in menu.current.items if i.key == "update")
+
     assert item(system_tab(None)).label == "Check for updates"
     assert item(system_tab({"status": "running"})).kind == "info"
     ready = system_tab({"status": "ready", "version": "2026.09.26"})

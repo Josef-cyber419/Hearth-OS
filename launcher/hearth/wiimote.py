@@ -132,8 +132,13 @@ class Aim:
             return (sx1 + (mx - x1) / (x2 - x1) * (sx2 - sx1),
                     sy1 + (my - y1) / (y2 - y1) * (sy2 - sy1))
         # The camera sees the bar move the opposite way to where you point.
+        # Its x grows to the right and its y grows upwards: pointing down
+        # moves the bar up in its view (larger y), so y needs no flip. (A
+        # remote on a real TV showed down as up when y was flipped here.)
+        # With the bar below the TV, aiming at the middle of the screen sees
+        # the bar below the middle of the view.
         return (0.5 + (0.5 - mx / IR_WIDTH) * self.gain,
-                0.5 + (0.5 - my / IR_HEIGHT + self.offset) * self.gain)
+                0.5 + (my / IR_HEIGHT - 0.5 + self.offset) * self.gain)
 
     def configure(self, speed: int = 100, steadiness: int = 45, bar: str = "below",
                   calibration: tuple[float, float, float, float] | None = None) -> None:

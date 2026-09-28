@@ -54,6 +54,18 @@ BUTTONS = {
 JOY_BUTTONS = {0: Nav.SELECT, 1: Nav.BACK, 3: Nav.OPTIONS, 4: Nav.TAB_PREV, 5: Nav.TAB_NEXT, 7: Nav.MENU}
 
 AXIS_THRESHOLD = 0.6
+# Settings → Controllers → Stick dead zone (a fraction of full tilt). Menus need
+# a push well past it before a stick counts as a direction.
+deadzone = 0.15
+
+
+def set_deadzone(percent: int) -> None:
+    global deadzone
+    deadzone = max(0.0, min(0.5, percent / 100))
+
+
+def axis_threshold() -> float:
+    return max(AXIS_THRESHOLD, min(0.9, deadzone + 0.25))
 AXIS_REPEAT_DELAY_MS = 400
 AXIS_REPEAT_RATE_MS = 120
 DIRECTIONS = {Nav.UP, Nav.DOWN, Nav.LEFT, Nav.RIGHT}
@@ -152,7 +164,7 @@ class InputMapper:
             self._held = None
 
     def _stick_axis(self, value: float, neg: Nav, pos: Nav, now_ms: int) -> Nav | None:
-        if abs(value) < AXIS_THRESHOLD:
+        if abs(value) < axis_threshold():
             if self._stick in (neg, pos):
                 self._stick = None
             return None

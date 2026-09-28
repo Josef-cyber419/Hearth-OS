@@ -1,5 +1,4 @@
 import socket
-import time
 
 import pygame
 import pytest
@@ -33,10 +32,27 @@ def test_aim():
     # Pointing right: the bar moves left in the camera's view.
     x, _ = aim.update([Dot(212, 384 - 138, 2), Dot(412, 384 - 138, 2)])
     assert x > 0.6
+    # Pointing down: the bar moves up in the camera's view (its y grows upwards).
+    _, y = aim.update([Dot(412, 384 + 138, 2), Dot(612, 384 + 138, 2)])
+    assert y > 0.6
+    _, y = aim.update([Dot(412, 384 - 138, 2), Dot(612, 384 - 138, 2)])
+    assert y < 0.4
+    x, _ = aim.update([Dot(212, 384 - 138, 2), Dot(412, 384 - 138, 2)])
     # One dot drops out of view: keep aiming from the remembered spacing.
     x1, _ = aim.update([Dot(412, 384, 2)])
     assert abs(x1 - x) < 0.01
     assert aim.update([]) is None
+
+
+def test_bar_below_the_tv_aims_at_the_middle():
+    aim = wiimote.Aim(smoothing=0)  # default: bar below the TV
+    # Aiming at the middle of the screen, the bar is below the middle of the view.
+    below = 384 - wiimote.BAR_OFFSET * wiimote.IR_HEIGHT
+    assert aim.update([Dot(412, below, 2), Dot(612, below, 2)]) == (0.5, 0.5)
+    aim.configure(bar="above")
+    above = 384 + wiimote.BAR_OFFSET * wiimote.IR_HEIGHT
+    x, y = aim.update([Dot(412, above, 2), Dot(612, above, 2)])
+    assert abs(x - 0.5) < 1e-9 and abs(y - 0.5) < 1e-9
 
 
 def test_find_only_dolphinbar_remotes(tmp_path):

@@ -39,6 +39,28 @@ locations.
 
 Only use games, BIOS files and keys you've dumped from hardware you own.
 
+## PC ports (AppImages): straight on the home screen
+
+Decompiled ports (e.g. Twilight Princess, Ocarina of Time / Ship of Harkinian,
+Mario 64) and other Linux games outside Steam get their own tiles, no ES-DE
+involved. In `~/Games/` (on Desktop Mode's file manager: Home → Games):
+
+- **Just the AppImage**: `~/Games/Twilight Princess.AppImage`. The file name
+  is the tile's name (build details like `-v1.2-x86_64` are dropped). A picture
+  next to it with the same name (`Twilight Princess.png`) becomes its artwork.
+- **A folder**, for ports that need data files next to them (the game's disc
+  image, assets, settings): `~/Games/Twilight Princess/` holding the AppImage
+  (or a `start.sh`) and those files. The folder's name is the tile's name; a
+  `cover.png` or `cover.jpg` in it is the artwork. The game starts from inside
+  its folder.
+
+They appear in a **PC games** row on the home screen and under **PC** in the
+Library. Pin one (Y → *Pin to home*) and it shows in **Continue** once played.
+Guide works like any game: tap for the Quick Menu, hold to go home (Quick
+Resume keeps it paused). You don't need to make the file executable; Hearth
+does. On a second drive, link it the same way as `ROMs` above
+(`ln -s /var/mnt/games/Games ~/Games`).
+
 ## Consoles, emulators and your hardware
 
 The emulators are installed automatically on first boot (from
@@ -138,8 +160,11 @@ Do this once in Desktop Mode, from the app menu:
 - **RetroArch's own menu** (save states, shaders, core options): click **both
   sticks** (L3 + R3). Guide stays Hearth's (tap: Quick Menu, hold: home), so
   Hearth moves RetroArch's menu off it.
-- **Exit shortcut**: set a controller shortcut to quit the game back to ES-DE,
-  e.g. Select + Start. RetroArch, PCSX2, DuckStation and Dolphin all support one.
+- **Quit the game, stay in ES-DE**: tap Guide → System → *Quit game, back to
+  ES-DE* (press A twice). The emulator closes (asked nicely first, forced
+  after 3 s) and you're back on your game list. Save in-game first. Emulators'
+  own exit shortcuts (e.g. Select + Start, set in RetroArch, PCSX2,
+  DuckStation or Dolphin) do the same.
 
 **Holding the Guide button always gets you back to the Hearth home screen.** With
 Quick Resume on (the default), the game is paused, not closed: it waits in the

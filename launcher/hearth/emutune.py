@@ -20,6 +20,7 @@ RPCS3, xemu) get their recommended values listed in docs/EMULATION.md.
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 from dataclasses import dataclass
@@ -193,7 +194,9 @@ def apply(tune: Tune, height: int) -> str:
         text = path.read_text(errors="replace")
         new = set_ini(text, changes(height)) if kind == "ini" else set_cfg(text, changes(height))
         if new != text:
-            path.write_text(new)
+            tmp = path.with_name(path.name + ".hearth-tmp")
+            tmp.write_text(new)
+            os.replace(tmp, path)  # the emulator's own settings: never half-written
     return tune.summary(height)
 
 

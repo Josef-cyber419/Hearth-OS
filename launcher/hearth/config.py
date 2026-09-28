@@ -136,6 +136,7 @@ class Config:
     clock: str = "24h"  # or "12h"
     guide_hold: float = 1.5  # seconds to hold Guide to go home
     mouse_speed: int = 100  # controller-as-mouse speed, percent
+    stick_deadzone: int = 15  # percent of full tilt ignored (worn sticks drift)
     confirm: str = "south"  # which face button confirms: "south" (Xbox/PlayStation) or "east" (Nintendo)
     prompts: str = "xbox"  # button names shown on screen: "xbox", "playstation" or "nintendo"
     safe_area: int = 0  # percent kept clear at the screen's edges, for TVs that crop (overscan)
@@ -248,6 +249,7 @@ def parse(data: dict) -> Config:
         clock=_choice(theme, "theme", "clock", ("24h", "12h")),
         guide_hold=float(_number(controllers, "controllers", "guide_hold_seconds", 1.5, 0.5, 5)),
         mouse_speed=int(_number(controllers, "controllers", "mouse_speed", 100, 25, 300)),
+        stick_deadzone=int(_number(controllers, "controllers", "stick_deadzone", 15, 5, 40)),
         confirm=_choice(controllers, "controllers", "confirm", ("south", "east")),
         prompts=_choice(controllers, "controllers", "prompts", ("xbox", "playstation", "nintendo")),
         safe_area=int(_number(theme, "theme", "safe_area", 0, 0, 10)),
