@@ -224,9 +224,17 @@ def quick_resume_row(config: cfg.Config) -> cfg.Row | None:
 def stop_app(proc: subprocess.Popen, unit: str | None) -> None:
     """Close the app and everything it started (thawing it first if paused)."""
     if unit:
-        session.thaw(unit)
-        if session.stop(unit):
+        # Hearth's scope and any a Flatpak app moved to (see session.app_units).
+        units = session.app_units(unit, proc.pid)
+        for u in units:
+            session.thaw(u)
+        for u in units:
+            session.stop(u)
+        try:
+            proc.wait(timeout=TERM_TIMEOUT_SECONDS)
             return
+        except subprocess.TimeoutExpired:
+            pass
     stop_process_group(proc)
 
 
@@ -333,7 +341,7 @@ def recover_from_overlay_crash() -> None:
     state = session.read()
     fg = state.get("foreground") or {}
     if state.get("paused") and fg.get("unit"):
-        session.thaw(fg["unit"])
+        session.resume_entry(fg)
     session.update(lambda s: s.update(overlay_open=False, paused=False))
 
 

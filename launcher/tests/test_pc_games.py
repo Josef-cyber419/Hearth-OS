@@ -80,9 +80,10 @@ def test_runner_starts_it_from_its_folder_even_without_execute_permission(tmp_pa
     folder = tmp_path / "Twilight Princess"
     folder.mkdir()
     game = folder / "dusk.AppImage"
-    game.write_text(f"#!/usr/bin/bash\npwd > {tmp_path}/ran; echo \"$@\" >> {tmp_path}/ran\n")
+    game.write_text(f"#!/usr/bin/bash\npwd > {tmp_path}/ran; echo \"$@\" >> {tmp_path}/ran; "
+                    f"echo \"$SDL_VIDEODRIVER $SDL_VIDEO_DRIVER\" >> {tmp_path}/ran\n")
     game.chmod(0o644)  # as downloaded
     subprocess.run(["bash", str(RUN_GAME), str(game), "--fullscreen"], check=True, cwd=tmp_path,
                    env={**os.environ})
-    assert (tmp_path / "ran").read_text().split("\n")[:2] == [str(folder), "--fullscreen"]
+    assert (tmp_path / "ran").read_text().split("\n")[:3] == [str(folder), "--fullscreen", "x11 x11"]
     assert os.access(game, os.X_OK)

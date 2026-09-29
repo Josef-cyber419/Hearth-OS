@@ -56,8 +56,11 @@ game shows through.
 
 Each app Hearth starts runs in its own systemd user scope
 (`hearth-app-<id>_<n>.scope`, or `hearth-bg-…` for background apps). A scope
-covers the app and everything it spawns, including Flatpak sandboxes, which
-start their own sessions and would escape a process group. That enables:
+covers the app and everything it spawns, except that Flatpak moves each app it
+starts into a scope of its own (`app-flatpak-<id>-<pid>.scope`). So pausing,
+closing and "is it still running" act on Hearth's scope plus any Flatpak scope
+the app's processes are in (`session.app_units`), and an app counts as running
+while the process Hearth started (`flatpak run`) does. That enables:
 - **Pause**: the Quick Menu freezes the game's cgroup while it's open
   (`systemctl --user freeze`) and thaws it on close. Turn this off with
   `[quick_menu] pause_game = false` in `apps.toml`.

@@ -481,9 +481,10 @@ class SettingsApp:
                           options=("Bottom (Xbox, PlayStation)", "Right (Nintendo)"),
                           detail="In Hearth's menus. Games use their own layout",
                           on_change=lambda i: self.put("controllers", "confirm", ("south", "east")[i])))
-        styles = ("xbox", "playstation", "nintendo")
+        styles = ("auto", "xbox", "playstation", "nintendo")
         items.append(Item("prompts", "Button names on screen", "choice", value=styles.index(c.prompts),
-                          options=("Xbox: A B X Y", "PlayStation: shapes", "Nintendo: B A Y X"),
+                          options=("Automatic: what you used last", "Xbox: A B X Y", "PlayStation: shapes",
+                                   "Nintendo: B A Y X"),
                           on_change=lambda i: self.put("controllers", "prompts", styles[i])))
         return items
 
@@ -571,6 +572,9 @@ class SettingsApp:
             Item("wii-steady", "Pointer steadiness", "slider", value=c.wii_steadiness, low=0, high=90, step=5,
                  detail="Higher is steadier, lower is quicker",
                  on_change=lambda v: self.put("wii_remote", "steadiness", int(v))),
+            Item("wii-flip", "Flip up/down", "toggle", value=c.wii_flip,
+                 detail="Turn on if the pointer moves up when you aim down",
+                 on_change=lambda on: self.put("wii_remote", "flip_vertical", bool(on))),
             Item("wii-mouse", "Use the pointer as a mouse", "choice",
                  value=("apps", "always", "never").index(c.wii_mouse),
                  options=("In pointer apps (Discord)", "Always", "Never"),

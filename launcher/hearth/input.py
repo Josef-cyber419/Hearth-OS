@@ -9,7 +9,19 @@ from __future__ import annotations
 
 import pygame
 
+from . import style
 from .model import Nav
+
+
+def wii_recently(within: float = 1.5) -> bool:
+    import time
+
+    from . import session
+
+    try:
+        return time.time() - float(session.read().get("wii_input_at") or 0) < within
+    except Exception:
+        return False
 
 KEYS = {
     pygame.K_UP: Nav.UP,
@@ -113,7 +125,27 @@ class InputMapper:
         dev = self._devices.get(instance_id)
         return dev is not None and not isinstance(dev, pygame.joystick.JoystickType)
 
+    def family(self, instance_id: int | None) -> str:
+        """Which kind of controller an event came from, for button hints."""
+        dev = self._devices.get(instance_id) if instance_id is not None else None
+        try:
+            name = dev.name if hasattr(dev, "name") and isinstance(dev.name, str) else dev.get_name()
+        except Exception:  # unknown or gone
+            name = ""
+        return style.controller_family(name)
+
+    def note(self, event: pygame.event.Event) -> None:
+        """Remember what was used last, so on-screen hints can match it."""
+        t = event.type
+        if t in (pygame.CONTROLLERBUTTONDOWN, pygame.JOYBUTTONDOWN):
+            style.note_input(self.family(getattr(event, "instance_id", None)))
+        elif t == pygame.KEYDOWN:
+            # A Wii Remote reaches apps as key presses (wiiinput); the Quick
+            # Menu process notes when it last sent some.
+            style.note_input("wii" if wii_recently() else "keyboard")
+
     def translate(self, event: pygame.event.Event, now_ms: int = 0) -> Nav | None:
+        self.note(event)
         t = event.type
         if t == pygame.KEYDOWN:
             return self._press(KEYS.get(event.key), now_ms)

@@ -41,6 +41,7 @@ HOUSEKEEPING_SECONDS = 0.5
 UPDATE_CHECK_SECONDS = 30 * 60
 # Without real transparency, the whole overlay is drawn at this opacity.
 FALLBACK_OPACITY = 0.93
+MOUSE_POINTER_SECONDS = 3.0  # the drawn pointer fades after the mouse rests this long
 
 
 class Actions:
@@ -117,9 +118,12 @@ class Actions:
         return None  # stay open to show progress
 
     def set_wii_mouse(self, on: bool):
+        """Remembered per app, across restarts."""
         key = focus_key(session.read())
-        session.update(lambda s: s.setdefault("wii_mouse", {}).__setitem__(key, bool(on)))
-        self.o.state = session.read()
+        data = settings.load()
+        data.setdefault("wii_mouse_apps", {})[key] = bool(on)
+        settings.save(data)
+        self.o._wii_mouse_apps = dict(data["wii_mouse_apps"])
         return None
 
     def report(self):
@@ -158,6 +162,13 @@ class Overlay:
         self.mapper = InputMapper()
         self.mapper.open_devices()
         self.pointer = Pointer(make_uinput())
+        self._mouse_at: tuple[int, int] | None = None
+        self._mouse_moved = -1e9
+        # Hearth draws its own pointer over the menu (see mouse()).
+        try:
+            pygame.mouse.set_visible(False)
+        except pygame.error:  # no display (tests)
+            pass
         self.pointer_active = False
 
         size = window.size
@@ -198,6 +209,10 @@ class Overlay:
     def apply_config(self) -> None:
         """Use the current settings: look, Wii Remote aim, mouse speed."""
         c = self.config
+        try:
+            self._wii_mouse_apps = dict(settings.load().get("wii_mouse_apps") or {})
+        except (OSError, ValueError, AttributeError):
+            self._wii_mouse_apps = {}
         self.view.set_theme(c.livery, c.motion, c.clock)
         style.set_prompts(c.prompts, c.confirm)
         self.mapper.swap_confirm = c.confirm == "east"
@@ -209,6 +224,7 @@ class Overlay:
 
             self.wii = WiiInput(XTestSink(self.gs.d) if self.gs else None, on_tap=lambda: self.events.put("tap"),
                                 on_hold=lambda: self.events.put("wii_hold"))
+            self.wii.on_input = self._wii_used
         elif not c.wii_remote and self.wii is not None:
             self.wii.close()  # let go of the remotes entirely
             self.wii = None
@@ -294,12 +310,13 @@ class Overlay:
     def freeze(self) -> None:
         fg = self.state["foreground"]
         if (self.config.pause_game and fg and fg.get("unit") and fg.get("home_button", True)
-                and self.state["focus"] == "foreground" and session.freeze(fg["unit"])):
+                and self.state["focus"] == "foreground" and session.pause_entry(fg)):
             self.paused_unit = fg["unit"]
+            self._paused_entry = fg
 
     def thaw(self) -> None:
         if self.paused_unit:
-            session.thaw(self.paused_unit)
+            session.resume_entry(getattr(self, "_paused_entry", None) or {"unit": self.paused_unit})
             self.paused_unit = None
 
     # -- open/close ------------------------------------------------------------
@@ -486,6 +503,8 @@ class Overlay:
         for event in self.pg.event.get():
             if event.type == self.pg.CONTROLLERBUTTONDOWN and event.button == self.pg.CONTROLLER_BUTTON_GUIDE:
                 continue  # Guide taps arrive via the watcher; don't also handle them here
+            if self.open and self.mouse(event, navs):
+                continue
             nav = self.mapper.translate(event, now)
             if self.open and nav is not None:
                 navs.append(nav)
@@ -506,6 +525,49 @@ class Overlay:
                 self.close_menu()
                 break
             self._refreshed = min(self._refreshed, time.monotonic() - REFRESH_SECONDS + AFTER_CHANGE_SECONDS)
+
+    def _wii_used(self) -> None:
+        """A Wii Remote button went to the app in front: tell the home screen
+        (it gets them as key presses) so its button hints show the Wii's."""
+        style.note_input("wii")
+        now = time.time()
+        if now - getattr(self, "_wii_noted", 0) > 0.5:
+            self._wii_noted = now
+            session.update(lambda s: s.__setitem__("wii_input_at", now))
+
+    def mouse(self, event, navs: list) -> bool:
+        """A mouse (or trackpad) on the open menu: hover picks an option, a
+        click uses it or opens a tab, the wheel moves or adjusts, right click
+        closes. Returns True if the event was a mouse event."""
+        from .model import Nav
+
+        pg = self.pg
+        if event.type == pg.MOUSEMOTION:
+            self._mouse_at, self._mouse_moved = event.pos, time.monotonic()
+            hit = self.view.hit(event.pos)
+            if hit and hit[0] == "item":
+                self.menu.point_at(hit[1])
+            return True
+        if event.type == pg.MOUSEBUTTONDOWN:
+            self._mouse_at, self._mouse_moved = event.pos, time.monotonic()
+            if event.button == 1:
+                hit = self.view.hit(event.pos)
+                if hit and hit[0] == "tab":
+                    self.menu.open_tab(hit[1])
+                elif hit:
+                    self.menu.point_at(hit[1])
+                    navs.append(Nav.SELECT)
+            elif event.button == 3:
+                navs.append(Nav.BACK)
+            return True
+        if event.type == pg.MOUSEWHEEL:
+            item = self.menu.selected
+            if item is not None and item.kind == "slider" and not self.menu.on_tabs:
+                navs.append(Nav.RIGHT if event.y > 0 else Nav.LEFT)
+            elif event.y:
+                navs.append(Nav.UP if event.y > 0 else Nav.DOWN)
+            return True
+        return event.type == pg.MOUSEBUTTONUP
 
     def publish_wii(self) -> None:
         """Tell the Settings app which remotes are connected, and while it's
@@ -537,7 +599,7 @@ class Overlay:
         """Whether the Wii Remote pointer drives the mouse for the app in front."""
         state = self.state
         key = focus_key(state)
-        override = state.get("wii_mouse", {}).get(key)
+        override = self._wii_mouse_apps.get(key)
         if override is not None:
             return bool(override)
         if key == "home" or self.config.wii_mouse == "never":
@@ -557,7 +619,9 @@ class Overlay:
         if not self.transparent:
             # No per-pixel alpha: the whole window is semi-opaque instead.
             self.surface.fill((0, 0, 0, 255))
-        self.view.draw(self.surface, self.menu, self.title(), paused, self.t)
+        moved = time.monotonic() - self._mouse_moved < MOUSE_POINTER_SECONDS
+        self.view.draw(self.surface, self.menu, self.title(), paused, self.t,
+                       pointer=self._mouse_at if moved else None)
         try:
             frame = self.surface.premul_alpha()
         except AttributeError:  # older pygame

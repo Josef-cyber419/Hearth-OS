@@ -148,11 +148,45 @@ def is_active(unit: str) -> bool:
 # -- Quick Resume: pausing a whole app and bringing it back ------------------------
 
 
+def app_units(unit: str | None, pid: int | None, proc: Path = Path("/proc")) -> list[str]:
+    """The scopes an app runs in: the one Hearth started it in, plus any its
+    processes moved to. Flatpak moves every app it starts into a scope of its
+    own (app-flatpak-<id>-<pid>.scope), so pausing, closing or checking only
+    Hearth's scope would miss the app itself."""
+    units = [unit] if unit else []
+    if not pid:
+        return units
+    procs = _processes(proc)
+    for p in [pid, *_descendants(pid, procs)]:
+        try:
+            path = (proc / str(p) / "cgroup").read_text().strip().split("::", 1)[1]
+        except (OSError, IndexError):
+            continue
+        name = path.rstrip("/").rsplit("/", 1)[-1]
+        if name.startswith("app-flatpak-") and name.endswith(".scope") and name not in units:
+            units.append(name)
+    return units
+
+
+def _units(info: dict) -> list[str]:
+    return app_units(info.get("unit"), info.get("pid"))
+
+
+def _pid_alive(pid: int | None) -> bool:
+    try:
+        # Field 3 of /proc/PID/stat is the state; Z = exited but not reaped.
+        text = Path(f"/proc/{pid}/stat").read_text()
+        return text[text.rfind(")") + 2:].split()[0] != "Z"
+    except (OSError, IndexError, TypeError):
+        return False
+
+
 def pause_entry(info: dict) -> bool:
     """Freeze an app and everything it started. Without a systemd scope, stop
     its process group instead (the app runs in its own session, see spawn)."""
     if info.get("unit"):
-        return freeze(info["unit"])
+        results = [freeze(u) for u in _units(info)]
+        return any(results)
     try:
         os.killpg(info["pid"], signal.SIGSTOP)
         return True
@@ -162,7 +196,8 @@ def pause_entry(info: dict) -> bool:
 
 def resume_entry(info: dict) -> bool:
     if info.get("unit"):
-        return thaw(info["unit"])
+        results = [thaw(u) for u in _units(info)]
+        return any(results)
     try:
         os.killpg(info["pid"], signal.SIGCONT)
         return True
@@ -171,12 +206,11 @@ def resume_entry(info: dict) -> bool:
 
 
 def entry_alive(info: dict) -> bool:
-    if info.get("unit"):
-        return is_active(info["unit"])
-    try:
-        return Path(f"/proc/{info['pid']}/stat").read_text().split()[2] != "Z"
-    except (OSError, KeyError, IndexError):
-        return False
+    # Hearth's scope, or the process it started (which stays while a Flatpak
+    # app runs, even after Flatpak moved the app to a scope of its own).
+    if info.get("unit") and is_active(info["unit"]):
+        return True
+    return _pid_alive(info.get("pid"))
 
 
 def close_suspended(info: dict) -> None:
@@ -241,13 +275,11 @@ def start_background(app) -> None:
 
 
 def background_alive(info: dict) -> bool:
-    if info.get("unit"):
-        return is_active(info["unit"])
-    try:
-        # Field 3 of /proc/PID/stat is the state; Z = exited but not reaped.
-        return Path(f"/proc/{info['pid']}/stat").read_text().split()[2] != "Z"
-    except (OSError, KeyError, IndexError):
-        return False
+    # The scope can empty while the app runs: Flatpak moves the app it
+    # starts into a scope of its own (app-flatpak-*.scope). The process we
+    # started (flatpak run) stays for the app's lifetime, so it counts too.
+    # (Only checking the scope dropped Discord a few seconds after it opened.)
+    return entry_alive(info)
 
 
 # -- games inside a frontend (ES-DE) ---------------------------------------------
@@ -318,8 +350,13 @@ def quit_game(pids: list[int], wait: float = 3.0, kill=os.kill, alive=None, slee
 
 def stop_entry(info: dict) -> None:
     """Close an app (foreground or background) and everything it started."""
-    if info.get("unit") and stop(info["unit"]):
-        return
+    units = _units(info) if info.get("unit") else []
+    if units:
+        for u in units:
+            thaw(u)
+        stopped = [stop(u) for u in units]
+        if all(stopped) and not _pid_alive(info.get("pid")):
+            return
     try:
         os.killpg(info["pid"], 15)
     except (OSError, KeyError):

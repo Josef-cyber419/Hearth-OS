@@ -130,6 +130,7 @@ class Config:
     wii_speed: int = 100  # pointer speed, percent
     wii_steadiness: int = 45  # pointer smoothing, percent
     wii_hold: str = "upright"  # "upright" (pointing) or "sideways" (like an NES pad)
+    wii_flip: bool = False  # the pointer moves up when you aim down: turn it round
     # Camera coordinates of two calibration targets (10% and 90% across and
     # down the screen): x1, y1, x2, y2. None until calibrated.
     wii_calibration: tuple[float, float, float, float] | None = None
@@ -138,7 +139,9 @@ class Config:
     mouse_speed: int = 100  # controller-as-mouse speed, percent
     stick_deadzone: int = 15  # percent of full tilt ignored (worn sticks drift)
     confirm: str = "south"  # which face button confirms: "south" (Xbox/PlayStation) or "east" (Nintendo)
-    prompts: str = "xbox"  # button names shown on screen: "xbox", "playstation" or "nintendo"
+    # Button names shown on screen: "auto" (the controller, keyboard or Wii
+    # Remote used last), "xbox", "playstation" or "nintendo".
+    prompts: str = "auto"
     safe_area: int = 0  # percent kept clear at the screen's edges, for TVs that crop (overscan)
     home_recent: bool = True  # the "Continue" row of recently played games
     home_pins: bool = True  # the "Pinned" row
@@ -245,13 +248,14 @@ def parse(data: dict) -> Config:
         wii_speed=int(_number(wii, "wii_remote", "speed", 100, 25, 300)),
         wii_steadiness=int(_number(wii, "wii_remote", "steadiness", 45, 0, 90)),
         wii_hold=_choice(wii, "wii_remote", "hold", ("upright", "sideways")),
+        wii_flip=bool(wii.get("flip_vertical", False)),
         wii_calibration=tuple(float(v) for v in calibration) if calibration else None,
         clock=_choice(theme, "theme", "clock", ("24h", "12h")),
         guide_hold=float(_number(controllers, "controllers", "guide_hold_seconds", 1.5, 0.5, 5)),
         mouse_speed=int(_number(controllers, "controllers", "mouse_speed", 100, 25, 300)),
         stick_deadzone=int(_number(controllers, "controllers", "stick_deadzone", 15, 5, 40)),
         confirm=_choice(controllers, "controllers", "confirm", ("south", "east")),
-        prompts=_choice(controllers, "controllers", "prompts", ("xbox", "playstation", "nintendo")),
+        prompts=_choice(controllers, "controllers", "prompts", ("auto", "xbox", "playstation", "nintendo")),
         safe_area=int(_number(theme, "theme", "safe_area", 0, 0, 10)),
         home_recent=bool(home_table.get("recent", True)),
         home_pins=bool(home_table.get("pins", True)),
