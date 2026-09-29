@@ -286,21 +286,55 @@ def show_home(gs: Gamescope | None) -> None:
 
 
 class OverlayProcess:
-    """Keeps the Quick Menu overlay running next to the hub."""
+    """Keeps the Quick Menu overlay running next to the hub, all the time:
+    a watchdog thread restarts it within seconds if it dies, on the home
+    screen or in a game (not just between apps)."""
+
+    CHECK_SECONDS = 2.0
 
     def __init__(self, config_path: Path | None) -> None:
         self.args = [sys.executable, "-m", "hearth.overlay"]
         if config_path:
             self.args += ["--config", str(config_path)]
         self.proc: subprocess.Popen | None = None
+        self._lock = threading.Lock()
+        self._watchdog: threading.Thread | None = None
+        self._stopping = threading.Event()
+
+    def stop(self) -> None:
+        """Stop watching (the Quick Menu itself keeps running)."""
+        self._stopping.set()
 
     def ensure(self) -> None:
-        # Exit code 0 means "can't run here" (no gamescope): don't retry.
-        if self.proc is None or self.proc.poll() not in (None, 0):
+        with self._lock:
+            # Exit code 0 means "can't run here" (no gamescope): don't retry.
+            if self.proc is not None and self.proc.poll() in (None, 0):
+                return
             if self.proc is not None:
                 log.warning("Quick Menu overlay exited (%s); restarting", self.proc.returncode)
                 events.record("overlay_restart", code=self.proc.returncode)
+                recover_from_overlay_crash()
             self.proc = subprocess.Popen(self.args)
+        if self._watchdog is None and not self._stopping.is_set():
+            self._watchdog = threading.Thread(target=self._watch, daemon=True, name="hearth-overlay-watchdog")
+            self._watchdog.start()
+
+    def _watch(self) -> None:
+        while not self._stopping.wait(self.CHECK_SECONDS):
+            try:
+                self.ensure()
+            except Exception:  # never let the watchdog die
+                log.exception("Quick Menu watchdog")
+
+
+def recover_from_overlay_crash() -> None:
+    """A Quick Menu that died while open can leave the home screen ignoring
+    the controller ("the menu is open") and the game frozen. Undo both."""
+    state = session.read()
+    fg = state.get("foreground") or {}
+    if state.get("paused") and fg.get("unit"):
+        session.thaw(fg["unit"])
+    session.update(lambda s: s.update(overlay_open=False, paused=False))
 
 
 def main(argv: list[str] | None = None) -> int:

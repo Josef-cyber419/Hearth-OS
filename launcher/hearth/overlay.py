@@ -652,12 +652,16 @@ def main(argv: list[str] | None = None) -> int:
     gs.make_overlay(xwin)
     window.show()
 
+    # Starting fresh: nothing is open, whatever a previous run left behind.
+    session.update(lambda s: s.update(overlay_open=False, paused=False))
     overlay = Overlay(load_config(args.config), gs, window, renderer, xwin,
                       transparent=visual is not None, config_path=args.config)
     try:
         overlay.run()
     finally:
         overlay.thaw()
+        # Don't leave the home screen ignoring the controller.
+        session.update(lambda s: s.update(overlay_open=False, paused=False))
     return 0
 
 
