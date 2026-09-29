@@ -2,36 +2,77 @@
 # HDMI-CEC control via the kernel CEC framework (cec-ctl from v4l-utils).
 #   setup    register as a playback device; TV remote keys then arrive as
 #            normal key presses, so the remote drives Hearth and Kodi
-#   wake     turn the TV on and switch it to our input
+#   wake     turn the TV on and switch it to our input, trying again until
+#            the TV says it's on (many ignore the first request while they
+#            start up)
+#   switch   the same, even if TV_WAKE is off (asked for from the Quick Menu)
 #   standby  put the TV in standby
+#   vendor   print the TV's make, as the TV reports it (e.g. "LG")
+#   status   print the TV's power state ("on", "standby", ...)
 set -uo pipefail
 TV_WAKE=1 TV_STANDBY=1 OSD_NAME=Hearth
 # shellcheck source=/dev/null
 [[ -r /etc/hearth/cec.conf ]] && . /etc/hearth/cec.conf
+TRIES=${HEARTH_CEC_TRIES:-5}
+DELAY=${HEARTH_CEC_DELAY:-2}   # seconds, growing with each try
 
 dev=${HEARTH_CEC_DEVICE:-/dev/cec0}
 for _ in $(seq 20); do [[ -e $dev ]] && break; sleep 0.5; done
 [[ -e $dev ]] || exit 0   # no CEC adapter: nothing to do
 
 cec() { cec-ctl -d "$dev" "$@" >/dev/null; }
+physical() { cec-ctl -d "$dev" | awk '/Physical Address/ { print $4; exit }'; }
+power() {
+    cec-ctl -d "$dev" --to 0 --give-device-power-status 2>/dev/null \
+        | sed -n 's/.*pwr-state: \([a-z-]*\).*/\1/p' | head -n1
+}
+
+switch_tv() {
+    local attempt phys
+    for ((attempt = 1; attempt <= TRIES; attempt++)); do
+        cec --to 0 --image-view-on
+        phys=$(physical)
+        [[ -n $phys && $phys != f.f.f.f ]] && cec --to 15 --active-source "phys-addr=$phys"
+        if [[ $(power) == on ]]; then
+            # A TV that has only just woken sometimes misses the input
+            # switch: say it once more now that it's listening.
+            sleep 1
+            [[ -n $phys && $phys != f.f.f.f ]] && cec --to 15 --active-source "phys-addr=$phys"
+            return 0
+        fi
+        ((attempt < TRIES)) && sleep $((attempt * DELAY))
+    done
+    echo "hearth-cec: the TV didn't answer (is CEC on in its settings?)" >&2
+    return 1
+}
 
 case "${1:-}" in
     setup)
         cec --playback --osd-name "$OSD_NAME"
-        [[ $TV_WAKE == 1 ]] && "$0" wake
+        # Retrying can take a while: don't hold up the adapter's service.
+        [[ $TV_WAKE == 1 ]] && { "$0" wake & }
+        exit 0
         ;;
     wake)
         [[ $TV_WAKE == 1 ]] || exit 0
-        cec --to 0 --image-view-on
-        phys=$(cec-ctl -d "$dev" | awk '/Physical Address/ { print $4; exit }')
-        [[ -n $phys ]] && cec --to 15 --active-source "phys-addr=$phys"
+        switch_tv
+        ;;
+    switch)
+        switch_tv
         ;;
     standby)
         [[ $TV_STANDBY == 1 ]] && cec --to 0 --standby
+        exit 0
+        ;;
+    vendor)
+        cec-ctl -d "$dev" --to 0 --give-device-vendor-id 2>/dev/null \
+            | sed -n 's/.*vendor-id: 0x[0-9a-fA-F]* (\(.*\)).*/\1/p' | head -n1
+        ;;
+    status)
+        power
         ;;
     *)
-        echo "usage: hearth-cec setup|wake|standby" >&2
+        echo "usage: hearth-cec setup|wake|switch|standby|vendor|status" >&2
         exit 2
         ;;
 esac
-exit 0

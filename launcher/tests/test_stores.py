@@ -49,7 +49,11 @@ def lutris(home: Path) -> Path:
         (2, "Diablo IV", "diablo-iv", "wine", 1, 1750000000, 12.5, 0, "battlenet"),
         (3, "Old Game", "old-game", "wine", 0, 0, 0.0, 0, None),
         (4, "Hidden Game", "hidden-game", "wine", 1, 0, 0.0, 1, None),
-        (5, "Quake", "quake", "linux", 1, 0, 0.0, 0, None)])
+        (5, "Quake", "quake", "linux", 1, 0, 0.0, 0, None),
+        (6, "EA app", "ea-app", "wine", 1, 0, 0.0, 0, None),
+        (7, "Ubisoft Connect", "ubisoft-connect", "wine", 1, 0, 0.0, 0, None),
+        (8, "Mass Effect Legendary Edition", "mass-effect-le", "wine", 1, 1740000000, 3.0, 0, "ea_app"),
+        (9, "Far Cry 5", "far-cry-5", "wine", 1, 0, 0.0, 0, "ubisoft")])
     con.commit()
     con.close()
     (base / "coverart").mkdir()
@@ -78,7 +82,8 @@ def test_heroic_names_are_quoted():
 def test_lutris_games(home):
     base = lutris(home)
     games = {g.key: g for g in library.lutris_games()}
-    assert set(games) == {"lutris:diablo-iv", "lutris:quake"}  # not the Battle.net app, uninstalled or hidden
+    assert set(games) == {"lutris:diablo-iv", "lutris:quake", "lutris:mass-effect-le", "lutris:far-cry-5"}
+    # not the store apps themselves, uninstalled or hidden
     d4 = games["lutris:diablo-iv"]
     assert d4.platform == "Battle.net" and d4.last_played == 1750000000 and d4.playtime == 12.5 * 3600
     assert d4.command == ("flatpak", "run", "net.lutris.Lutris", "lutris:rungameid/2")
@@ -106,13 +111,27 @@ def test_nothing_installed(home):
     assert library.lutris_games() == []
 
 
+def test_ea_and_ubisoft_games_under_their_store(home):
+    lutris(home)
+    by_key = {g.key: g for g in library.lutris_games()}
+    assert (by_key["lutris:mass-effect-le"].system, by_key["lutris:mass-effect-le"].platform) == ("ea", "EA")
+    assert (by_key["lutris:far-cry-5"].system, by_key["lutris:far-cry-5"].platform) == ("ubisoft", "Ubisoft")
+    assert not {"lutris:ea-app", "lutris:ubisoft-connect", "lutris:battlenet"} & by_key.keys()  # own tiles
+    assert library.STORES["ea"] == "EA" and library.STORES["ubisoft"] == "Ubisoft"
+
+
+LUTRIS_APP = REPO / "image/system_files/usr/libexec/hearth/hearth-lutris-app"
+
+
+@pytest.mark.parametrize("script,slug", [("hearth-battlenet", "battlenet"), ("hearth-lutris-app", "ea-app"),
+                                         ("hearth-lutris-app", "ubisoft-connect")])
 @pytest.mark.parametrize("installed", [True, False])
-def test_battlenet_tile_installs_then_runs(tmp_path, installed):
+def test_store_app_tile_installs_then_runs(tmp_path, installed, script, slug):
     home = tmp_path
     base = lutris(home)
     if not installed:
         con = sqlite3.connect(base / "pga.db")
-        con.execute("UPDATE games SET installed = 0 WHERE slug = 'battlenet'")
+        con.execute("UPDATE games SET installed = 0 WHERE slug = ?", (slug,))
         con.commit()
         con.close()
     bin_ = tmp_path / "bin"
@@ -120,11 +139,17 @@ def test_battlenet_tile_installs_then_runs(tmp_path, installed):
     log = tmp_path / "calls"
     (bin_ / "flatpak").write_text(f'#!/usr/bin/bash\necho "$*" >> {log}\nexit 0\n')
     (bin_ / "flatpak").chmod(0o755)
-    subprocess.run([str(REPO / "image/system_files/usr/libexec/hearth/hearth-battlenet")], check=True,
-                   env={"PATH": f"{bin_}:/usr/bin:/bin", "HOME": str(home)})
+    args = [str(LUTRIS_APP.parent / script)] + ([slug] if script == "hearth-lutris-app" else [])
+    subprocess.run(args, check=True, env={"PATH": f"{bin_}:/usr/bin:/bin", "HOME": str(home)})
     ran = log.read_text().splitlines()[-1]
-    assert ran == ("run net.lutris.Lutris lutris:rungame/battlenet" if installed
-                   else "run net.lutris.Lutris lutris:install/battlenet")
+    assert ran == (f"run net.lutris.Lutris lutris:rungame/{slug}" if installed
+                   else f"run net.lutris.Lutris lutris:install/{slug}")
+
+
+def test_store_app_refuses_odd_slugs(tmp_path):
+    r = subprocess.run([str(LUTRIS_APP), "../../etc"], capture_output=True, text=True,
+                       env={"PATH": "/usr/bin:/bin", "HOME": str(tmp_path)})
+    assert r.returncode == 2
 
 
 def test_tiles(shipped_config):
@@ -133,5 +158,7 @@ def test_tiles(shipped_config):
     config = cfg.load(shipped_config, hide=False)
     epic, bnet = config.app("epic"), config.app("battlenet")
     assert epic.flatpak == "com.heroicgameslauncher.hgl" and epic.command[:2] == ("flatpak", "run")
-    assert bnet.command == ("/usr/libexec/hearth/hearth-battlenet",) and bnet.flatpak == "net.lutris.Lutris"
+    for app, slug in ((bnet, "battlenet"), (config.app("ea"), "ea-app"), (config.app("ubisoft"), "ubisoft-connect")):
+        assert app.command == ("/usr/libexec/hearth/hearth-lutris-app", slug)
+        assert app.flatpak == "net.lutris.Lutris" and app.pointer
     assert bnet.pointer and not epic.pointer  # Heroic has its own controller navigation

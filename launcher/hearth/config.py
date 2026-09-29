@@ -80,6 +80,8 @@ class App:
     # A game's artwork (fills the tile) and its platform ("PlayStation 2").
     art: str | None = None
     platform: str | None = None
+    # How far into it you are, 0..1 (Watch next): a thin bar along the foot.
+    progress: float | None = None
 
     @property
     def builtin(self) -> bool:
@@ -144,6 +146,7 @@ class Config:
     prompts: str = "auto"
     safe_area: int = 0  # percent kept clear at the screen's edges, for TVs that crop (overscan)
     home_recent: bool = True  # the "Continue" row of recently played games
+    home_watch: bool = True  # the "Watch next" row: shows in progress on Jellyfin, Plex, Kodi
     home_pins: bool = True  # the Favorites row
     sounds: bool = False  # soft UI sounds on the home screen (sounds.py)
     screensaver_minutes: int = 10  # 0 = never; protects OLED TVs from a still home screen
@@ -260,6 +263,7 @@ def parse(data: dict) -> Config:
         prompts=_choice(controllers, "controllers", "prompts", ("auto", "xbox", "playstation", "nintendo")),
         safe_area=int(_number(theme, "theme", "safe_area", 0, 0, 10)),
         home_recent=bool(home_table.get("recent", True)),
+        home_watch=bool(home_table.get("watch", True)),
         home_pins=bool(home_table.get("pins", True)),
         sounds=bool(home_table.get("sounds", False)),
         screensaver_minutes=int(_number(home_table, "home", "screensaver_minutes", 10, 0, 240)),

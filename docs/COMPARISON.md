@@ -28,8 +28,28 @@ Steam's Big Picture / Game Mode.
 | **Captures**: screenshots over any game, and a gallery | Xbox (Capture & share), PS5 (Create button), Switch (Album), Steam (screenshots, now in its screensaver too) | **Now**: Quick Menu → System → Take a screenshot (or `hearthctl screenshot`); a Captures tile to view and delete them; they show in the screen saver too. Next: a button shortcut, and short video clips. |
 | **Notes after an update**: what's new | Switch (News), consoles and tvOS (release notes) | **Now**: once after each update, the home screen shows what that version brought; every version is in CHANGELOG.md and on GitHub's releases. |
 | **Your phone as a remote**, with a keyboard | Google TV and Apple TV (phone remote apps with typing), Roku (app), Steam (Steam Link) | **Not yet**. Next: a page on the home network (a code on the TV to pair) with a d-pad and a keyboard for search and Wi-Fi passwords. |
+| **Continue watching across apps** (a universal watchlist) | Google TV (some services), Apple TV (the TV app); Roku users have asked for years | **Now**: a Watch next row from Jellyfin, Plex and Kodi, with progress bars; it resumes on the spot and tells your server how far you got. |
+| **Parental controls** that are simple | Switch (phone app), Xbox and PlayStation (family accounts, all different) | **Now**: Settings → Family: a daily game-time limit (films don't count), a bedtime, locked tiles, one PIN, no accounts. |
+| **One touch play**: the TV follows the console | PS5, Xbox, Apple TV (over HDMI-CEC) | **Now**, with a CEC adapter: Guide switches the TV to Hearth, and waking retries until the TV answers. |
+| **Every store in one place** | Nobody on PC: GOG Galaxy and Playnite try, on Windows | **Now**: Steam, Epic, GOG, Amazon, Battle.net, EA and Ubisoft games in one Library, Continue and Search. |
 | **Game-sharing between systems** | Switch 2 (virtual game cards), PS5/Xbox (home console) | **Not planned**: Steam Family Sharing and Remote Play cover this for PC games. |
 | **Premium streaming at full quality** | TVs and sticks (certified DRM) | **Can't** on any home-built PC (see STREAMING.md). YouTube (VacuumTube) and Twitch (VacuumStream) have TV-style apps; for Netflix and similar, a stick on another input. |
+
+## Gaps the others leave (what people complain about)
+
+Looked at in September 2026: what owners of smart TVs and consoles most often
+complain about or ask for, and what Hearth does about it.
+
+| Complaint | Hearth |
+|---|---|
+| **Ads on the home screen**: Google TV shows a sponsored row by default (May 2026), Hisense plays ads when you turn on or switch inputs, Samsung sells home-screen space, Roku pushes its own channel, PS5 owners objected to its news feed | None, ever: no ads, no sponsored tiles, nothing sent about what you watch or play. |
+| **The TV watches what's on screen** (automatic content recognition), even from HDMI, and sells it | Settings → Privacy: detects the TV's make over HDMI-CEC and shows where to turn it off. |
+| **Smart TVs get slower every year** | Nothing runs in the background that you didn't start; Hearth idles under 2% of one core ([PERFORMANCE.md](PERFORMANCE.md)); every update can be rolled back. |
+| **No watchlist across apps** | Watch next, from Jellyfin, Plex and Kodi. |
+| **Too many PC launchers** | One Library for all of them. |
+| **Parental controls are confusing, and different on every device** | One page, one PIN, three rules. |
+| **The TV stays on the wrong input** (CEC is unreliable) | Keeps asking until the TV answers, and Guide brings it back. |
+| **Folders and themes** (Switch owners, since 2017) | Liveries today; folders when wanted. |
 
 ## Where Hearth is already ahead
 
@@ -47,13 +67,15 @@ Steam's Big Picture / Game Mode.
 
 ## Next
 
-Done from the list above: search, game details, notices, UI sounds, the
-ambient screen saver, now-playing controls, a system monitor, captures,
-what's new after updates, and the network by the clock. Next up: **your
-phone as a remote** (with a keyboard). Still to come, when wanted:
-**profiles** and **groups/folders** of tiles.
+Done: search, game details, notices, UI sounds, the ambient screen saver,
+now-playing controls, a system monitor, captures, what's new after updates,
+the network by the clock, Watch next, Family limits, the TV privacy check,
+one touch play, and every PC store in one Library. Next up: **your phone as
+a remote** (with a keyboard). Still to come, when wanted: **profiles** and
+**groups/folders** of tiles.
 
 Looked at in September 2026: Steam's September update (Big Art Mode, a
 screensaver of game art and screenshots, a default-to-desktop switch), tvOS 26
 (Liquid Glass, profiles shown automatically), Switch 2 (GameChat, virtual game
-cards) and Google TV's 2026 plans.
+cards), Google TV's 2026 plans, and owners' complaints about smart-TV ads and
+tracking, console parental controls, CEC input switching and PC launchers.

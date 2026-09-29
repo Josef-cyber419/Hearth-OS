@@ -7,6 +7,7 @@ or over SSH from another computer).
   hearthctl events [-n N]   timeline: launches, exits, crashes, frame rates
   hearthctl report          save everything needed to fix a problem, in one file
   hearthctl screenshot      capture the screen into ~/Pictures/Hearth (the Captures tile)
+  hearthctl footprint       memory and CPU in use, and the programs using them
   hearthctl update          install OS + app updates now (restart to finish)
   hearthctl channel [live|staging]  which build this PC follows; switch between them
   hearthctl rollback        go back to the previous OS version
@@ -581,6 +582,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("-o", "--out", help="folder to save to (default: ~/hearth-reports)")
     sub.add_parser("update")
     sub.add_parser("screenshot")
+    sub.add_parser("footprint")
     p = sub.add_parser("channel", help="show or switch update channel: live or staging")
     p.add_argument("name", nargs="?", choices=sorted(updates.CHANNELS))
     p = sub.add_parser("rollback")
@@ -614,6 +616,11 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_report(args.screenshot, args.out)
     if args.cmd == "update":
         return cmd_update()
+    if args.cmd == "footprint":
+        from . import footprint
+
+        print(footprint.report(footprint.measure()))
+        return 0
     if args.cmd == "screenshot":
         return cmd_screenshot()
     if args.cmd == "channel":

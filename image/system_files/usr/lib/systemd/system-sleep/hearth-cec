@@ -2,5 +2,8 @@
 # systemd calls this around suspend: TV follows the PC, like a console.
 case "$1" in
     pre)  /usr/libexec/hearth/hearth-cec standby ;;
-    post) /usr/libexec/hearth/hearth-cec wake ;;
+    # Waking the TV can take a few tries: do it on the side, so it doesn't
+    # hold up the rest of waking up.
+    post) systemd-run --no-block --collect --quiet /usr/libexec/hearth/hearth-cec wake \
+              || /usr/libexec/hearth/hearth-cec wake ;;
 esac

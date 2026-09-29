@@ -448,10 +448,15 @@ def port_games() -> list[Game]:
 # -- pins and play history -------------------------------------------------------
 
 
-# -- other stores: Epic and GOG (Heroic), Battle.net and more (Lutris) ---------
+# -- other stores: Epic and GOG (Heroic), Battle.net, EA, Ubisoft (Lutris) ----
 
 # Store games' platforms, as shown on tiles and in the Library.
-STORES = {"epic": "Epic Games", "gog": "GOG", "amazon": "Amazon", "battlenet": "Battle.net", "lutris": "PC"}
+STORES = {"epic": "Epic Games", "gog": "GOG", "amazon": "Amazon", "battlenet": "Battle.net", "ea": "EA",
+          "ubisoft": "Ubisoft", "lutris": "PC"}
+# Lutris services and the store their games belong to; the store apps
+# themselves (their own tiles) are left out of the Library.
+LUTRIS_SERVICES = {"battlenet": "battlenet", "ea_app": "ea", "ubisoft": "ubisoft"}
+LUTRIS_APPS = {"battlenet", "ea-app", "ubisoft-connect"}
 
 HEROIC = "com.heroicgameslauncher.hgl"
 LUTRIS = "net.lutris.Lutris"
@@ -515,8 +520,9 @@ def _lutris_bases() -> list[tuple[Path, tuple[str, ...]]]:
 
 
 def lutris_games() -> list[Game]:
-    """Games installed with Lutris (Battle.net's among them), with Lutris's own
-    last-played and play time. The Battle.net app itself has its own tile."""
+    """Games installed with Lutris (Battle.net's, EA's and Ubisoft's among them),
+    with Lutris's own last-played and play time. The store apps themselves
+    have their own tiles."""
     import sqlite3
 
     games: dict[str, Game] = {}
@@ -537,7 +543,7 @@ def lutris_games() -> list[Game]:
             continue
         for r in rows:
             slug, name = r["slug"] or "", r["name"] or ""
-            if not name or slug == "battlenet" or ("hidden" in cols and r["hidden"]):
+            if not name or slug in LUTRIS_APPS or ("hidden" in cols and r["hidden"]):
                 continue
             key = f"lutris:{slug or r['id']}"
             service = r["service"] if "service" in cols else None
@@ -545,7 +551,7 @@ def lutris_games() -> list[Game]:
                        base.parent.parent / "cache/lutris/coverart" / f"{slug}.jpg",  # the Flatpak's cache
                        home() / ".cache/lutris/coverart" / f"{slug}.jpg")
             games.setdefault(key, Game(
-                key, name, "battlenet" if service == "battlenet" else "lutris",
+                key, name, LUTRIS_SERVICES.get(service or "", "lutris"),
                 (*run, f"lutris:rungameid/{r['id']}"), float(r["lastplayed"] or 0), art,
                 playtime=float((r["playtime"] if "playtime" in cols else 0) or 0) * 3600))
     return list(games.values())
@@ -657,7 +663,8 @@ COLORS = {"steam": "#1b2838", "pc": "#3a4a5c", "psx": "#3b3f8c", "ps2": "#1f3d8a
           "snes": "#5a4a8a", "nes": "#8a2a2a", "nds": "#5a5a5a", "n3ds": "#9c2a2a", "xbox": "#2f7a2f",
           "gba": "#4a3a8a", "gb": "#6a7a3a", "gbc": "#7a3a8a", "genesis": "#2a2a2a", "megadrive": "#2a2a2a",
           "dreamcast": "#c46a1a", "saturn": "#3a3a4a", "arcade": "#8a5a1a", "mame": "#8a5a1a",
-          "epic": "#2a2a2e", "gog": "#6a2a8a", "battlenet": "#0e4d8a", "lutris": "#b35a1a"}
+          "epic": "#2a2a2e", "gog": "#6a2a8a", "battlenet": "#0e4d8a", "ea": "#c3242b", "ubisoft": "#1f4fa0",
+          "lutris": "#b35a1a"}
 
 
 def as_app(game: Game):
@@ -697,6 +704,16 @@ def with_game_rows(config, games: list[Game] | None = None):
         apps = tuple(as_app(g) for g in recent(games, hidden=set(prefs.get("hide_recent", []))))
         if apps:
             rows.append(Row("Continue", apps))
+    if config.home_watch:
+        try:
+            from . import watchnext
+
+            watch = watchnext.row()  # from its cache; refreshed in the background
+        except Exception:  # never lose the home screen over a media server
+            log.exception("watch next")
+            watch = None
+        if watch is not None:
+            rows.append(watch)
     # Your own PC games (~/Games) get a row of their own: nothing else lists them.
     apps = tuple(as_app(g) for g in sorted(games, key=lambda g: g.title.lower()) if g.system == "pc")
     if apps:

@@ -27,6 +27,7 @@ from . import config as cfg
 from . import input as input_
 from . import events, homebutton, logs, session, settings, style, updates
 from .audio import Audio, Snapshot, reset_restored_discord_mutes
+from . import family
 from .gamescope import Gamescope, appid_for
 
 log = logging.getLogger("hearth")
@@ -189,6 +190,7 @@ class Overlay:
         from .toasts import Notices
 
         self.notices = Notices()
+        self.family = family.Watcher()  # household limits (Settings > Family)
         self._toast_showing = False
         self._noticed = -1e9
         from .perf import Monitor
@@ -460,6 +462,8 @@ class Overlay:
             except (OSError, RuntimeError, ValueError):
                 pass
 
+        self.watch_family()
+
         # The app closed under the open menu (e.g. held Guide): close the menu.
         if self.open and (self.state["foreground"] or {}).get("id") != self.opened_for:
             self.paused_unit = None
@@ -545,6 +549,10 @@ class Overlay:
         while not self.events.empty():
             kind = self.events.get()
             if kind == "tap":
+                if not self.open:
+                    from . import tv
+
+                    tv.switch_here()  # like a console: Guide brings the TV to Hearth
                 self.close_menu() if self.open else self.open_menu()
             elif kind == "hold" and not self.open:
                 self.back_from_background()
@@ -716,6 +724,24 @@ class Overlay:
                 if len(failures) > 10:
                     raise
                 time.sleep(0.5)
+
+    def watch_family(self) -> None:
+        """Household limits: count play time while a game is in front, warn
+        before it runs out, and close the game if that's the rule."""
+        fg = self.state.get("foreground") or {}
+        playing = fg.get("id") if self.state.get("focus") == "foreground" else None
+        try:
+            actions = self.family.tick(playing)
+        except Exception:  # never let the rules break the menu
+            log.exception("family")
+            return
+        for action in actions:
+            if action[0] == "notice":
+                self.notices.post(action[1], action[2], icon="clock")
+                events.record("family_notice", title=action[1])
+            elif action[0] == "close" and playing:
+                events.record("family_close", app=playing)
+                self.actions.go_home()
 
     def watch_for_notices(self) -> None:
         """Every so often: controller batteries, newly installed apps, an update."""

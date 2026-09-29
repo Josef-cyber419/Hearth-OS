@@ -36,6 +36,7 @@ POINTER_SECONDS = 2.5  # the pointer hides this long after it last moved
 # once focus rests this long, then fades across over BACKDROP_FADE seconds.
 BACKDROP_DELAY = 0.22
 BACKDROP_FADE = 0.45
+BACKDROPS_KEPT = 3  # full-screen backdrops cached
 BATTERY_SECONDS = 20.0  # how often the status bar re-reads controller batteries
 NETWORK_SECONDS = 5.0  # and the network connection
 GAMES_SECONDS = 30.0  # how long a read of the game library is reused
@@ -48,6 +49,13 @@ SLIDE_MAX = 60  # pictures in one showing (picked at random from the library)
 SAVER_CAPTURES = 20  # your newest screenshots join them
 # Resting the pointer near the top or bottom edge scrolls the rows.
 EDGE_ZONE = 0.12  # fraction of the screen's height at each edge
+# Once nothing has moved for SETTLE_SECONDS (no input, no animation), the home
+# screen stops redrawing 60 times a second: an unchanging
+# picture shouldn't cost CPU. It redraws when what it shows changes (the clock,
+# batteries, network, a message). Input is still read 30 times a second.
+SETTLE_SECONDS = 3.0
+SETTLED_FPS = 2  # how often a settled screen checks whether anything changed
+SETTLED_REDRAW = 10.0  # and redraws anyway, just in case
 EDGE_FIRST = 0.35  # seconds at the edge before the first step
 EDGE_REPEAT = 0.55  # then one row this often
 SLANT = 0.45  # the lean of the big livery stripes, as a fraction of height
@@ -198,6 +206,26 @@ def cover(img: pygame.Surface, size: tuple[int, int]) -> pygame.Surface:
     return out
 
 
+def _badge(surf: pygame.Surface, text: str, th: Theme, pad: int) -> None:
+    """A small label in the tile's top corner (a game's platform, an episode)."""
+    lv, w = th.lv, surf.get_width()
+    badge = style.fit(style.tracked(th.type(16, "cond", "semibold"), text.upper(), lv.text, 0.18), w - pad * 3)
+    chip = badge.get_rect().inflate(int(16 * th.u), int(6 * th.u))
+    chip.topright = (w - pad, pad)
+    style.blend_rect(surf, chip, (*lv.ink, 190), chip.h // 2)
+    surf.blit(badge, badge.get_rect(center=chip.center))
+
+
+def _progress(surf: pygame.Surface, app: App, th: Theme) -> None:
+    """How far into a film or episode you are: a thin bar along the foot."""
+    if app.progress is None:
+        return
+    w, h = surf.get_size()
+    bar_h = max(3, int(6 * th.u))
+    style.blend_rect(surf, pygame.Rect(0, h - bar_h, w, bar_h), (*th.lv.ink, 200))
+    surf.fill(th.lv.accent, (0, h - bar_h, max(bar_h, int(w * min(1.0, app.progress))), bar_h))
+
+
 def paint_game(size: tuple[int, int], app: App, th: Theme, lit: bool, art: pygame.Surface,
                details: bool = True) -> pygame.Surface:
     """A game tile: its artwork edge to edge, the title over a shaded foot."""
@@ -210,15 +238,12 @@ def paint_game(size: tuple[int, int], app: App, th: Theme, lit: bool, art: pygam
         surf.blit(foot, (0, h - foot.get_height()))
         pad = int(h * 0.1)
         if app.platform:
-            badge = style.tracked(th.type(16, "cond", "semibold"), app.platform.upper(), lv.text, 0.18)
-            chip = badge.get_rect().inflate(int(16 * th.u), int(6 * th.u))
-            chip.topright = (w - pad, pad)
-            style.blend_rect(surf, chip, (*lv.ink, 190), chip.h // 2)
-            surf.blit(badge, badge.get_rect(center=chip.center))
+            _badge(surf, app.platform, th, pad)
         name = style.tracked(th.font_tile, app.name.upper(), lv.text if lit else mix(lv.text, lv.ink, 0.2), 0.05)
         surf.blit(style.fit(name, w - pad * 2), (pad, h - pad - name.get_height() + int(h * 0.03)))
     if lit:
         style.stripes(surf, 0, 0, h, max(3, int(h * 0.05)), (lv.accent, lv.second))
+    _progress(surf, app, th)
     style.rounded(surf, th.radius)
     if lit:
         pygame.draw.rect(surf, (*lv.text, 225), surf.get_rect(), width=max(2, int(2 * th.u)),
@@ -255,6 +280,9 @@ def paint_tile(size: tuple[int, int], app: App, th: Theme, lit: bool, icon: pyga
         name = style.tracked(th.font_tile, app.name.upper(), lv.text if lit else mix(lv.text, lv.ink, 0.25), 0.07)
         name = style.fit(name, int(w * 0.70) - pad * 2)
         surf.blit(name, (pad, h - pad - name.get_height() + int(h * 0.03)))
+        if app.progress is not None and app.platform:  # Watch next without a picture: say which episode
+            _badge(surf, app.platform, th, pad)
+    _progress(surf, app, th)
     style.rounded(surf, th.radius)
     if lit:
         pygame.draw.rect(surf, (*lv.text, 225), surf.get_rect(), width=max(2, int(2 * th.u)),
@@ -355,6 +383,7 @@ class HomeScreen:
         self._saver_t0 = 0.0
         self.hints = (("A", "Open"), ("X", "Favorite"), ("Y", "Options"), ("VIEW", "Search"), ("GUIDE", "Quick Menu"))
         self.search = None  # the search screen, while it's open (search.Search)
+        self.pin = None  # asking for the household PIN (family.PinEntry)
         self.gallery = None  # the Captures screen, while it's open (gallery.Gallery)
         self.whats_new: tuple[str, list[str]] | None = None  # (version, notes) to show once after an update
         self._thumbs: dict = {}  # screenshot path -> thumbnail (loaded one per frame)
@@ -363,12 +392,15 @@ class HomeScreen:
         self._details = None  # the game the Options card is about (library.Game), if it's a game
         self._search_t0 = 0.0
         self.favorites: set[str] = self._load_favorites()
-        self._backdrops: dict[str, pygame.Surface] = {}
+        self._backdrops: dict[str, pygame.Surface] = {}  # full screen, the last few
+        self._blurs: dict[str, pygame.Surface | None] = {}  # each tile's art, blurred small
         self._backdrop: tuple[str, pygame.Surface] | None = None  # showing now
         self._backdrop_prev: pygame.Surface | None = None  # fading out
         self._backdrop_t0 = 0.0
         self._batteries: list = []
         self._batteries_at = -1e9
+        self.settled = False  # nothing moving: drawn a couple of times a second (see run)
+        self.busy_until = 0.0  # something is animating until then
         self._link = None  # netstate.Link: how the PC is connected, by the clock
         self._link_at = -1e9
         self._moving_rect: pygame.Rect | None = None
@@ -422,7 +454,7 @@ class HomeScreen:
     def _tile(self, app: App, lit: bool) -> pygame.Surface:
         th = self.theme
         size = (round(th.tile_w * th.focus_scale), round(th.tile_h * th.focus_scale)) if lit else (th.tile_w, th.tile_h)
-        key = (app.id, lit)
+        key = (app.id, lit, app.progress, app.platform)  # Watch next tiles change as you watch
         if key not in self._tiles:
             icon = self._icon(app, (int(size[1] * 0.5), int(size[1] * 0.5)))
             self._tiles[key] = paint_tile(size, app, th, lit, icon)
@@ -599,6 +631,13 @@ class HomeScreen:
                 events.record("whats_new_seen", version=self.whats_new[0])
                 self.whats_new = None
             return None
+        if self.pin is not None:
+            result = self.pin.handle(nav)
+            if result == "ok":
+                return self.pin_done()
+            if result == "cancel":
+                self.pin = None
+            return None
         if self.gallery is not None:
             if self.gallery.handle(nav) == "close":
                 self.gallery = None
@@ -645,10 +684,20 @@ class HomeScreen:
         self.home.move(nav)
         return None
 
-    def _open(self, app: App | None) -> App | None:
-        """Open a tile: ask first if it needs it; the Search tile opens here."""
+    def _open(self, app: App | None, pin_ok: bool = False) -> App | None:
+        """Open a tile: ask first if it needs it (the PIN, if household limits
+        say so; "are you sure?"); the Search tile opens here."""
         if app is None:
             return None
+        if not pin_ok:
+            from . import family
+
+            reason = family.needs_pin(app.id)
+            if reason:
+                self.pin = family.PinEntry(reason, app)
+                self._confirm_t0 = time.monotonic()
+                events.record("pin_asked", tile=app.id, reason=reason)
+                return None
         if app.command and app.command[0] == "hearth:search":
             self.open_search()
             return None
@@ -722,10 +771,24 @@ class HomeScreen:
         self._gallery_t0 = time.monotonic()
         events.record("captures_open", count=len(self.gallery.items))
 
-    def type_text(self, text: str) -> None:
-        """A real keyboard typing into search."""
+    def type_text(self, text: str) -> App | None:
+        """A real keyboard typing into search, or number keys into the PIN."""
+        if self.pin is not None:
+            return self.pin_done() if self.pin.type(text) == "ok" else None
         if self.search is not None:
             self.search.type(text)
+        return None
+
+    def pin_done(self) -> App | None:
+        """The right PIN: open what it was for (and, if it was the time
+        limit or bedtime, allow a little more)."""
+        from . import family
+
+        entry, self.pin = self.pin, None
+        if entry.reason != "This one is locked":
+            family.grant_extra()
+        events.record("pin_ok", tile=entry.target.id if entry.target else None)
+        return self._open(entry.target, pin_ok=True)
 
     # -- pointer (a Wii Remote, or a mouse) --------------------------------------
 
@@ -740,6 +803,7 @@ class HomeScreen:
         if self._pointer is not None and abs(pos[0] - self._pointer[0]) + abs(pos[1] - self._pointer[1]) < 2:
             return  # ignore tremor
         self._pointer, self._pointer_at = pos, time.monotonic()
+        self.busy(POINTER_SECONDS)  # the pointer shows, then fades
         if self.confirming is None:
             hit = self._tile_at(pos)
             if hit:
@@ -777,6 +841,10 @@ class HomeScreen:
             return None
         self.home.row, self.home.cols[hit[0]] = hit
         return self.handle(Nav.SELECT)
+
+    def busy(self, seconds: float = 0.5) -> None:
+        """Something is animating: draw every frame for a while longer."""
+        self.busy_until = max(self.busy_until, time.monotonic() + seconds)
 
     def _draw_pointer(self) -> None:
         if self._pointer is None:
@@ -861,6 +929,8 @@ class HomeScreen:
             self._draw_gallery()
         if self.whats_new is not None:
             self._draw_whats_new()
+        if self.pin is not None:
+            self._draw_pin()
         self._draw_pointer()
 
     # -- the backdrop: the focused tile's art or colour, softly ------------------
@@ -869,12 +939,15 @@ class HomeScreen:
         th, lv = self.theme, self.theme.lv
         w, h = th.width, th.height
         out = self.background.copy()
-        art = load_art(app.art)
-        if art is not None:
+        if app.id not in self._blurs:
+            art = load_art(app.art)
             # Blurred right out (down to a few dozen pixels, then up in steps
             # so there are no edges), so it's light and colour, not a picture.
-            small = cover(art, (32, 18))
-            mid = pygame.transform.smoothscale(small, (w // 10, h // 10))
+            # Kept at a tenth of the screen's size: a full-size one is 8 MB.
+            self._blurs[app.id] = None if art is None else pygame.transform.smoothscale(
+                cover(art, (32, 18)), (w // 10, h // 10))
+        mid = self._blurs[app.id]
+        if mid is not None:
             blur = pygame.transform.smoothscale(pygame.transform.smoothscale(mid, (w // 3, h // 3)), (w, h))
             blur.set_alpha(95)
             out.blit(blur, (0, 0))
@@ -891,9 +964,13 @@ class HomeScreen:
         rested = now - self._focus_since >= BACKDROP_DELAY
         if app is not None and rested and (self._backdrop is None or self._backdrop[0] != app.id):
             if app.id not in self._backdrops:
-                if len(self._backdrops) > 12:
+                # Only the last few full-screen ones are kept (8 MB each at
+                # 1080p); the rest are rebuilt from their small blur.
+                while len(self._backdrops) >= BACKDROPS_KEPT:
                     self._backdrops.pop(next(iter(self._backdrops)))
                 self._backdrops[app.id] = self._make_backdrop(app)
+            else:
+                self._backdrops[app.id] = self._backdrops.pop(app.id)  # most recently used last
             self._backdrop_prev = self._backdrop[1] if self._backdrop else self.background
             self._backdrop = (app.id, self._backdrops[app.id])
             self._backdrop_t0 = now
@@ -905,6 +982,7 @@ class HomeScreen:
         if p >= 1.0 or self._backdrop_prev is None:
             s.blit(img, (0, 0))
             return
+        self.busy()
         s.blit(self._backdrop_prev, (0, 0))
         img.set_alpha(int(255 * ease_in_out(p)))
         s.blit(img, (0, 0))
@@ -924,16 +1002,33 @@ class HomeScreen:
 
     # -- the status bar: controller batteries -----------------------------------
 
-    def _draw_batteries(self, layer: pygame.Surface, right: int, cy: int) -> int:
-        """Batteries of connected controllers, right to left from `right`.
-        Returns the x where they end."""
-        from . import battery
+    def refresh_status(self) -> None:
+        """Re-read controller batteries and the network now and then."""
+        from . import battery, netstate
 
-        th, lv = self.theme, self.theme.lv
         now = time.monotonic()
         if now - self._batteries_at > BATTERY_SECONDS:
             self._batteries_at = now
             self._batteries = battery.controllers()
+        if now - self._link_at > NETWORK_SECONDS:
+            self._link_at = now
+            try:
+                self._link = netstate.link()
+            except OSError:
+                self._link = None
+
+    def looks(self) -> tuple:
+        """What a settled screen shows that can change without input: redraw
+        only when this does."""
+        self.refresh_status()
+        caret = int(time.monotonic() * 2) % 2 if self.search is not None else 0
+        return (style.clock_text(self.clock), time.strftime("%d"), repr(self._batteries), self._link,
+                self.message, self.badge, caret, tuple(sorted(self.running)), id(self.home))
+
+    def _draw_batteries(self, layer: pygame.Surface, right: int, cy: int) -> int:
+        """Batteries of connected controllers, right to left from `right`.
+        Returns the x where they end."""
+        th, lv = self.theme, self.theme.lv
         x = right
         f = th.font_date
         for b in reversed(self._batteries):
@@ -956,17 +1051,8 @@ class HomeScreen:
     def _draw_network(self, layer: pygame.Surface, right: int, cy: int) -> int:
         """Wi-Fi bars, a wired plug, or "offline", ending at `right`. Returns
         the x where it starts."""
-        from . import netstate
-
         th, lv = self.theme, self.theme.lv
         u = th.u
-        now = time.monotonic()
-        if now - self._link_at > NETWORK_SECONDS:
-            self._link_at = now
-            try:
-                self._link = netstate.link()
-            except OSError:
-                self._link = None
         link = self._link
         if link is None:
             return right
@@ -1012,6 +1098,7 @@ class HomeScreen:
         date = style.tracked(th.font_date, time.strftime("%a %d %b").upper(), lv.dim, 0.22)
         date_rect = date.get_rect(bottomright=(clock_rect.x - int(22 * th.u), clock_rect.bottom - int(12 * th.u)))
         layer.blit(date, date_rect)
+        self.refresh_status()
         net_x = self._draw_network(layer, date_rect.x - int(28 * th.u), date_rect.centery)
         status_right = self._draw_batteries(layer, net_x, date_rect.centery)
         if self.badge:
@@ -1108,7 +1195,7 @@ class HomeScreen:
         img.set_alpha(None)
 
         # Now and then, light runs across the focused tile's paint.
-        if focused and not self.reduced and f >= 0.99:
+        if focused and not self.reduced and not self.settled and f >= 0.99:
             since = time.monotonic() - self._focus_since - 0.5
             phase = (since % 5.0) / 1.1 if since > 0 else 0
             glint = style.sheen(rect.size, phase)
@@ -1329,6 +1416,54 @@ class HomeScreen:
 
     # -- what's new (once, after an update) ---------------------------------------
 
+    def _draw_pin(self) -> None:
+        """The PIN pad: a combination lock, one digit at a time."""
+        th, s, lv, pin = self.theme, self.surface, self.theme.lv, self.pin
+        u = th.u
+        p = 1.0 if self.reduced else ease_out((time.monotonic() - self._confirm_t0) / CONFIRM_SECONDS)
+        shade = pygame.Surface(s.get_size(), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, int(200 * p)))
+        s.blit(shade, (0, 0))
+        box = pygame.Rect(0, 0, int(th.width * 0.36), int(th.height * 0.44))
+        box.center = (th.width // 2, th.height // 2 + int((1 - p) * 30 * u))
+        card = pygame.Surface(box.size, pygame.SRCALPHA)
+        card.blit(style.gradient(box.size, style.lighten(lv.panel, 0.05), lv.panel, vertical=True), (0, 0))
+        stripe_w = style.stripes(card, int(28 * u), 0, box.h, max(4, int(12 * u)), (lv.accent, lv.second))
+        style.rounded(card, th.radius)
+        x = int(28 * u) + stripe_w + int(34 * u)
+        y = int(40 * u)
+        caption = style.tracked(th.font_date, pin.reason.upper(), lv.dim, 0.24)
+        card.blit(caption, (x, y))
+        y += caption.get_height() + int(6 * u)
+        title = style.tracked(th.font_title, "ENTER THE PIN", lv.text, 0.06)
+        card.blit(style.fit(title, box.w - x - int(30 * u)), (x, y))
+        y += title.get_height() + int(34 * u)
+        f_digit = th.type(72, "cond", "bold")
+        cell = int(92 * u)
+        gap = int(18 * u)
+        for i, d in enumerate(pin.digits):
+            r = pygame.Rect(x + i * (cell + gap), y, cell, int(cell * 1.2))
+            here = i == pin.pos
+            pygame.draw.rect(card, style.lighten(lv.panel, 0.12 if here else 0.05), r, border_radius=int(10 * u))
+            if here:
+                pygame.draw.rect(card, lv.accent, r, width=max(2, int(3 * u)), border_radius=int(10 * u))
+                w = int(11 * u)
+                for base, tip in ((r.y - int(10 * u), r.y - int(22 * u)), (r.bottom + int(10 * u),
+                                                                             r.bottom + int(22 * u))):
+                    pygame.draw.polygon(card, lv.accent, [(r.centerx - w, base), (r.centerx + w, base),
+                                                          (r.centerx, tip)])  # Up/Down change it
+                glyph = f_digit.render(str(d), True, lv.text)
+            else:
+                glyph = f_digit.render("•", True, lv.dim)  # only the digit you're on shows
+            card.blit(glyph, glyph.get_rect(center=r.center))
+        y += int(cell * 1.2) + int(40 * u)
+        if pin.message:
+            card.blit(th.type(24, "text", "semibold").render(pin.message, True, lv.accent), (x, y))
+        hint_y = box.h - int(40 * u)
+        hx = style.button_hint(card, x, hint_y, "A", "OK", th.type, lv)
+        style.button_hint(card, hx + int(30 * u), hint_y, "B", "CANCEL", th.type, lv)
+        s.blit(card, box)
+
     def _draw_whats_new(self) -> None:
         th, s, lv = self.theme, self.surface, self.theme.lv
         u = th.u
@@ -1469,6 +1604,8 @@ class HomeScreen:
                 rect = pygame.Rect(m + col * (tw + gap), top + r * row_h, *tsize)
                 thumb, just_loaded = self._thumb(c.path, tsize, load=not loaded)
                 loaded = loaded or just_loaded  # one new picture per frame keeps it smooth
+                if just_loaded:
+                    self.busy()
                 if thumb is not None:
                     s.blit(thumb, rect)
                 else:
@@ -1745,6 +1882,8 @@ def run(
     frames = 0
     blocked = False
     idle_since = time.monotonic()
+    last_draw = last_look = 0.0
+    drawn_looks = None
     while max_frames is None or frames < max_frames:
         frames += 1
         if input_blocked and frames % 8 == 0:
@@ -1765,8 +1904,16 @@ def run(
                     idle_since = time.monotonic()
                     if screen.saver:  # waking up: this input only wakes the screen
                         screen.saver = False
+                        from . import tv
+
+                        tv.switch_here(tries=5)  # and the TV, if it drifted off to another input
                         mapper.reset()
                         continue
+            if screen.pin is not None and not blocked and event.type == pygame.KEYDOWN \
+                    and getattr(event, "unicode", "").isdigit():
+                # Number keys (a keyboard, a TV remote's digits) type the PIN.
+                chosen = screen.type_text(event.unicode) or chosen
+                continue
             if screen.search is not None and not blocked and event.type == pygame.KEYDOWN:
                 # A real keyboard types into search.
                 if event.key == pygame.K_BACKSPACE:
@@ -1823,12 +1970,25 @@ def run(
             pygame.display.flip()
             clock.tick(24 if screen._slides else 10)
             continue
-        screen.edge_scroll(time.monotonic())
+        mono = time.monotonic()
+        screen.settled = (screen.intro is None and mono - idle_since > SETTLE_SECONDS
+                          and mono > screen.busy_until)
+        if screen.settled:
+            due = mono - last_draw >= SETTLED_REDRAW
+            if not due and mono - last_look >= 1 / SETTLED_FPS:
+                last_look = mono
+                due = screen.looks() != drawn_looks
+            if not due:
+                clock.tick(30)  # nothing new to show: just keep reading input
+                continue
+        last_draw = last_look = mono
+        screen.edge_scroll(mono)
         screen.draw()
         pygame.display.flip()
-        if stats is not None:
+        drawn_looks = screen.looks()
+        if stats is not None and not screen.settled:
             stats.tick()
-        clock.tick(60)
+        clock.tick(30 if screen.settled else 60)
     return None
 
 

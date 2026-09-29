@@ -53,7 +53,7 @@ status = "shipped"
 
 [[area]]
 name = "Game stores"
-what = "Epic Games (Heroic) and Battle.net (Lutris) tiles; their games in the Library"
+what = "Epic Games (Heroic), Battle.net, EA app and Ubisoft Connect (Lutris) tiles; their games in the Library"
 status = "shipped"
 
 [[area]]
@@ -75,7 +75,35 @@ status = "shipped"
 name = "Captures"
 what = "Screenshots from the Quick Menu, a gallery tile, in the screen saver"
 status = "shipped"
-since = "0.21.0"
+
+[[area]]
+name = "Watch next"
+what = "Shows and films in progress from Jellyfin, Plex and Kodi; resumes and reports back"
+status = "shipped"
+since = "0.22.0"
+
+[[area]]
+name = "Family"
+what = "Daily game-time limit, bedtime and locked tiles behind a PIN"
+status = "shipped"
+since = "0.22.0"
+
+[[area]]
+name = "Privacy"
+what = "No ads or tracking; a guide to turn off the TV's own tracking, by make"
+status = "shipped"
+since = "0.22.0"
+
+[[area]]
+name = "TV control (CEC)"
+what = "TV on and to the right input on wake and on Guide; standby with the PC"
+status = "shipped"
+
+[[area]]
+name = "Performance"
+what = "Hearth idles under 2% of one core and about 300 MB; hearthctl footprint"
+status = "shipped"
+since = "0.22.0"
 
 [[area]]
 name = "Updates"
@@ -116,6 +144,10 @@ needs = "Update, then try the checklist in the release notes"
 
 # Captions for screenshots in reports/<version>/screens/.
 [screens]
+"watch-next.png" = "Watch next: in progress on Jellyfin, Plex and Kodi, with how much is left."
+"family.png" = "Settings → Family: game time, bedtime, locked tiles."
+"pin.png" = "The PIN, entered like a combination lock."
+"privacy.png" = "Settings → Privacy: turning off the TV's own tracking, for its make."
 "whats-new.png" = "What's new: shown once after an update."
 "network.png" = "By the clock: Wi-Fi bars, wired, or offline."
 "captures.png" = "The Captures tile: every screenshot, newest first."
