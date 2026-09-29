@@ -131,7 +131,12 @@ jobs:
     permissions:
       contents: write
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # GitHub won't let the workflow's own token put a tag on an older commit
+      # whose workflow files differ from today's, so past versions can only
+      # be published with a token that has the "workflows" permission: add a
+      # fine-grained token with Contents and Workflows (read and write) as the
+      # RELEASE_TOKEN secret. Without one, only the current version is.
+      GH_TOKEN: ${{ secrets.RELEASE_TOKEN || secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -161,6 +166,11 @@ jobs:
             latest=false
             [[ "$version" == "$current" ]] && latest=true
             python3 tools/release_notes.py "$version" > notes.md
-            gh release create "$tag" --target "$commit" --title "Hearth OS $version" \
-              --notes-file notes.md --latest="$latest"
+            if [[ "$version" == "$current" ]]; then
+              gh release create "$tag" --target "$commit" --title "Hearth OS $version" \
+                --notes-file notes.md --latest="$latest"
+            elif ! gh release create "$tag" --target "$commit" --title "Hearth OS $version" \
+                --notes-file notes.md --latest=false; then
+              echo "::warning::$tag not published (needs a RELEASE_TOKEN secret with the workflows permission)"
+            fi
           done
