@@ -1,0 +1,122 @@
+# What's working, for the progress report (tools/progress_report.py).
+# Edit this when something changes, then run the tool for the new version.
+#
+# status: "confirmed" (reported working on the real PC), "shipped" (built,
+# tested and released, not yet reported on), "next" (not started), or
+# "not-possible".
+
+summary = """Hearth OS turns a living-room PC into a TV-style home screen for Steam,
+emulation, streaming apps and Quick Resume, driven by a controller, a TV
+remote or a Wii Remote. It's built on Bazzite and installs as a system image
+that updates itself and can always be rolled back. It runs on AMD and Intel
+graphics; NVIDIA is left for later."""
+
+next = [
+    "Your phone as a remote, with a keyboard for search and Wi-Fi passwords.",
+    "Fix what turns up on the real PC.",
+    "When wanted: profiles and groups of tiles; NVIDIA support.",
+]
+
+reference_pc = "Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox controller, Wii Remotes on a DolphinBar"
+
+[[area]]
+name = "Home screen"
+what = "TV-style rows, liveries, a backdrop from the focused game, controller batteries and network by the clock"
+status = "confirmed"
+
+[[area]]
+name = "Emulation"
+what = "ES-DE with a tile per console; emulators tuned for the GPU and TV"
+status = "confirmed"
+note = "Dolphin working"
+
+[[area]]
+name = "Wii Remote"
+what = "DolphinBar pointer on the home screen and as a mouse; handed to Dolphin for Wii games"
+status = "confirmed"
+note = "pointer working"
+
+[[area]]
+name = "Quick Resume"
+what = "Hold Guide to pause a game and pick it up later (up to 3)"
+status = "shipped"
+
+[[area]]
+name = "Quick Menu"
+what = "Guide button panel: audio, per-app volume, Discord, stats, power, updates, screenshots"
+status = "shipped"
+
+[[area]]
+name = "Streaming"
+what = "YouTube (VacuumTube), Twitch (VacuumStream), Kodi, Jellyfin, Plex, Moonlight"
+status = "shipped"
+
+[[area]]
+name = "Game stores"
+what = "Epic Games (Heroic) and Battle.net (Lutris) tiles; their games in the Library"
+status = "shipped"
+
+[[area]]
+name = "Customising"
+what = "Favorites with X, move tiles, hide tiles, liveries, sounds"
+status = "shipped"
+
+[[area]]
+name = "Search and details"
+what = "Search every app and game; Y on a game for play time and last played"
+status = "shipped"
+
+[[area]]
+name = "Settings"
+what = "Wi-Fi, static IP and DNS, Bluetooth, audio devices, storage (format and use a new drive)"
+status = "shipped"
+
+[[area]]
+name = "Captures"
+what = "Screenshots from the Quick Menu, a gallery tile, in the screen saver"
+status = "shipped"
+since = "0.21.0"
+
+[[area]]
+name = "Updates"
+what = "Automatic, versioned, with releases on GitHub, a what's-new card and rollback"
+status = "shipped"
+
+[[area]]
+name = "Phone as a remote"
+what = "A web page with a d-pad and keyboard, paired with a code on the TV"
+status = "next"
+
+[[area]]
+name = "Profiles, folders"
+what = "Per-person favorites; groups of tiles"
+status = "next"
+note = "deferred for now"
+
+[[area]]
+name = "NVIDIA graphics"
+what = "A separate image with NVIDIA's driver"
+status = "next"
+note = "deferred: AMD and Intel first"
+
+[[area]]
+name = "Netflix and similar"
+what = "DRM limits these to low quality on any home-built PC"
+status = "not-possible"
+
+[[issue]]
+what = "Steam \"Switch to Desktop\" can still hang"
+state = "Holding Guide for 4 s always gets you home; the cause isn't known"
+needs = "hearthctl status and hearthctl logs right after it happens"
+
+[[issue]]
+what = "Recent updates not yet tried on the PC"
+state = "Built and tested in a virtual display"
+needs = "Update, then try the checklist in the release notes"
+
+# Captions for screenshots in reports/<version>/screens/.
+[screens]
+"whats-new.png" = "What's new: shown once after an update."
+"network.png" = "By the clock: Wi-Fi bars, wired, or offline."
+"captures.png" = "The Captures tile: every screenshot, newest first."
+"captures-full.png" = "One screenshot full screen, with delete."

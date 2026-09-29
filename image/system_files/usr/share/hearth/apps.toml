@@ -196,6 +196,15 @@ title = "Watch"
 title = "System"
 
   [[rows.apps]]
+  # Your screenshots (Quick Menu → System → Take a screenshot). Appears once
+  # there's one.
+  id = "captures"
+  name = "Captures"
+  command = "hearth:captures"   # built in
+  requires_files = ["~/Pictures/Hearth/*.png"]
+  color = "#2c3e50"
+
+  [[rows.apps]]
   id = "settings"
   name = "Settings"
   command = "hearth:settings"   # built into Hearth: look, Wii Remote, Bluetooth, Wi-Fi, ...

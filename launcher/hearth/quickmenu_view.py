@@ -59,6 +59,13 @@ class Icons:
             pygame.draw.polygon(surf, color, [(cx - s * 0.5, cy - s * 0.05), (cx + s * 0.5, cy - s * 0.05),
                                               (cx, cy + s * 0.5)])
             pygame.draw.line(surf, color, (cx - s * 0.85, cy + s * 0.85), (cx + s * 0.85, cy + s * 0.85), w + 1)
+        elif name == "camera":
+            body = pygame.Rect(0, 0, s * 1.8, s * 1.25)
+            body.center = (cx, cy + s * 0.12)
+            pygame.draw.rect(surf, color, body, border_radius=max(2, int(s * 0.25)))
+            surf.fill(color, (cx - s * 0.4, body.y - s * 0.3, s * 0.8, s * 0.4))
+            style.circle(surf, bg, body.center, max(3, int(s * 0.42)))
+            style.circle(surf, color, body.center, max(2, int(s * 0.24)))
         elif name == "info":
             style.circle(surf, color, (cx, cy), s * 0.9)
             surf.fill(bg, (cx - w // 2, cy - s * 0.1, max(2, w), s * 0.6))
@@ -174,7 +181,8 @@ class QuickMenuView:
                   (0, 0))
         style.stripes(card, 0, 0, h, self.px(10), (lv.accent, lv.second))
         style.rounded(card, self.radius)
-        icon = {"battery": "battery", "download": "download", "update": "download"}.get(toast.icon, "info")
+        icon = {"battery": "battery", "download": "download", "update": "download",
+                "camera": "camera"}.get(toast.icon, "info")
         Icons.draw(card, icon, (self.px(64), h // 2), self.px(40), lv.accent, bg=lv.panel)
         x = self.px(108)
         title = style.fit(self.f_label.render(toast.title, True, lv.text), w - x - self.px(24))

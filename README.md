@@ -36,9 +36,13 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ## Features
 
 - **TV home screen**: rows of tiles (Play / Watch / System), clock,
-  controller batteries, confirm dialogs for power actions, and a backdrop that
-  glows with the focused game's art or app's colour. Scales cleanly from 720p
-  to 4K.
+  controller batteries and the network (Wi-Fi bars, wired or offline), confirm
+  dialogs for power actions, and a backdrop that glows with the focused game's
+  art or app's colour. Scales cleanly from 720p to 4K. After an update it
+  shows once **what's new** in that version.
+- **Captures**: take a screenshot over any game from the Quick Menu; the
+  **Captures** tile shows them all (full screen, flip through, delete), and
+  they appear in the screen saver. Kept in `~/Pictures/Hearth`.
 - **Find anything**: the **View** button (Share on PlayStation, − on Switch)
   or the Search tile searches every app and game as you type, with the
   controller or a keyboard. **Y** on a game shows its details: play time,
@@ -126,12 +130,14 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Getting started
 
-1. **Emulation**: see [docs/EMULATION.md](docs/EMULATION.md) for how the game
+1. **Check your PC**: Hearth needs **AMD or Intel graphics** (NVIDIA isn't
+   supported yet). [docs/COMPATIBILITY.md](docs/COMPATIBILITY.md) lists what's
+   supported, and [docs/HARDWARE.md](docs/HARDWARE.md) the add-ons that make
+   the biggest difference (a Pulse-Eight CEC adapter or FLIRC, a DolphinBar).
+2. **Install**: follow [docs/INSTALL.md](docs/INSTALL.md), about 30 minutes:
+   install Bazzite from a USB stick, then switch it to Hearth with one command.
+3. **Emulation**: see [docs/EMULATION.md](docs/EMULATION.md) for how the game
    menu works, adding games, and which consoles run well.
-1. **Hardware**: see [docs/HARDWARE.md](docs/HARDWARE.md). An AMD GPU and a
-   Pulse-Eight CEC adapter or FLIRC make the biggest difference.
-2. **Install**: see [docs/INSTALL.md](docs/INSTALL.md). You install Bazzite, then
-   switch it to the Hearth image with one command. Dual-boot setup is covered there too.
 
 ### Try the home screen on any Linux or macOS machine
 
@@ -171,7 +177,8 @@ XT, 24 GB, ASUS TUF A520M) with an Xbox controller and a Wii Remote on a
 DolphinBar. Emulation (ES-DE and Dolphin) and the Wii Remote pointer are
 confirmed working there. What still needs checking on real hardware is in
 [the checklist](docs/ARCHITECTURE.md#verify-on-real-hardware); the latest
-[progress report](reports/Hearth-OS-progress-report.pdf) has the full picture.
+[progress report](reports/README.md) has the full picture: one per version, with
+lines of code, tests and what's working, and the history of every version.
 
 ## Versions
 
@@ -210,7 +217,7 @@ image/system_files/           files copied into the image, laid out like /
 launcher/hearth/              the home screen / session hub (Python)
 launcher/tests/               tests (headless, run in CI)
 docs/                         install, hardware, architecture
-reports/                      progress reports
+reports/                      a progress report per version (tools/progress_report.py)
 tools/gamescope-lab/          run Hearth in real gamescope in Docker, no TV needed
 .github/workflows/build.yml   tests + builds and publishes the image to GHCR
 ```

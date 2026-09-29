@@ -133,6 +133,12 @@ class Actions:
         self.o._wii_mouse_apps = dict(data["wii_mouse_apps"])
         return None
 
+    def screenshot(self):
+        """Close the menu, then capture what's under it and say so."""
+        title = self.o.title()
+        threading.Thread(target=self.o.take_screenshot, args=(title,), daemon=True).start()
+        return "close"
+
     def report(self):
         if (session.read().get("report") or {}).get("status") != "running":
             session.update(lambda s: s.__setitem__("report", {"status": "running"}))
@@ -314,6 +320,25 @@ class Overlay:
         updates.update_esde()
         self.check_staged(failed=not ok)
         events.record("update", ok=ok, result=(session.read().get("update") or {}).get("status"))
+
+    def take_screenshot(self, title: str) -> None:
+        """Wait for the menu to finish hiding, then capture the screen."""
+        from . import captures
+
+        end = time.monotonic() + 2.0
+        while (self.open or self.t > 0) and time.monotonic() < end:
+            time.sleep(0.05)
+        time.sleep(0.15)  # the next frame, without the menu
+        try:
+            path = captures.take(title)
+        except Exception:
+            log.exception("screenshot")
+            path = None
+        events.record("screenshot", ok=path is not None)
+        if path is None:
+            self.notices.post("Couldn't take a screenshot", "Details: hearthctl logs", "info")
+        else:
+            self.notices.post("Screenshot saved", f"{title} · see it with the Captures tile", "camera")
 
     def run_report(self) -> None:
         from . import report

@@ -80,3 +80,6 @@ class FakeActions:
 
     def media(self, bus, action):
         return self._record("media", bus, action)
+
+    def screenshot(self):
+        return self._record("screenshot")

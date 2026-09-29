@@ -14,6 +14,8 @@ FROM ${BASE_IMAGE}
 
 COPY image/system_files /
 COPY launcher/hearth /usr/lib/hearth/python/hearth
+# For "What's new" on the home screen after an update.
+COPY CHANGELOG.md /usr/share/hearth/CHANGELOG.md
 
 # Stamped into /usr/share/hearth/version.json; CI passes VERSION (see CHANGELOG.md).
 ARG HEARTH_VERSION=dev

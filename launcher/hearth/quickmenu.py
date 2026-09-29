@@ -194,6 +194,7 @@ class Actions(Protocol):
     def report(self) -> str | None: ...
     def set_wii_mouse(self, on: bool) -> str | None: ...
     def media(self, bus: str, action: str) -> str | None: ...
+    def screenshot(self) -> str | None: ...
 
 
 @dataclass
@@ -390,6 +391,9 @@ def _system_tab(ctx: Context) -> Tab:
     if fg:
         tab.items.append(Item("home", "Close " + fg["name"], "action", confirm=True,
                               detail="Return to the home screen", on_select=act.go_home))
+    tab.items.append(Item("screenshot", "Take a screenshot", "action",
+                          detail="Of what's behind this menu; see them with the Captures tile",
+                          on_select=act.screenshot))
     tab.items.append(_update_item(ctx))
     if ctx.wii is not None:
         tab.items.append(Item("wii-mouse", "Wii Remote pointer as mouse", "toggle", value=ctx.wii["mouse"],
