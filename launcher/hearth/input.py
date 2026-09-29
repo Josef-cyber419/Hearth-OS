@@ -46,6 +46,8 @@ KEYS = {
     pygame.K_PAGEDOWN: Nav.TAB_NEXT,
     pygame.K_o: Nav.OPTIONS,
     pygame.K_F2: Nav.OPTIONS,
+    pygame.K_f: Nav.FAVORITE,
+    pygame.K_F3: Nav.FAVORITE,
 }
 
 BUTTONS = {
@@ -60,10 +62,12 @@ BUTTONS = {
     pygame.CONTROLLER_BUTTON_LEFTSHOULDER: Nav.TAB_PREV,
     pygame.CONTROLLER_BUTTON_RIGHTSHOULDER: Nav.TAB_NEXT,
     pygame.CONTROLLER_BUTTON_Y: Nav.OPTIONS,
+    pygame.CONTROLLER_BUTTON_X: Nav.FAVORITE,
 }
 
 # Fallback for devices SDL has no GameController mapping for (Linux xpad layout).
-JOY_BUTTONS = {0: Nav.SELECT, 1: Nav.BACK, 3: Nav.OPTIONS, 4: Nav.TAB_PREV, 5: Nav.TAB_NEXT, 7: Nav.MENU}
+JOY_BUTTONS = {0: Nav.SELECT, 1: Nav.BACK, 2: Nav.FAVORITE, 3: Nav.OPTIONS, 4: Nav.TAB_PREV, 5: Nav.TAB_NEXT,
+               7: Nav.MENU}
 
 AXIS_THRESHOLD = 0.6
 # Settings → Controllers → Stick dead zone (a fraction of full tilt). Menus need

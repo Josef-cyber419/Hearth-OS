@@ -392,6 +392,13 @@ class SettingsApp:
                  on_change=lambda v: self.put("theme", "safe_area", int(v))),
         ]
 
+    def _reset_order(self) -> None:
+        data = settings.load()
+        data.pop("order", None)
+        settings.save(data)
+        self.jobs.messages["home-order"] = "Done: tiles are back in their usual order"
+        self.refresh()
+
     def _home(self) -> list[Item]:
         from . import ctl
 
@@ -403,9 +410,12 @@ class SettingsApp:
             Item("home-recent", "Continue: recently played games", "toggle", value=c.home_recent,
                  detail="A row of what you played last, Steam and emulated",
                  on_change=lambda on: self.put("home", "recent", bool(on))),
-            Item("home-pins", "Pinned games", "toggle", value=c.home_pins,
-                 detail="Press Y on a game to pin it; ES-DE favourites show here too",
+            Item("home-pins", "Favorites row", "toggle", value=c.home_pins,
+                 detail="Press X on any tile to star it (Y → Move to reorder); ES-DE favourites show too",
                  on_change=lambda on: self.put("home", "pins", bool(on))),
+            Item("home-order", "Put tiles back in their usual order", "action", confirm=True,
+                 detail=self.note("home-order", "Undoes Options → Move in every row (favourites stay)"),
+                 on_select=self._reset_order),
             Item("quick-resume", "Quick Resume", "choice", value=c.quick_resume,
                  options=("Off", "Keep 1 game paused", "Keep 2 games paused", "Keep 3 games paused"),
                  detail="Hold Guide in a game to pause it and go home; it waits in a row up top",

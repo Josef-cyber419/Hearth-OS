@@ -35,11 +35,16 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Features
 
-- **TV home screen**: rows of tiles (Play / Watch / System), clock, confirm
-  dialogs for power actions. Scales cleanly from 720p to 4K.
-- **Your games up front**: a **Continue** row of what you played last and a
-  **Pinned** row of favourites, across Steam and every emulated console, with
-  their artwork. Press Y on any game to pin it. The **Library** tile lists
+- **TV home screen**: rows of tiles (Play / Watch / System), clock,
+  controller batteries, confirm dialogs for power actions, and a backdrop that
+  glows with the focused game's art or app's colour. Scales cleanly from 720p
+  to 4K.
+- **Make it yours**: press **X** on any tile (app or game) to star it into the
+  **Favorites** row at the top; **Y → Move** rearranges tiles in a row. How
+  Hearth compares with smart TVs and consoles, and what's next:
+  [docs/COMPARISON.md](docs/COMPARISON.md).
+- **Your games up front**: a **Continue** row of what you played last, across
+  Steam and every emulated console, with their artwork. The **Library** tile lists
   every installed Steam game and every ROM, by platform. Games start directly:
   Steam ones open Big Picture and launch, emulated ones open their emulator.
 - **Emulators tuned for your PC and TV**: Vulkan, upscaling to your TV's

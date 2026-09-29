@@ -278,7 +278,7 @@ _LABELS = {
     "nintendo": {"south": "B", "east": "A", "west": "Y", "north": "X", "START": "+", "GUIDE": "HOME"},
     # The keys that do the same (input.KEYS), and a Wii Remote's buttons
     # (wiiinput.KEYS: A, B, − for options, + for the menu).
-    "keyboard": {"south": "ENTER", "east": "ESC", "west": "X", "north": "F2", "START": "TAB", "GUIDE": "WIN",
+    "keyboard": {"south": "ENTER", "east": "ESC", "west": "F", "north": "F2", "START": "TAB", "GUIDE": "WIN",
                  "LB": "Q", "RB": "E"},
     "wii": {"south": "A", "east": "B", "west": "1", "north": "−", "START": "+", "GUIDE": "HOME"},
 }

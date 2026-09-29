@@ -73,7 +73,7 @@ Hearth starts them asking for an X11 window (as Steam does for its games), so
 the game shows rather than staying on Hearth's "starting" view.
 
 They appear in a **PC games** row on the home screen and under **PC** in the
-Library. Pin one (Y → *Pin to home*) and it shows in **Continue** once played.
+Library. Star one (**X**) for the **Favorites** row; it shows in **Continue** once played.
 Guide works like any game: tap for the Quick Menu, hold to go home (Quick
 Resume keeps it paused). You don't need to make the file executable; Hearth
 does. On a second drive, link it the same way as `ROMs` above

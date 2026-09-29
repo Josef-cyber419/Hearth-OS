@@ -34,7 +34,7 @@ DOLPHIN_CHECK_SECONDS = 1.0
 MENU_NAVS = {UP: Nav.UP, DOWN: Nav.DOWN, LEFT: Nav.LEFT, RIGHT: Nav.RIGHT, A: Nav.SELECT, TWO: Nav.SELECT,
              B: Nav.BACK, ONE: Nav.BACK, MINUS: Nav.TAB_PREV, PLUS: Nav.TAB_NEXT}
 KEYS = {UP: "Up", DOWN: "Down", LEFT: "Left", RIGHT: "Right", A: "Return", TWO: "Return",
-        B: "Escape", ONE: "Escape", PLUS: "Menu", MINUS: "F2"}  # F2: Hearth's options (pin, hide)
+        B: "Escape", ONE: "Escape", PLUS: "Menu", MINUS: "F2"}  # F2: Hearth's options (favourite, move, hide)
 CLICKS = {A: 1, TWO: 3}  # mouse mode: A is a left click, 2 a right click
 DIRECTIONS = (UP, DOWN, LEFT, RIGHT)
 # Held sideways (D-pad on the left, like an NES pad): the D-pad turns a
