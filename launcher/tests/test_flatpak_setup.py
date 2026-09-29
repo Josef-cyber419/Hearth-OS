@@ -50,8 +50,13 @@ def test_installs_every_app_by_bare_id(tmp_path):
 def test_emulators_get_access_to_games_and_other_drives(tmp_path):
     calls, _ = run_setup(tmp_path)
     overrides = [c for c in calls if c.startswith("override")]
-    assert [c.split()[-1] for c in overrides] == listed("emulators.list")
-    assert all("--filesystem=/var/mnt" in c and "--filesystem=~/ROMs" in c for c in overrides)
+    emulators = listed("emulators.list")
+    assert [c.split()[-1] for c in overrides[:len(emulators)]] == emulators
+    assert all("--filesystem=/var/mnt" in c and "--filesystem=~/ROMs" in c for c in overrides[:len(emulators)])
+    # Game launchers install games, onto other drives too (not given the ROMs).
+    launchers = overrides[len(emulators):]
+    assert [c.split()[-1] for c in launchers] == ["com.heroicgameslauncher.hgl", "net.lutris.Lutris"]
+    assert all("--filesystem=/var/mnt" in c and "ROMs" not in c for c in launchers)
 
 
 def test_a_failed_install_is_retried_next_time(tmp_path):

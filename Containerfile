@@ -15,7 +15,7 @@ FROM ${BASE_IMAGE}
 COPY image/system_files /
 COPY launcher/hearth /usr/lib/hearth/python/hearth
 
-# Stamped into /usr/share/hearth/version.json; CI passes the git commit.
+# Stamped into /usr/share/hearth/version.json; CI passes VERSION (see CHANGELOG.md).
 ARG HEARTH_VERSION=dev
 
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \

@@ -69,8 +69,14 @@ jobs:
           # GHCR image names must be lowercase.
           image="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/hearth-os"
           echo "IMAGE=$image" >> "$GITHUB_ENV"
+          # The release version (VERSION) on main; anything else is a build of
+          # work towards it.
+          version=$(cat VERSION)
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then version="$version-dev.${GITHUB_SHA::7}"; fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
           podman build \
-            --build-arg HEARTH_VERSION="$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}" \
+            --build-arg HEARTH_VERSION="$version" \
+            --label org.opencontainers.image.version="$version" \
             --tag "$image:latest" \
             --tag "$image:${{ github.sha }}" \
             .
@@ -80,7 +86,7 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           if [[ "$GITHUB_REF" == refs/heads/main ]]; then
-            channels=(latest)
+            channels=(latest "$VERSION")  # :0.20.0 stays pinned to that release
             [[ "$MIRROR_STAGING" == true ]] && channels+=(staging)
           else
             channels=(staging)
@@ -92,9 +98,10 @@ jobs:
           podman push "$IMAGE:${{ github.sha }}"
 
   mirror-staging:
-    # Keep the staging branch on main's commit while staging mirrors main.
-    # Fast-forward only: if staging has its own commits, this fails loudly
-    # instead of throwing them away.
+    # Keep the staging branch up with main while staging mirrors main.
+    # Nothing to do when staging already has main's commit (new work pushed
+    # to staging ahead of its pull request). Otherwise fast-forward only: if
+    # staging has diverged, this fails loudly instead of throwing work away.
     needs: image
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
@@ -107,4 +114,53 @@ jobs:
           fetch-depth: 0
       - name: Move staging to main
         if: env.MIRROR_STAGING == 'true'
-        run: git push origin "HEAD:refs/heads/staging"
+        run: |
+          if git fetch origin staging 2>/dev/null && git merge-base --is-ancestor HEAD FETCH_HEAD; then
+            echo "staging already includes $GITHUB_SHA"
+            exit 0
+          fi
+          git push origin "HEAD:refs/heads/staging"
+
+  release:
+    # Every version in CHANGELOG.md gets a tag (v0.20.0) and a GitHub release
+    # with its notes: the current one on main's commit, earlier ones where
+    # their tags already point. Versions that already have a release are left.
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag and publish releases
+        run: |
+          current=$(cat VERSION)
+          for version in $(python3 tools/release_notes.py --versions); do
+            tag="v$version"
+            if gh release view "$tag" >/dev/null 2>&1; then
+              continue
+            fi
+            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+              if [[ "$version" == "$current" ]]; then
+                commit=$GITHUB_SHA
+              else  # released before tagging started
+                commit=$(awk -v v="$version" '$1 == v {print $2}' tools/past-releases.txt)
+              fi
+              if [[ -z "$commit" ]]; then
+                echo "::warning::$tag: no commit known for it; skipped"
+                continue
+              fi
+              git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+                tag -a "$tag" -m "Hearth OS $version" "$commit"
+              git push origin "refs/tags/$tag"
+            fi
+            latest=false
+            [[ "$version" == "$current" ]] && latest=true
+            python3 tools/release_notes.py "$version" > notes.md
+            gh release create "$tag" --verify-tag --title "Hearth OS $version" \
+              --notes-file notes.md --latest="$latest"
+          done

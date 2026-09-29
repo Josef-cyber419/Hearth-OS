@@ -39,6 +39,7 @@ log = logging.getLogger("hearth")
 CATEGORIES = [
     ("appearance", "Appearance", "Colours, motion and the clock."),
     ("home", "Home screen", "Which tiles show, and what Game Mode starts in."),
+    ("audio", "Audio", "Where sound plays and which microphone is used, for every app."),
     ("controllers", "Controllers", "Connected controllers, the Guide button, and the controller as a mouse."),
     ("wii", "Wii Remote", "Wii Remotes on a DolphinBar: aiming, sensitivity and calibration."),
     ("emulation", "Emulation", "Emulator settings tuned for this PC and your TV."),
@@ -263,6 +264,37 @@ def temperatures() -> str:
     return " · ".join(found[k] for k in ("CPU", "GPU") if k in found)
 
 
+def play_test_sound() -> str | None:
+    """A short chime through the default output (pw-play, or paplay)."""
+    import subprocess
+    import tempfile
+    import wave
+
+    from . import sounds
+
+    tone = sounds.tone([(660, 0.15), (880, 0.15), (1320, 0.3)], volume=0.35)
+    player = shutil.which("pw-play") or shutil.which("paplay")
+    if not player:
+        return "Can't play sound: no player (pw-play) found"
+    with tempfile.NamedTemporaryFile(suffix=".wav") as f:
+        with wave.open(f.name, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(sounds.RATE)
+            w.writeframes(tone)
+        try:
+            subprocess.run([player, f.name], timeout=10, capture_output=True)
+        except (OSError, subprocess.TimeoutExpired) as e:
+            return f"Couldn't play it: {e}"
+    return "Heard it? If not, try another output"
+
+
+def network_mask(prefix: int) -> str:
+    import ipaddress
+
+    return str(ipaddress.IPv4Network(f"0.0.0.0/{prefix}").netmask)
+
+
 def storage_breakdown() -> str:
     """Rough sizes of what takes the most space, via du (runs in the background)."""
     import subprocess
@@ -298,7 +330,11 @@ class SettingsApp:
         self.calibrating: Calibration | None = None
         self.launch: App | None = None  # an app to open on the way out (Desktop Mode)
         self.data: dict = {"net": None, "wifi": None, "networks": [], "bt_power": None, "bt": [],
-                           "os": None, "drives": None, "loaded": set()}
+                           "os": None, "drives": None, "ip": None, "audio": None, "loaded": set()}
+        # Network changes being picked, not applied yet (each one reconnects).
+        self.ip_method: str | None = None  # "auto" | "manual"
+        self.ip_edit: dict | None = None  # the manual (static) address, router and prefix
+        self.dns_choice: int | None = None
         self._refreshed = 0.0
         self.reload()
         self.menu = QuickMenu([])
@@ -326,6 +362,9 @@ class SettingsApp:
         if category == "storage":  # drives come and go: look every time
             self.jobs.start("drives-load", self._load_drives)
             return
+        if category == "audio":  # so do headsets and TVs
+            self.jobs.start("audio-load", self._load_audio)
+            return
         if category in self.data["loaded"] and not force:
             return
         self.data["loaded"].add(category)
@@ -339,7 +378,8 @@ class SettingsApp:
     def _load_network(self, rescan: bool = False) -> None:
         if not network.available():
             return None
-        self.data["net"] = network.status()
+        self.data["net"] = status = network.status()
+        self.data["ip"] = network.ip_config(status.connection) if status.connected and status.connection else None
         self.data["wifi"] = network.wifi_enabled()
         self.data["networks"] = network.networks(rescan) if self.data["wifi"] else []
         return None
@@ -349,6 +389,16 @@ class SettingsApp:
             return None
         self.data["bt_power"] = bluetooth.powered()
         self.data["bt"] = bluetooth.devices() if self.data["bt_power"] else []
+        return None
+
+    def _load_audio(self) -> None:
+        from .audio import Audio, Snapshot
+
+        try:
+            self.data["audio"] = Audio().snapshot()
+        except (OSError, RuntimeError, ValueError) as e:
+            log.warning("settings: audio: %s", e)
+            self.data["audio"] = Snapshot()
         return None
 
     def _load_drives(self) -> None:
@@ -369,7 +419,8 @@ class SettingsApp:
         self._refreshed = time.monotonic()
 
     def build(self) -> list[Tab]:
-        pages = {"appearance": self._appearance, "home": self._home, "controllers": self._controllers,
+        pages = {"appearance": self._appearance, "home": self._home, "audio": self._audio,
+                 "controllers": self._controllers,
                  "wii": self._wii, "emulation": self._emulation, "bluetooth": self._bluetooth,
                  "network": self._network, "storage": self._storage, "system": self._system}
         tabs = []
@@ -680,6 +731,8 @@ class SettingsApp:
                  Item("net-test", "Test the connection", "action",
                       detail=self.note("net-test", "Router, internet and name lookups"),
                       on_select=lambda: self.jobs.start("net-test", network.test, "Testing…"))]
+        if status and status.connected and d["ip"] is not None:
+            items += self._ip_items(status, d["ip"])
         if d["wifi"] is not None:
             items.append(Item("wifi", "Wi-Fi", "toggle", value=bool(d["wifi"]),
                               on_change=lambda on: self.jobs.start("net", lambda: (network.set_wifi(on),
@@ -699,6 +752,117 @@ class SettingsApp:
                                           f"wifi-{net.ssid}", "Forgetting…",
                                           lambda: None if network.forget(net.ssid) else "Couldn't forget it")))
         return items
+
+    DNS_CHOICES = ("Automatic (from the router)", *network.DNS_PRESETS, "Custom")
+
+    def _ip_items(self, status: network.Status, ip: network.IpConfig) -> list[Item]:
+        """IP address and DNS for the connection in use. Choosing only picks;
+        Apply changes it (each change reconnects)."""
+        conn = status.connection
+        method = self.ip_method or ip.method
+        items = [Item("ip-method", "IP address", "choice", value=1 if method == "manual" else 0,
+                      options=("Automatic (DHCP)", "Manual (static)"),
+                      detail=self.note("ip-method", f"This PC: {status.address or '?'} on {conn}"),
+                      on_change=lambda i: self._ip_method(ip, status, i))]
+        if method == "manual":
+            edit = self.ip_edit or self._ip_start(ip, status)
+            items += [
+                Item("ip-address", "Address", "action", detail=edit["address"] or "Not set: A to type it",
+                     on_select=lambda: self._ip_type("address", "This PC's address, like 192.168.1.50")),
+                Item("ip-prefix", "Subnet prefix", "slider", value=edit["prefix"], low=8, high=30, step=1,
+                     unit="/{}", detail=f"Mask {network_mask(edit['prefix'])} (24 for most home networks)",
+                     on_change=lambda v: self._ip_set("prefix", int(v))),
+                Item("ip-gateway", "Router (gateway)", "action", detail=edit["gateway"] or "Not set: A to type it",
+                     on_select=lambda: self._ip_type("gateway", "The router's address, like 192.168.1.1")),
+            ]
+        if method == "manual" or ip.method == "manual":
+            items.append(Item("ip-apply", "Apply", "action", confirm=True,
+                              confirm_label="Press A again: reconnect with these settings",
+                              detail=self.note("ip-apply", "Reconnects; Automatic puts things back if it goes wrong"),
+                              on_select=lambda: self._ip_apply(conn, method)))
+        current = self.DNS_CHOICES.index(ip.dns_choice) if ip.dns_choice in self.DNS_CHOICES else 0
+        shown = current if self.dns_choice is None else self.dns_choice
+        name = self.DNS_CHOICES[shown]
+        servers = ip.dns if shown == current and ip.dns else network.DNS_PRESETS.get(name, ())
+        items.append(Item("dns", "DNS servers", "choice", value=shown, options=self.DNS_CHOICES,
+                          detail=self.note("dns", ", ".join(servers) if servers else
+                                           "Type them in after Apply" if name == "Custom" else "The router's"),
+                          on_change=lambda i: setattr(self, "dns_choice", i)))
+        if shown != current or name == "Custom":
+            items.append(Item("dns-apply", "Apply DNS" if name != "Custom" else "Type custom DNS servers", "action",
+                              detail=self.note("dns-apply", "Reconnects with them"),
+                              on_select=lambda: self._dns(conn, ip, shown)))
+        return items
+
+    def _ip_start(self, ip: network.IpConfig, status: network.Status) -> dict:
+        address, _, prefix = (ip.address or "").partition("/")
+        self.ip_edit = {"address": address or status.address or "", "prefix": int(prefix or 24),
+                        "gateway": ip.gateway or network.gateway()}
+        return self.ip_edit
+
+    def _ip_set(self, field: str, value) -> None:
+        if self.ip_edit is not None:
+            self.ip_edit[field] = value
+
+    def _ip_method(self, ip: network.IpConfig, status: network.Status, i: int) -> None:
+        self.ip_method = "manual" if i == 1 else "auto"
+        if i == 1 and self.ip_edit is None:
+            self._ip_start(ip, status)
+
+    def _ip_type(self, field: str, title: str) -> None:
+        def done(text: str) -> None:
+            self._ip_set(field, text.strip())
+            self.refresh()
+
+        self.open_keyboard(title, done, text=(self.ip_edit or {}).get(field, ""))
+        return None
+
+    def _ip_apply(self, conn: str, method: str) -> None:
+        if method == "auto":
+            work = lambda: network.set_automatic(conn)  # noqa: E731
+        else:
+            edit = dict(self.ip_edit or {})
+            problem = network.validate(edit.get("address", ""), edit.get("prefix", 24), edit.get("gateway", ""))
+            if problem:
+                self.jobs.messages["ip-apply"] = problem
+                return None
+            work = lambda: network.set_manual(conn, edit["address"], edit["prefix"], edit["gateway"])  # noqa: E731
+
+        def run() -> str:
+            ok, message = work()
+            if ok:
+                self.ip_method = None
+                self.ip_edit = None
+            return message
+
+        self._net_job("ip-apply", "Reconnecting…", run)
+        return None
+
+    def _dns(self, conn: str, ip: network.IpConfig, choice: int) -> None:
+        def apply(servers: tuple[str, ...] | None) -> None:
+            def run() -> str:
+                ok, message = network.set_dns(conn, servers)
+                if ok:
+                    self.dns_choice = None
+                return message
+
+            self._net_job("dns-apply", "Reconnecting…", run)
+
+        name = self.DNS_CHOICES[choice]
+        if name != "Custom":
+            apply(network.DNS_PRESETS.get(name))
+            return None
+
+        def typed(text: str) -> None:
+            servers = network.parse_dns(text)
+            if isinstance(servers, str):
+                self.jobs.messages["dns-apply"] = servers
+                return
+            apply(servers)
+
+        self.open_keyboard("DNS servers, like 1.1.1.1 8.8.8.8", typed,
+                           text=" ".join(ip.dns) if ip.dns_choice == "Custom" else "")
+        return None
 
     def _net_job(self, key: str, busy: str, work: Callable[[], str | None]) -> None:
         def run() -> str | None:
@@ -721,6 +885,58 @@ class SettingsApp:
             self.open_keyboard(f"Password for {net.ssid}", submit, secret=True)
             return None
         return self._net_job(key, "Connecting…", lambda: network.connect(net.ssid, saved=net.saved)[1])
+
+    def _audio(self) -> list[Item]:
+        from .audio import Audio
+
+        snap = self.data["audio"]
+        if snap is None:
+            return [Item("audio-none", "Looking for audio devices…", "info")]
+        if not snap.outputs and not snap.inputs:
+            return [Item("audio-none", "No audio devices found", "info", detail="Is PipeWire running?")]
+        a = Audio()
+        items = []
+        out, mic = snap.output(), snap.input()
+        if snap.outputs:
+            names = [d.name for d in snap.outputs]
+            items.append(Item("audio-output", "Sound plays through", "choice",
+                              options=tuple(d.label for d in snap.outputs),
+                              value=names.index(snap.default_output) if snap.default_output in names else 0,
+                              detail=self.note("audio-output", "The default for every app, remembered after restart"),
+                              on_change=lambda i: self._audio_job("audio-output",
+                                                                  lambda: a.set_output(names[i], snap))))
+        if out:
+            items.append(Item("audio-volume", "Volume", "slider", value=min(100, out.percent), muted=out.muted,
+                              on_change=lambda v, n=out.name: a.set_output_volume(n, v),
+                              on_mute=lambda m, n=out.name: a.set_output_muted(n, m)))
+            items.append(Item("audio-test", "Play a test sound", "action",
+                              detail=self.note("audio-test", f"Through {out.label}"),
+                              on_select=lambda: self.jobs.start("audio-test", play_test_sound)))
+        if snap.inputs:
+            names_in = [d.name for d in snap.inputs]
+            items.append(Item("audio-input", "Microphone", "choice", options=tuple(d.label for d in snap.inputs),
+                              value=names_in.index(snap.default_input) if snap.default_input in names_in else 0,
+                              detail=self.note("audio-input", "For voice chat (Discord, games)"),
+                              on_change=lambda i: self._audio_job("audio-input",
+                                                                  lambda: a.set_input(names_in[i], snap))))
+        else:
+            items.append(Item("audio-input", "Microphone", "info", detail="None connected"))
+        if mic:
+            items.append(Item("audio-mic-level", "Microphone level", "slider", value=min(100, mic.percent),
+                              muted=mic.muted,
+                              on_change=lambda v, n=mic.name: a.set_input_volume(n, v),
+                              on_mute=lambda m, n=mic.name: a.set_input_muted(n, m)))
+            items.append(Item("audio-mic-mute", "Mute microphone", "toggle", value=mic.muted,
+                              on_change=lambda m, n=mic.name: self._audio_job("audio-mic-mute",
+                                                                              lambda: a.set_input_muted(n, m))))
+        return items
+
+    def _audio_job(self, key: str, work: Callable[[], None]) -> None:
+        def run() -> None:
+            work()
+            self._load_audio()
+
+        self.jobs.start(key, run)
 
     def _storage(self) -> list[Item]:
         free, total = storage.system_space()
@@ -869,8 +1085,8 @@ class SettingsApp:
 
     # -- keyboard and calibration -----------------------------------------------
 
-    def open_keyboard(self, title: str, done: Callable[[str], None], secret: bool = False) -> None:
-        self.keyboard = Keyboard(title, secret)
+    def open_keyboard(self, title: str, done: Callable[[str], None], secret: bool = False, text: str = "") -> None:
+        self.keyboard = Keyboard(title, secret, text)
         self._keyboard_done = done
 
     def start_calibration(self) -> None:

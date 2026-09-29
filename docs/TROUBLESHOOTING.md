@@ -136,7 +136,8 @@ Two ways, depending on how permanent the change is:
   `hearthctl dev ~/hearth-os/launcher` and restart Game Mode. The home
   screen and Quick Menu run from your checkout. Edit, restart Game Mode to
   test, and `hearthctl dev --off` to go back.
-- **Ship it**: open a pull request into `main`. CI runs the tests and builds
+- **Ship it**: bump [`VERSION`](../VERSION), add its entry to
+  [CHANGELOG.md](../CHANGELOG.md), and open a pull request into `main`. CI runs the tests and builds
   the image; once merged, PCs pick it up with their next update (`staging`
   follows along). When `staging` stops mirroring `main`, pull requests go to
   `staging` first and PCs on that channel (`hearthctl channel staging`) try

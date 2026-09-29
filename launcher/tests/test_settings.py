@@ -174,6 +174,8 @@ def offline(monkeypatch):
     monkeypatch.setattr(bluetooth, "powered", lambda run=None: True)
     monkeypatch.setattr(bluetooth, "devices", lambda run=None: [
         bluetooth.Device("AA:00:00:00:00:01", "Pad", True, True, "input-gaming")])
+    monkeypatch.setattr(network, "ip_config", lambda conn, run=None: network.IpConfig())
+    monkeypatch.setattr(network, "gateway", lambda run=None: "10.0.0.1")
     monkeypatch.setattr(storage, "drives", lambda *a, **k: [
         storage.Drive("/dev/sda", "Samsung SSD 870 EVO", 256 * 10**9, "sata",
                       parts=(storage.Part("/dev/sda2", 255 * 10**9, "ntfs", "Games", "ABCD"),))])
@@ -311,6 +313,8 @@ def drives(monkeypatch, tmp_path):
     part = storage.Part("/dev/sdb1", 2000 * 10**9, "ext4", "games", "u1", (str(games),))
     ready = storage.Drive("/dev/sdb", "Crucial MX500", 2000 * 10**9, "sata", parts=(part,),
                           mounted_at=str(games), mounted_part=part)
+    monkeypatch.setattr(network, "ip_config", lambda conn, run=None: network.IpConfig())
+    monkeypatch.setattr(network, "gateway", lambda run=None: "10.0.0.1")
     monkeypatch.setattr(storage, "drives", lambda *a, **k: [new, ready])
     monkeypatch.setattr(storage.Drive, "ready", property(lambda self: bool(self.mounted_at)))
     calls = []
@@ -399,3 +403,194 @@ def test_stop_using_a_drive_still_in_use_is_refused(shipped_config, offline, dri
     app.handle(Nav.SELECT)
     wait_jobs(app)
     assert calls == [("release", "/dev/sdb1")]
+
+
+# -- IP address and DNS --------------------------------------------------------
+
+
+def test_ip_config_and_validation():
+    out = "manual\n192.168.1.50/24\n192.168.1.1\n1.1.1.1,1.0.0.1\nyes\n"
+    ip = network.ip_config("Wired connection 1", lambda argv: (0, out, ""))
+    assert ip == network.IpConfig("manual", "192.168.1.50/24", "192.168.1.1", ("1.1.1.1", "1.0.0.1"), True)
+    assert ip.dns_choice == "Cloudflare"
+    auto = network.ip_config("Home", lambda argv: (0, "auto\n\n\n\nno\n", ""))
+    assert auto.method == "auto" and auto.dns == () and auto.dns_choice == "Automatic"
+    assert network.IpConfig(dns=("192.168.1.2",)).dns_choice == "Custom"
+    assert network.ip_config("Gone", lambda argv: (10, "", "no such connection")) is None
+
+    assert network.validate("192.168.1.50", 24, "192.168.1.1") is None
+    assert "isn't an IP address" in network.validate("192.168.1", 24, "192.168.1.1")
+    assert "same network" in network.validate("192.168.1.50", 24, "10.0.0.1")
+    assert "can't be used" in network.validate("192.168.1.0", 24, "192.168.1.1")
+    assert "can't be the same" in network.validate("192.168.1.1", 24, "192.168.1.1")
+    assert "usually 24" in network.validate("192.168.1.50", 31, "192.168.1.1")
+    assert network.parse_dns("1.1.1.1, 8.8.8.8") == ("1.1.1.1", "8.8.8.8")
+    assert network.parse_dns("2606:4700:4700::1111") == ("2606:4700:4700::1111",)
+    assert "isn't an IP" in network.parse_dns("dns.google")
+    assert "Type one or two" in network.parse_dns("  ")
+
+
+def test_ip_changes_run_nmcli():
+    calls = []
+    run = lambda argv: (calls.append(argv), (0, "", ""))[1]  # noqa: E731
+    assert network.set_manual("Home", "192.168.1.50", 24, "192.168.1.1", run) == (
+        True, "Done: reconnected with the new settings")
+    assert calls == [["nmcli", "connection", "modify", "id", "Home", "ipv4.method", "manual",
+                      "ipv4.addresses", "192.168.1.50/24", "ipv4.gateway", "192.168.1.1"],
+                     ["nmcli", "connection", "up", "id", "Home"]]
+    calls.clear()
+    network.set_automatic("Home", run)
+    assert calls[0][5:] == ["ipv4.method", "auto", "ipv4.addresses", "", "ipv4.gateway", ""]
+    calls.clear()
+    network.set_dns("Home", ("1.1.1.1", "2606:4700:4700::1111"), run)
+    assert calls[0][5:] == ["ipv4.dns", "1.1.1.1", "ipv4.ignore-auto-dns", "yes",
+                            "ipv6.dns", "2606:4700:4700::1111", "ipv6.ignore-auto-dns", "yes"]
+    calls.clear()
+    network.set_dns("Home", None, run)
+    assert calls[0][5:] == ["ipv4.dns", "", "ipv4.ignore-auto-dns", "no", "ipv6.dns", "", "ipv6.ignore-auto-dns", "no"]
+    assert network.set_manual("Home", "192.168.1.50", 24, "10.0.0.1", run)[0] is False  # checked first
+    failing = lambda argv: (4, "", "Error: failed to modify") if argv[2] == "modify" else (0, "", "")  # noqa: E731
+    assert network.set_automatic("Home", failing) == (False, "Error: failed to modify")
+
+
+@pytest.fixture
+def nm(monkeypatch):
+    applied = []
+    monkeypatch.setattr(network, "set_manual", lambda conn, a, p, g: (applied.append(("manual", conn, a, p, g)),
+                                                                       (True, "Done"))[1])
+    monkeypatch.setattr(network, "set_automatic", lambda conn: (applied.append(("auto", conn)), (True, "Done"))[1])
+    monkeypatch.setattr(network, "set_dns", lambda conn, servers: (applied.append(("dns", conn, servers)),
+                                                                  (True, "Done"))[1])
+    return applied
+
+
+def open_network(shipped_config):
+    app = SettingsApp(shipped_config)
+    app.menu.tab = [c[0] for c in settings_app.CATEGORIES].index("network")
+    app.load_for("network")
+    wait_jobs(app)
+    app.zone = "items"
+    return app
+
+
+def test_static_ip_flow(shipped_config, offline, nm):
+    app = open_network(shipped_config)
+    keys = [i.key for i in app.menu.current.items]
+    assert "ip-method" in keys and "ip-address" not in keys and "ip-apply" not in keys
+    app.menu.select("ip-method")
+    app.handle(Nav.RIGHT)  # Manual: only picks, nothing changes yet
+    assert nm == []
+    items = {i.key: i for i in app.menu.current.items}
+    assert items["ip-address"].detail == "10.0.0.2" and items["ip-gateway"].detail == "10.0.0.1"
+    assert items["ip-prefix"].value == 24 and "255.255.255.0" in items["ip-prefix"].detail
+    app.menu.select("ip-address")
+    app.handle(Nav.SELECT)
+    assert app.keyboard.text == "10.0.0.2"
+    for _ in range(len("2")):
+        app.keyboard.handle(Nav.BACK)
+    app.keyboard.type("50")
+    app.handle(Nav.MENU)
+    app.menu.select("ip-apply")
+    app.handle(Nav.SELECT)
+    assert nm == []  # one press asks
+    app.handle(Nav.SELECT)
+    wait_jobs(app)
+    assert nm == [("manual", "Home", "10.0.0.50", 24, "10.0.0.1")]
+    assert app.ip_edit is None and app.ip_method is None
+
+
+def test_a_bad_static_address_is_caught_before_anything_changes(shipped_config, offline, nm):
+    app = open_network(shipped_config)
+    app.menu.select("ip-method")
+    app.handle(Nav.RIGHT)
+    app.ip_edit["gateway"] = "192.168.9.1"
+    app.refresh()
+    app.menu.select("ip-apply")
+    app.handle(Nav.SELECT)
+    app.handle(Nav.SELECT)
+    wait_jobs(app)
+    assert nm == [] and "same network" in app.jobs.messages["ip-apply"]
+
+
+def test_dns_flow(shipped_config, offline, nm):
+    app = open_network(shipped_config)
+    assert "dns-apply" not in [i.key for i in app.menu.current.items]
+    app.menu.select("dns")
+    app.handle(Nav.RIGHT)  # Cloudflare
+    app.handle(Nav.RIGHT)  # Google: picking only, no reconnects
+    assert nm == []
+    assert "8.8.8.8" in app.menu.selected.detail
+    app.menu.select("dns-apply")
+    app.handle(Nav.SELECT)
+    wait_jobs(app)
+    assert nm == [("dns", "Home", ("8.8.8.8", "8.8.4.4"))]
+    app.menu.select("dns")
+    app.handle(Nav.LEFT)  # Custom (wraps round)
+    app.menu.select("dns-apply")
+    app.handle(Nav.SELECT)
+    app.keyboard.type("not-an-ip")
+    app.handle(Nav.MENU)
+    assert "isn't an IP" in app.jobs.messages["dns-apply"] and len(nm) == 1
+    app.menu.select("dns-apply")
+    app.handle(Nav.SELECT)
+    app.keyboard.type("192.168.1.2")
+    app.handle(Nav.MENU)
+    wait_jobs(app)
+    assert nm[-1] == ("dns", "Home", ("192.168.1.2",))
+
+
+# -- audio ---------------------------------------------------------------------
+
+
+def test_audio_page_picks_default_devices(shipped_config, offline, monkeypatch):
+    from fakes import FakePactl
+
+    from hearth import audio
+
+    pactl = FakePactl()
+    monkeypatch.setattr(audio, "run_pactl", pactl)
+    monkeypatch.setattr(audio.Audio.__init__, "__defaults__", (pactl,))
+    app = SettingsApp(shipped_config)
+    app.menu.tab = [c[0] for c in settings_app.CATEGORIES].index("audio")
+    app.load_for("audio")
+    wait_jobs(app)
+    app.zone = "items"
+    items = {i.key: i for i in app.menu.current.items}
+    assert {"audio-output", "audio-volume", "audio-test", "audio-input", "audio-mic-level"} <= set(items)
+    out = items["audio-output"]
+    assert out.options[out.value] == "LG TV (HDMI)"  # the current default
+    app.menu.select("audio-output")
+    app.handle(Nav.RIGHT)
+    wait_jobs(app)
+    assert ["set-default-sink", "bluez_output.headset"] in pactl.calls
+    assert any(c[0] == "move-sink-input" for c in pactl.calls)  # what's playing moves too
+    app.menu.select("audio-input")
+    app.handle(Nav.RIGHT)
+    wait_jobs(app)
+    assert any(c[0] == "set-default-source" for c in pactl.calls)
+
+
+def test_audio_page_without_devices(shipped_config, offline, monkeypatch):
+    from hearth import audio
+
+    def broken(args):
+        raise RuntimeError("pactl: connection refused")
+
+    monkeypatch.setattr(audio.Audio.__init__, "__defaults__", (broken,))
+    app = SettingsApp(shipped_config)
+    app.menu.tab = [c[0] for c in settings_app.CATEGORIES].index("audio")
+    app.load_for("audio")
+    wait_jobs(app)
+    assert [i.label for i in app.menu.current.items] == ["No audio devices found"]
+
+
+def test_test_sound(monkeypatch, tmp_path):
+    import subprocess
+
+    played = []
+    monkeypatch.setattr(settings_app.shutil, "which", lambda name: "/usr/bin/pw-play" if name == "pw-play" else None)
+    monkeypatch.setattr(subprocess, "run", lambda argv, **k: played.append(open(argv[1], "rb").read(4)))
+    assert settings_app.play_test_sound().startswith("Heard it?")
+    assert played == [b"RIFF"]  # a real WAV file
+    monkeypatch.setattr(settings_app.shutil, "which", lambda name: None)
+    assert "no player" in settings_app.play_test_sound()

@@ -175,3 +175,116 @@ def test(run: Runner = _run, resolve: Callable[[str], bool] | None = None) -> st
     parts.append(f"internet {internet:.0f} ms" if internet is not None else "no internet")
     parts.append("names OK" if dns else "name lookups failing (DNS)")
     return " · ".join(parts)
+
+
+# -- IP address and DNS (for the connection in use) ----------------------------
+
+DNS_PRESETS = {  # name: servers (primary, backup)
+    "Cloudflare": ("1.1.1.1", "1.0.0.1"),
+    "Google": ("8.8.8.8", "8.8.4.4"),
+    "Quad9": ("9.9.9.9", "149.112.112.112"),
+}
+
+
+@dataclass
+class IpConfig:
+    method: str = "auto"  # "auto" (DHCP) | "manual"
+    address: str = ""  # "192.168.1.50/24" when manual
+    gateway: str = ""
+    dns: tuple[str, ...] = ()  # set here, instead of the router's
+    ignore_auto_dns: bool = False
+
+    @property
+    def dns_choice(self) -> str:
+        """"Automatic", a preset's name, or "Custom"."""
+        if not self.dns:
+            return "Automatic"
+        return next((name for name, servers in DNS_PRESETS.items() if self.dns == servers), "Custom")
+
+
+def ip_config(connection: str, run: Runner = _run) -> IpConfig | None:
+    rc, out, _ = run(["nmcli", "-g", "ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns,ipv4.ignore-auto-dns",
+                      "connection", "show", "id", connection])
+    if rc:
+        return None
+    lines = (out.splitlines() + [""] * 5)[:5]
+    method, addresses, gateway, dns, ignore = (line.strip() for line in lines)
+    split = [s.strip() for s in re.split(r"[,\s]+", dns.replace("\\", "")) if s.strip()]
+    return IpConfig("manual" if method == "manual" else "auto", addresses.split(",")[0].strip(), gateway,
+                    tuple(split), ignore == "yes")
+
+
+def validate(address: str, prefix: int, gateway: str) -> str | None:
+    """Why a manual setting won't work, or None."""
+    import ipaddress
+
+    try:
+        ip = ipaddress.IPv4Address(address)
+    except ValueError:
+        return f"{address or 'The address'} isn't an IP address (like 192.168.1.50)"
+    if not 8 <= prefix <= 30:
+        return "The subnet prefix is usually 24"
+    net = ipaddress.IPv4Network(f"{address}/{prefix}", strict=False)
+    if ip in (net.network_address, net.broadcast_address) or ip.is_loopback or ip.is_multicast:
+        return f"{address} can't be used for this PC"
+    try:
+        gw = ipaddress.IPv4Address(gateway)
+    except ValueError:
+        return f"{gateway or 'The router'} isn't an IP address (usually your router, like 192.168.1.1)"
+    if gw not in net:
+        return f"The router {gateway} isn't on the same network as {address}/{prefix}"
+    if gw == ip:
+        return "The address and the router can't be the same"
+    return None
+
+
+def parse_dns(text: str) -> tuple[str, ...] | str:
+    """Servers typed in (spaces or commas between them), or why they won't do."""
+    import ipaddress
+
+    servers = tuple(s for s in re.split(r"[,\s]+", text.strip()) if s)
+    if not servers:
+        return "Type one or two server addresses, like 1.1.1.1"
+    for s in servers:
+        try:
+            ipaddress.ip_address(s)
+        except ValueError:
+            return f"{s} isn't an IP address"
+    return servers
+
+
+def _apply(connection: str, settings: list[str], run: Runner) -> tuple[bool, str]:
+    rc, out, err = run(["nmcli", "connection", "modify", "id", connection, *settings])
+    if rc:
+        return False, ((err or out).strip().splitlines() or ["Couldn't change the settings"])[-1][:90]
+    rc, out, err = run(["nmcli", "connection", "up", "id", connection])
+    if rc:
+        return False, "Saved, but reconnecting failed: " + ((err or out).strip().splitlines() or ["?"])[-1][:70]
+    return True, "Done: reconnected with the new settings"
+
+
+def set_automatic(connection: str, run: Runner = _run) -> tuple[bool, str]:
+    return _apply(connection, ["ipv4.method", "auto", "ipv4.addresses", "", "ipv4.gateway", ""], run)
+
+
+def set_manual(connection: str, address: str, prefix: int, gateway: str, run: Runner = _run) -> tuple[bool, str]:
+    problem = validate(address, prefix, gateway)
+    if problem:
+        return False, problem
+    return _apply(connection, ["ipv4.method", "manual", "ipv4.addresses", f"{address}/{prefix}",
+                               "ipv4.gateway", gateway], run)
+
+
+def set_dns(connection: str, servers: tuple[str, ...] | None, run: Runner = _run) -> tuple[bool, str]:
+    """None: the router's (automatic). Otherwise these, instead of the router's."""
+    servers = servers or ()
+    v4 = [s for s in servers if ":" not in s]
+    v6 = [s for s in servers if ":" in s]
+    return _apply(connection, ["ipv4.dns", ",".join(v4), "ipv4.ignore-auto-dns", "yes" if v4 else "no",
+                               "ipv6.dns", ",".join(v6), "ipv6.ignore-auto-dns", "yes" if v6 else "no"], run)
+
+
+def gateway(run: Runner = _run) -> str:
+    rc, out, _ = run(["ip", "-4", "route", "show", "default"])
+    m = re.search(r"default via (\S+)", out) if rc == 0 else None
+    return m.group(1) if m else ""

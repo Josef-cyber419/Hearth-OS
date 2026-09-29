@@ -51,11 +51,20 @@ class Game:
 
     @property
     def platform(self) -> str:
-        return SYSTEMS.get(self.system, (self.system.upper(),))[0]
+        return STORES.get(self.system) or SYSTEMS.get(self.system, (self.system.upper(),))[0]
 
     @property
     def is_steam(self) -> bool:
         return self.system == "steam"
+
+    @property
+    def counts_own_time(self) -> bool:
+        """Its launcher keeps its play time (Steam, Lutris); Hearth counts the rest."""
+        return counts_own_time(self.key)
+
+
+def counts_own_time(key: str) -> bool:
+    return key.startswith(("steam:", "lutris:"))
 
 
 # -- paths ---------------------------------------------------------------------
@@ -439,6 +448,109 @@ def port_games() -> list[Game]:
 # -- pins and play history -------------------------------------------------------
 
 
+# -- other stores: Epic and GOG (Heroic), Battle.net and more (Lutris) ---------
+
+# Store games' platforms, as shown on tiles and in the Library.
+STORES = {"epic": "Epic Games", "gog": "GOG", "amazon": "Amazon", "battlenet": "Battle.net", "lutris": "PC"}
+
+HEROIC = "com.heroicgameslauncher.hgl"
+LUTRIS = "net.lutris.Lutris"
+
+
+def _heroic_bases() -> list[tuple[Path, tuple[str, ...]]]:
+    """(config folder, command that runs Heroic) for the Flatpak and a native install."""
+    h = home()
+    return [(h / ".var/app" / HEROIC / "config", ("flatpak", "run", HEROIC)), (h / ".config", ("heroic",))]
+
+
+def _json(path: Path):
+    try:
+        return json.loads(path.read_text())
+    except (OSError, ValueError):
+        return None
+
+
+def heroic_url(app_name: str, runner: str) -> str:
+    from urllib.parse import quote
+
+    return f"heroic://launch?appName={quote(app_name, safe='')}&runner={runner}"
+
+
+def heroic_games() -> list[Game]:
+    """Epic (via Legendary) and GOG games installed with Heroic, started through
+    Heroic's heroic://launch link (it sets up Wine/Proton for each game)."""
+    games: dict[str, Game] = {}
+    for base, run in _heroic_bases():
+        for installed in (base / "heroic/legendaryConfig/legendary/installed.json", base / "legendary/installed.json"):
+            data = _json(installed)
+            if not isinstance(data, dict):
+                continue
+            for app, info in data.items():
+                if not isinstance(info, dict) or info.get("is_dlc"):
+                    continue
+                key = f"epic:{app}"
+                title = info.get("title") or app
+                games.setdefault(key, Game(key, title, "epic", (*run, heroic_url(app, "legendary"))))
+        data = _json(base / "heroic/gog_store/installed.json")
+        installed = data.get("installed", []) if isinstance(data, dict) else []
+        titles = {}
+        library = _json(base / "heroic/store_cache/gog_library.json")
+        for g in (library.get("games", []) if isinstance(library, dict) else []):
+            if isinstance(g, dict) and g.get("app_name"):
+                titles[str(g["app_name"])] = g.get("title")
+        for info in installed:
+            if not isinstance(info, dict) or not info.get("appName") or info.get("is_dlc"):
+                continue
+            app = str(info["appName"])
+            key = f"gog:{app}"
+            title = titles.get(app) or Path(info.get("install_path") or app).name
+            games.setdefault(key, Game(key, title, "gog", (*run, heroic_url(app, "gog"))))
+    return list(games.values())
+
+
+def _lutris_bases() -> list[tuple[Path, tuple[str, ...]]]:
+    h = home()
+    return [(h / ".var/app" / LUTRIS / "data/lutris", ("flatpak", "run", LUTRIS)),
+            (h / ".local/share/lutris", ("lutris",))]
+
+
+def lutris_games() -> list[Game]:
+    """Games installed with Lutris (Battle.net's among them), with Lutris's own
+    last-played and play time. The Battle.net app itself has its own tile."""
+    import sqlite3
+
+    games: dict[str, Game] = {}
+    for base, run in _lutris_bases():
+        db = base / "pga.db"
+        if not db.exists():
+            continue
+        try:
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=1)
+            try:
+                con.row_factory = sqlite3.Row
+                cols = {r[1] for r in con.execute("PRAGMA table_info(games)")}
+                rows = con.execute("SELECT * FROM games WHERE installed = 1").fetchall()
+            finally:
+                con.close()
+        except sqlite3.Error as e:
+            log.warning("lutris: %s", e)
+            continue
+        for r in rows:
+            slug, name = r["slug"] or "", r["name"] or ""
+            if not name or slug == "battlenet" or ("hidden" in cols and r["hidden"]):
+                continue
+            key = f"lutris:{slug or r['id']}"
+            service = r["service"] if "service" in cols else None
+            art = _art(base / "coverart" / f"{slug}.jpg", base / "banners" / f"{slug}.jpg",
+                       base.parent.parent / "cache/lutris/coverart" / f"{slug}.jpg",  # the Flatpak's cache
+                       home() / ".cache/lutris/coverart" / f"{slug}.jpg")
+            games.setdefault(key, Game(
+                key, name, "battlenet" if service == "battlenet" else "lutris",
+                (*run, f"lutris:rungameid/{r['id']}"), float(r["lastplayed"] or 0), art,
+                playtime=float((r["playtime"] if "playtime" in cols else 0) or 0) * 3600))
+    return list(games.values())
+
+
 def _played_path() -> Path:
     return state_dir() / "played.json"
 
@@ -480,13 +592,21 @@ def all_games() -> list[Game]:
         games += port_games()
     except Exception:
         log.exception("reading ~/Games")
+    try:
+        games += heroic_games()
+    except Exception:
+        log.exception("reading Heroic's games")
+    try:
+        games += lutris_games()
+    except Exception:
+        log.exception("reading Lutris's games")
     from dataclasses import replace
 
     ours, seconds = played(), playtimes()
     games = [replace(g, last_played=max(g.last_played, ours.get(g.key, 0)),
-                     # Steam counts its own games' time (including those started
-                     # here); Hearth counts the rest.
-                     playtime=g.playtime if g.is_steam else g.playtime + seconds.get(g.key, 0.0))
+                     # Steam and Lutris count their own games' time (including
+                     # those started here); Hearth counts the rest.
+                     playtime=g.playtime if g.counts_own_time else g.playtime + seconds.get(g.key, 0.0))
              for g in games]
     return sorted(games, key=lambda g: (-g.last_played, g.title.lower()))
 
@@ -536,7 +656,8 @@ COLORS = {"steam": "#1b2838", "pc": "#3a4a5c", "psx": "#3b3f8c", "ps2": "#1f3d8a
           "gc": "#4b2a8a", "wii": "#5a6470", "wiiu": "#1f7a9c", "switch": "#b0202a", "n64": "#2f7a3a",
           "snes": "#5a4a8a", "nes": "#8a2a2a", "nds": "#5a5a5a", "n3ds": "#9c2a2a", "xbox": "#2f7a2f",
           "gba": "#4a3a8a", "gb": "#6a7a3a", "gbc": "#7a3a8a", "genesis": "#2a2a2a", "megadrive": "#2a2a2a",
-          "dreamcast": "#c46a1a", "saturn": "#3a3a4a", "arcade": "#8a5a1a", "mame": "#8a5a1a"}
+          "dreamcast": "#c46a1a", "saturn": "#3a3a4a", "arcade": "#8a5a1a", "mame": "#8a5a1a",
+          "epic": "#2a2a2e", "gog": "#6a2a8a", "battlenet": "#0e4d8a", "lutris": "#b35a1a"}
 
 
 def as_app(game: Game):

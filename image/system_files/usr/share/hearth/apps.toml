@@ -96,6 +96,26 @@ title = "Play"
   color = "#6b2fa0"
 
   [[rows.apps]]
+  # Epic Games (and GOG, Amazon) through Heroic, which runs them with Proton.
+  # Heroic has its own controller navigation. Installed games also show in
+  # Hearth's Library and Continue row and start directly.
+  id = "epic"
+  name = "Epic Games"
+  flatpak = "com.heroicgameslauncher.hgl"
+  wm_class = "heroic"
+  color = "#2a2a2e"
+
+  [[rows.apps]]
+  # Battle.net through Lutris: starts it once installed, otherwise opens
+  # Lutris's Battle.net installer. The controller works as a mouse there.
+  id = "battlenet"
+  name = "Battle.net"
+  command = "/usr/libexec/hearth/hearth-battlenet"
+  flatpak = "net.lutris.Lutris"
+  pointer = true
+  color = "#0e4d8a"
+
+  [[rows.apps]]
   id = "moonlight"
   name = "Moonlight"
   flatpak = "com.moonlight_stream.Moonlight"
