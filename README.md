@@ -173,6 +173,16 @@ confirmed working there. What still needs checking on real hardware is in
 [the checklist](docs/ARCHITECTURE.md#verify-on-real-hardware); the latest
 [progress report](reports/Hearth-OS-progress-report.pdf) has the full picture.
 
+## Versions
+
+Hearth is at the version in [`VERSION`](VERSION) (shown in Settings → System
+and `hearthctl status`); [CHANGELOG.md](CHANGELOG.md) says what each one
+brought. A change merged into `main` bumps it (a new minor version, or a patch
+for a fix on its own) and adds its changelog entry. CI then tags it
+(`v0.20.0`), publishes a GitHub release with those notes, and pins an image to
+it (`ghcr.io/<owner>/hearth-os:0.20.0`), so any version can be installed or
+gone back to with `bootc switch`.
+
 ## Branches and updates
 
 | Branch | What it is | Image | PCs following it |
