@@ -81,6 +81,12 @@ title = "Play"
   color = "#3d4a5c"
 
   [[rows.apps]]
+  id = "search"
+  name = "Search"
+  command = "hearth:search"   # built in: find any game or app (also the View / Share / − button)
+  color = "#34495e"
+
+  [[rows.apps]]
   # ES-DE: one menu, a tile per console you've added games for.
   # Installed per user by hearth-esde-update; see docs/EMULATION.md.
   id = "emulation"

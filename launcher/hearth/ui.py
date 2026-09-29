@@ -8,7 +8,9 @@ independent curves; `motion = "reduced"` keeps it still.
 
 from __future__ import annotations
 
+import logging
 import math
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -22,6 +24,8 @@ from .input import InputMapper
 from .model import Home, Nav
 from .style import Livery, Smooth, Type, ease_in_out, ease_out, enamel, mix, parse_color
 
+log = logging.getLogger("hearth")
+
 RUNNING = (86, 214, 128)
 BOOT_SECONDS = 1.6
 RETURN_SECONDS = 0.55
@@ -33,6 +37,13 @@ POINTER_SECONDS = 2.5  # the pointer hides this long after it last moved
 BACKDROP_DELAY = 0.22
 BACKDROP_FADE = 0.45
 BATTERY_SECONDS = 20.0  # how often the status bar re-reads controller batteries
+GAMES_SECONDS = 30.0  # how long a read of the game library is reused
+# The ambient screen saver: each game's art for this long, cross-fading over
+# SLIDE_FADE, drifting slowly across (Ken Burns), dimmed to be kind to OLEDs.
+SLIDE_SECONDS = 20.0
+SLIDE_FADE = 2.5
+SLIDE_DIM = 150  # of 255: how much darker the art is shown
+SLIDE_MAX = 60  # pictures in one showing (picked at random from the library)
 # Resting the pointer near the top or bottom edge scrolls the rows.
 EDGE_ZONE = 0.12  # fraction of the screen's height at each edge
 EDGE_FIRST = 0.35  # seconds at the edge before the first step
@@ -102,6 +113,49 @@ def _soft_glow(size: tuple[int, int], color, at: tuple[float, float], reach: flo
                 small.set_at((x, y), (*color, int(alpha * (1 - d) ** 2)))
     mid = pygame.transform.smoothscale(small, (w // 4, h // 4))
     return pygame.transform.smoothscale(mid, (w, h))
+
+
+PLAY = object()  # the Options card's "Play" entry
+
+
+def played_for(seconds: float) -> str:
+    """Play time as a person would say it."""
+    minutes = int(seconds // 60)
+    if minutes < 1:
+        return "Less than a minute" if seconds > 0 else "Not yet"
+    if minutes < 60:
+        return f"{minutes} min"
+    hours, rest = divmod(minutes, 60)
+    return f"{hours} h {rest} min" if hours < 10 and rest else f"{hours} h"
+
+
+def played_when(timestamp: float, now: float | None = None) -> str:
+    if not timestamp:
+        return "Never"
+    now = time.time() if now is None else now
+    days = int((time.mktime(time.localtime(now)[:3] + (0, 0, 0, 0, 0, -1))
+                - time.mktime(time.localtime(timestamp)[:3] + (0, 0, 0, 0, 0, -1))) // 86400)
+    if days <= 0:
+        return "Today"
+    if days == 1:
+        return "Yesterday"
+    if days < 7:
+        return f"{days} days ago"
+    return time.strftime("%d %b %Y", time.localtime(timestamp)).lstrip("0")
+
+
+def _soft_oval(size: tuple[int, int], alpha: int) -> pygame.Surface:
+    """A dark oval filling `size`, fading to nothing at its edge."""
+    w, h = size
+    gw = 48
+    gh = max(8, int(gw * h / max(1, w)))
+    small = pygame.Surface((gw, gh), pygame.SRCALPHA)
+    for y in range(gh):
+        for x in range(gw):
+            d = (((x + 0.5) / gw * 2 - 1) ** 2 + ((y + 0.5) / gh * 2 - 1) ** 2) ** 0.5
+            if d < 1:
+                small.set_at((x, y), (0, 0, 0, int(alpha * (1 - d * d) ** 1.5)))
+    return pygame.transform.smoothscale(pygame.transform.smoothscale(small, (max(1, w // 4), max(1, h // 4))), size)
 
 
 def _star(surf: pygame.Surface, color, center, r: float) -> None:
@@ -278,7 +332,15 @@ class HomeScreen:
         self.back_exits = False  # the Library: B leaves it
         self.exit = False
         self.saver = False  # the screen saver is showing
-        self.hints = (("A", "Open"), ("X", "Favorite"), ("Y", "Options"), ("GUIDE", "Quick Menu"))
+        self.saver_style = "ambient"  # or "clock" (Settings → Home screen)
+        self._slides: list[tuple[str, str | None, str]] = []  # (title, platform, art) for ambient
+        self._slide_cache: dict[int, pygame.Surface] = {}
+        self._saver_t0 = 0.0
+        self.hints = (("A", "Open"), ("X", "Favorite"), ("Y", "Options"), ("VIEW", "Search"), ("GUIDE", "Quick Menu"))
+        self.search = None  # the search screen, while it's open (search.Search)
+        self._games: tuple[float, list] | None = None  # (read at, library.all_games())
+        self._details = None  # the game the Options card is about (library.Game), if it's a game
+        self._search_t0 = 0.0
         self.favorites: set[str] = self._load_favorites()
         self._backdrops: dict[str, pygame.Surface] = {}
         self._backdrop: tuple[str, pygame.Surface] | None = None  # showing now
@@ -347,6 +409,16 @@ class HomeScreen:
 
     # -- the Options popup (Y): favourite, move, hide ---------------------------
 
+    def games(self) -> list:
+        """The game library, read at most every GAMES_SECONDS (search, details
+        and the screen saver share it; a big ROM folder takes a moment to read)."""
+        from . import library
+
+        now = time.monotonic()
+        if self._games is None or now - self._games[0] > GAMES_SECONDS:
+            self._games = (now, library.all_games())
+        return self._games[1]
+
     @staticmethod
     def _load_favorites() -> set[str]:
         from . import layout
@@ -377,6 +449,13 @@ class HomeScreen:
         row = self.home.config.rows[self.home.row].title
         key = library.key_of(app.id)
         choices: list[tuple[str, Callable[[], None]]] = []
+        self._details = None
+        if key:
+            try:
+                self._details = library.details(key, self.games())
+            except Exception:  # details are a nicety: never block the options over them
+                log.exception("game details")
+            choices.append(("Play", PLAY))
         if app.command[0] == "hearth:resume":
             from . import hub
 
@@ -402,19 +481,22 @@ class HomeScreen:
         self.options = (app, choices, 0)
         self._confirm_t0 = time.monotonic()
 
-    def _options_handle(self, nav: Nav) -> None:
+    def _options_handle(self, nav: Nav) -> App | None:
         app, choices, index = self.options
         if nav in (Nav.UP, Nav.DOWN):
             self.options = (app, choices, (index + (1 if nav is Nav.DOWN else -1)) % len(choices))
         elif nav is Nav.SELECT:
             label, act = choices[index]
             self.options = None
+            if act is PLAY:
+                return self._open(app)
             act()
             events.record("home_option", tile=app.id, choice=label)
             if self.rebuild is not None and self.moving is None:
                 self.reload(self.rebuild(), app.id, keep_row=True)
         elif nav in (Nav.BACK, Nav.OPTIONS, Nav.MENU):
             self.options = None
+        return None
 
     def reload(self, config, keep_id: str | None = None, keep_row: bool = False) -> None:
         """New contents (after a favourite, say), keeping the place as best it
@@ -486,8 +568,19 @@ class HomeScreen:
         """Apply a navigation action; returns the app to launch, if any."""
         self.intro = None  # any input skips the entrance animation
         self.message = None
+        if self.search is not None:
+            result = self.search.handle(nav)
+            if result == "close":
+                self.search = None
+            elif result is not None:
+                self.search = None
+                events.record("search_open", tile=result.id)
+                return self._open(result)
+            return None
         if self.options is not None:
-            self._options_handle(nav)
+            return self._options_handle(nav)
+        if nav is Nav.SEARCH and self.confirming is None:
+            self.open_search()
             return None
         if self.moving is not None:
             self._move_handle(nav)
@@ -506,14 +599,7 @@ class HomeScreen:
             app, self.confirming = self.confirming, None
             return app if nav is Nav.SELECT else None
         if nav is Nav.SELECT:
-            app = self.home.selected
-            question = self.ask(app) if app is not None and self.ask else None
-            if app is not None and (app.confirm or question):
-                self.confirming = app
-                self.confirm_caption = question or "ARE YOU SURE?"
-                self._confirm_t0 = time.monotonic()
-                return None
-            return app
+            return self._open(self.home.selected)
         if nav is Nav.MENU:
             # Jump to the power/system row (the last one), like a TV's menu key.
             if self.home.config.rows:
@@ -521,6 +607,77 @@ class HomeScreen:
             return None
         self.home.move(nav)
         return None
+
+    def _open(self, app: App | None) -> App | None:
+        """Open a tile: ask first if it needs it; the Search tile opens here."""
+        if app is None:
+            return None
+        if app.command and app.command[0] == "hearth:search":
+            self.open_search()
+            return None
+        question = self.ask(app) if self.ask else None
+        if app.confirm or question:
+            self.confirming = app
+            self.confirm_caption = question or "ARE YOU SURE?"
+            self._confirm_t0 = time.monotonic()
+            return None
+        return app
+
+    # -- sounds (optional: Settings → Home screen → Sounds) ----------------------
+
+    def sound_state(self) -> tuple:
+        sr = self.search
+        return (self.home.row, self.home.col, self.options[2] if self.options else None, self.options is not None,
+                (sr.zone, sr.row, sr.col, sr.pick, sr.query) if sr else None, self.confirming is not None)
+
+    def play_sound(self, nav: Nav, before: tuple, opened: App | None) -> None:
+        from . import sounds
+
+        after = self.sound_state()
+        if opened is not None:
+            sounds.play("select")
+        elif nav is Nav.FAVORITE and before[4] is None and after[4] is None:
+            sounds.play("favorite")
+        elif (before[3] and not after[3]) or (before[4] is not None and after[4] is None) or \
+                (before[5] and not after[5]) or nav is Nav.BACK:
+            sounds.play("back")
+        elif (not before[3] and after[3]) or (before[4] is None and after[4] is not None) or \
+                (not before[5] and after[5]):
+            sounds.play("select")
+        elif before != after:
+            sounds.play("move")
+
+    # -- search --------------------------------------------------------------------
+
+    def search_catalog(self) -> list[App]:
+        """Everything search can find: every tile on the screen, plus every
+        game in the Library."""
+        from . import library
+
+        seen: dict[str, App] = {}
+        for row in self.home.config.rows:
+            for app in row.apps:
+                if not app.id.startswith("resume:") and app.command[:1] != ("hearth:search",):
+                    seen.setdefault(app.id, app)
+        try:
+            for game in self.games():
+                app = library.as_app(game)
+                seen.setdefault(app.id, app)
+        except Exception:  # a broken library file mustn't stop search
+            log.exception("search: reading the game library")
+        return list(seen.values())
+
+    def open_search(self) -> None:
+        from .search import Search
+
+        self.search = Search(self.search_catalog())
+        self._search_t0 = time.monotonic()
+        events.record("search")
+
+    def type_text(self, text: str) -> None:
+        """A real keyboard typing into search."""
+        if self.search is not None:
+            self.search.type(text)
 
     # -- pointer (a Wii Remote, or a mouse) --------------------------------------
 
@@ -650,6 +807,8 @@ class HomeScreen:
             self._draw_confirm(self.confirming)
         if self.options is not None:
             self._draw_options()
+        if self.search is not None:
+            self._draw_search()
         self._draw_pointer()
 
     # -- the backdrop: the focused tile's art or colour, softly ------------------
@@ -946,17 +1105,47 @@ class HomeScreen:
         shade.fill((0, 0, 0, int(170 * p)))
         s.blit(shade, (0, 0))
         row_h = int(64 * th.u)
-        box = pygame.Rect(0, 0, int(th.width * 0.4), int(140 * th.u) + row_h * len(choices))
+        game = self._details
+        # A game's card is wider, with its art and what you've played of it.
+        facts = []
+        if game is not None:
+            facts = [("PLATFORM", game.platform), ("LAST PLAYED", played_when(game.last_played)),
+                     ("PLAY TIME", played_for(game.playtime))]
+            if game.plays:
+                facts.append(("STARTED", f"{game.plays} time{'s' if game.plays != 1 else ''}"))
+        fact_h = int(34 * th.u)
+        art_w = int(th.width * 0.22) if game is not None else 0
+        list_h = int(140 * th.u) + row_h * len(choices) + (fact_h * len(facts) + int(24 * th.u) if facts else 0)
+        box = pygame.Rect(0, 0, int(th.width * (0.62 if game is not None else 0.4)), max(list_h, int(art_w * 1.2)))
         card = pygame.Surface(box.size, pygame.SRCALPHA)
         card.blit(style.gradient(box.size, style.lighten(lv.panel, 0.05), lv.panel, vertical=True), (0, 0))
-        stripe_w = style.stripes(card, int(34 * th.u), 0, box.h, max(4, int(12 * th.u)), (lv.accent, lv.second))
+        if game is not None:
+            art = load_art(game.art)
+            panel = pygame.Rect(0, 0, art_w, box.h)
+            if art is not None:
+                card.blit(cover(art, panel.size), (0, 0))
+            else:
+                card.fill(style.parse_color(app.color), panel)
+                initial = th.font_number.render(app.name[:1].upper(), True, lv.text)
+                card.blit(initial, initial.get_rect(center=panel.center))
+            card.blit(style.gradient((int(art_w * 0.4), box.h), (*lv.panel, 0), (*lv.panel, 255), vertical=False),
+                      (art_w - int(art_w * 0.4), 0))
+        stripe_x = art_w + int(34 * th.u)
+        stripe_w = style.stripes(card, stripe_x, 0, box.h, max(4, int(12 * th.u)), (lv.accent, lv.second))
         style.rounded(card, th.radius)
-        x = int(34 * th.u) + stripe_w + int(36 * th.u)
-        cap = style.tracked(th.font_date, "OPTIONS", lv.dim, 0.3)
+        x = stripe_x + stripe_w + int(36 * th.u)
+        cap = style.tracked(th.font_date, "GAME" if game is not None else "OPTIONS", lv.dim, 0.3)
         card.blit(cap, (x, int(30 * th.u)))
         title = style.fit(style.tracked(th.font_row, app.name.upper(), lv.text, 0.08), box.w - x - int(30 * th.u))
         card.blit(title, (x, int(30 * th.u) + cap.get_height() + int(4 * th.u)))
         y = int(110 * th.u)
+        if facts:
+            f_key, f_val = th.font_date, th.type(24, "text", "medium")
+            for i, (k, v) in enumerate(facts):
+                ky = y + i * fact_h
+                card.blit(style.tracked(f_key, k, lv.dim, 0.2), (x, ky + int(4 * th.u)))
+                card.blit(f_val.render(v, True, lv.text), (x + int(190 * th.u), ky))
+            y += fact_h * len(facts) + int(24 * th.u)
         f = th.type(26, "text", "semibold")
         for i, (label, _) in enumerate(choices):
             rect = pygame.Rect(x - int(16 * th.u), y + i * row_h, box.w - x - int(14 * th.u), row_h - int(8 * th.u))
@@ -971,21 +1160,188 @@ class HomeScreen:
         card.set_alpha(int(255 * p))
         s.blit(card, card.get_rect(center=(th.width // 2, th.height // 2)))
 
+    def _draw_search(self) -> None:
+        from .search import ACTIONS, KEY_ROWS
+
+        th, s, lv = self.theme, self.surface, self.theme.lv
+        sr = self.search
+        p = 1.0 if self.reduced else ease_out((time.monotonic() - self._search_t0) / CONFIRM_SECONDS)
+        # Its own screen: the home screen fades out behind it.
+        self.background.set_alpha(int(255 * p))
+        s.blit(self.background, (0, 0))
+        self.background.set_alpha(None)
+        u, m = th.u, th.margin
+        y = th.header_h - int(40 * u)
+        cap = style.tracked(th.font_date, "SEARCH", lv.dim, 0.3)
+        s.blit(cap, (m, y))
+        y += cap.get_height() + int(10 * u)
+        # The search box, with a caret.
+        box = pygame.Rect(m, y, th.width - 2 * m, int(78 * u))
+        style.blend_rect(s, box, (*lv.text, 16), int(10 * u))
+        style.stripes(s, box.x, box.y, box.h, max(3, int(8 * u)), (lv.accent, lv.second))
+        f_query = th.type(38, "text", "semibold")
+        shown = sr.query or "Games and apps"
+        text = f_query.render(shown, True, lv.text if sr.query else lv.dim)
+        tx = box.x + int(40 * u)
+        s.blit(text, (tx, box.centery - text.get_height() // 2))
+        if int(time.monotonic() * 2) % 2 == 0 or not sr.query:
+            cx = tx + (text.get_width() if sr.query else 0) + int(4 * u)
+            s.fill(lv.accent, (cx, box.y + int(18 * u), max(2, int(3 * u)), box.h - int(36 * u)))
+        count = ("TYPE TO SEARCH" if not sr.query else "NOTHING FOUND" if not sr.results
+                 else f"{len(sr.results)} RESULT{'S' if len(sr.results) != 1 else ''}")
+        ctext = style.tracked(th.font_date, count, lv.dim, 0.22)
+        s.blit(ctext, ctext.get_rect(midright=(box.right - int(30 * u), box.centery)))
+
+        # The keyboard.
+        y = box.bottom + int(28 * u)
+        key = int(62 * u)
+        gap = int(10 * u)
+        f_key = th.type(28, "cond", "semibold")
+        for r, keys in enumerate([*KEY_ROWS, ACTIONS]):
+            actions = r == len(KEY_ROWS)
+            kw = key * 3 + gap * 2 if actions else key
+            for c, k in enumerate(keys):
+                rect = pygame.Rect(m + c * (kw + gap), y + r * (key + gap), kw, key)
+                focus = sr.zone == "keys" and sr.row == r and sr.col == c
+                if focus:
+                    pygame.draw.rect(s, lv.accent, rect, border_radius=int(10 * u))
+                else:
+                    style.blend_rect(s, rect, (*lv.text, 20), int(10 * u))
+                label = k.upper() if not actions else k.upper()
+                glyph = style.tracked(f_key, label, lv.ink if focus else lv.text, 0.1 if actions else 0)
+                s.blit(glyph, glyph.get_rect(center=rect.center))
+        kb_bottom = y + (len(KEY_ROWS) + 1) * (key + gap)
+
+        # The results: tiles, like the home screen's.
+        ry = kb_bottom + int(24 * u)
+        label = style.tracked(th.font_row, "RESULTS", lv.text if sr.zone == "results" else lv.dim, 0.3)
+        s.blit(label, (m, ry))
+        ty = ry + label.get_height() + int(18 * u)
+        step = th.tile_w + th.gap
+        first = max(0, sr.pick - max(1, (th.width - 2 * m) // step) + 1) if sr.zone == "results" else 0
+        for i, app in enumerate(sr.results[first:first + 8]):
+            idx = first + i
+            x = m + i * step
+            if x > th.width:
+                break
+            focused = sr.zone == "results" and idx == sr.pick
+            self._draw_tile(app, pygame.Rect(x, ty, th.tile_w, th.tile_h), 1.0 if focused else 0.0, focused, 1.0)
+
+        # Hints.
+        cy = th.height - th.footer_h // 2
+        x = m
+        for button, text_ in (("A", "Open" if sr.zone == "results" else "Type"), ("X", "Delete"),
+                              ("B", "Close")):
+            x = style.button_hint(s, x, cy, button, text_, th.type, lv)
+
+    # -- the screen saver ------------------------------------------------------
+
+    def start_saver(self) -> None:
+        """The screen saver begins: gather the artwork to show (ambient)."""
+        self.saver = True
+        self._slides = []
+        self._slide_cache = {}
+        self._saver_t0 = time.monotonic()
+        if self.saver_style != "ambient":
+            return
+        try:
+            seen = set()
+            for game in self.games():
+                # Only checked here; each picture loads when its turn comes.
+                if game.art and game.art not in seen and os.path.isfile(game.art):
+                    seen.add(game.art)
+                    self._slides.append((game.title, game.platform, game.art))
+        except Exception:  # no art is fine: the clock saver then
+            log.exception("screen saver art")
+        import random
+
+        random.Random(int(self._saver_t0)).shuffle(self._slides)
+        del self._slides[SLIDE_MAX:]
+
+    def _slide(self, i: int) -> pygame.Surface | None:
+        """Slide i's art, dimmed, a little larger than the screen (room to
+        drift). A picture that won't load is dropped from the show."""
+        th = self.theme
+        while self._slides:
+            key = i % len(self._slides)
+            if key in self._slide_cache:
+                return self._slide_cache[key]
+            art = load_art(self._slides[key][2])
+            if art is None:
+                del self._slides[key]
+                self._slide_cache.clear()  # keyed by position, which just moved
+                continue
+            if len(self._slide_cache) >= 2:  # the one showing and the one fading in
+                self._slide_cache.pop(next(iter(self._slide_cache)))
+            img = cover(art, (int(th.width * 1.12), int(th.height * 1.12)))
+            if pygame.display.get_surface():
+                img = img.convert()  # quicker to blit every frame
+            shade = pygame.Surface(img.get_size(), pygame.SRCALPHA)
+            shade.fill((0, 0, 0, 255 - SLIDE_DIM))
+            img.blit(shade, (0, 0))
+            self._slide_cache[key] = img
+            return img
+        return None
+
+    def _draw_slide(self, i: int, age: float, alpha: int) -> None:
+        th = self.theme
+        img = self._slide(i)
+        if img is None:
+            return
+        # Drift from one corner towards another over the slide's life.
+        p = max(0.0, min(1.0, age / (SLIDE_SECONDS + SLIDE_FADE)))
+        dx, dy = img.get_width() - th.width, img.get_height() - th.height
+        corners = ((0, 0), (1, 1), (1, 0), (0, 1))
+        (x0, y0), (x1, y1) = corners[i % 4], corners[(i + 1) % 4]
+        x = int(dx * (x0 + (x1 - x0) * p))
+        y = int(dy * (y0 + (y1 - y0) * p))
+        if alpha < 255:
+            img.set_alpha(alpha)
+        self.surface.blit(img, (-x, -y))
+        img.set_alpha(None)
+
     def draw_saver(self) -> None:
-        """The screen saver: dark, with the time drifting slowly (kind to OLED TVs)."""
+        """The screen saver: your games' art, slowly (ambient), or dark with
+        just the time. The time drifts either way (kind to OLED TVs)."""
         th, s, lv = self.theme, self.surface, self.theme.lv
         s.fill((0, 0, 0))
         t = time.monotonic()
-        clock = th.type(120, "cond", "semibold").render(style.clock_text(self.clock), True, mix(lv.text, (0, 0, 0), 0.45))
-        date = style.tracked(th.font_date, time.strftime("%A %d %B").upper(), mix(lv.dim, (0, 0, 0), 0.4), 0.3)
-        w = max(clock.get_width(), date.get_width())
+        slides = getattr(self, "_slides", [])
+        caption = None
+        if slides:
+            age = t - self._saver_t0
+            i, into = int(age // SLIDE_SECONDS), age % SLIDE_SECONDS
+            if into < SLIDE_FADE and i > 0:
+                self._draw_slide(i - 1, into + SLIDE_SECONDS, 255)
+                self._draw_slide(i, into, int(255 * ease_in_out(into / SLIDE_FADE)))
+            else:
+                self._draw_slide(i, into, 255)
+        if slides:  # (still: pictures that wouldn't load have been dropped)
+            title, platform, _ = slides[i % len(slides)]
+            caption = f"{title} · {platform}" if platform else title
+        dim = 0.2 if slides else 0.45  # over art the time needs to stand out more
+        clock = th.type(120, "cond", "semibold").render(style.clock_text(self.clock), True, mix(lv.text, (0, 0, 0), dim))
+        date = style.tracked(th.font_date, time.strftime("%A %d %B").upper(), mix(lv.dim, (0, 0, 0), dim), 0.3)
+        cap = style.fit(style.tracked(th.font_row, caption.upper(), mix(lv.text, (0, 0, 0), 0.35), 0.2),
+                        th.width // 2) if caption else None
+        w = max(clock.get_width(), date.get_width(), cap.get_width() if cap else 0)
+        block_h = clock.get_height() + date.get_height() + (int(34 * th.u) + cap.get_height() if cap else 0)
         x = int((th.width - w) * (0.5 + 0.45 * math.sin(t / 97)))
         y = int((th.height - clock.get_height() * 2) * (0.5 + 0.45 * math.sin(t / 61 + 1.3)))
+        if slides:
+            # A soft dark pool behind the time and title, so they read over any picture.
+            pool = (int(w * 1.7), int(block_h * 2.2))
+            if getattr(self, "_saver_pool", (None,))[0] != pool:
+                self._saver_pool = (pool, _soft_oval(pool, 190))
+            img = self._saver_pool[1]
+            s.blit(img, img.get_rect(center=(x + w // 2, y + block_h // 2)))
         s.blit(clock, (x, y))
         s.blit(date, (x + int(4 * th.u), y + clock.get_height()))
         style.stripes(s, x + int(4 * th.u), y + clock.get_height() + date.get_height() + int(14 * th.u),
                       int(90 * th.u), max(3, int(6 * th.u)), (mix(lv.accent, (0, 0, 0), 0.4), mix(lv.second, (0, 0, 0), 0.4)),
                       vertical=False)
+        if cap:
+            s.blit(cap, (x + int(4 * th.u), y + clock.get_height() + date.get_height() + int(34 * th.u)))
 
     def _draw_confirm(self, app: App) -> None:
         th, s, lv = self.theme, self.surface, self.theme.lv
@@ -1078,6 +1434,7 @@ def run(
     rebuild: Callable[[], object] | None = None,
     back_exits: bool = False,
     saver_after: float = 0,
+    saver_style: str = "ambient",
     sleep_after: float = 0,
     swap_confirm: bool = False,
     offset: tuple[int, int] = (0, 0),
@@ -1102,6 +1459,7 @@ def run(
     screen.clock = clock
     screen.rebuild = rebuild
     screen.back_exits = back_exits
+    screen.saver_style = saver_style
     screen.ask = ask
     if hints:
         screen.hints = hints
@@ -1136,6 +1494,20 @@ def run(
                         screen.saver = False
                         mapper.reset()
                         continue
+            if screen.search is not None and not blocked and event.type == pygame.KEYDOWN:
+                # A real keyboard types into search.
+                if event.key == pygame.K_BACKSPACE:
+                    screen.search.delete()
+                    continue
+                if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER) and screen.search.results \
+                        and screen.search.zone == "keys":
+                    chosen = screen._open(screen.search.results[screen.search.pick])
+                    screen.search = None
+                    continue
+                ch = getattr(event, "unicode", "")
+                if ch and (ch.isalnum() or ch in " '-:.") and event.key != pygame.K_SLASH:
+                    screen.type_text(ch.lower())
+                    continue
             pos = (event.pos[0] - offset[0], event.pos[1] - offset[1]) if hasattr(event, "pos") else None
             if not blocked and event.type == pygame.MOUSEMOTION:
                 screen.point(pos)
@@ -1150,7 +1522,9 @@ def run(
         for nav in navs:
             if nav is Nav.BACK and allow_quit and screen.confirming is None and home.row == 0 and home.col == 0:
                 return None
+            before = screen.sound_state()
             app = screen.handle(nav)
+            screen.play_sound(nav, before, app)
             if screen.exit:
                 return None
             if app is not None:
@@ -1169,12 +1543,12 @@ def run(
             subprocess.Popen(["systemctl", "suspend"])
             idle_since = time.monotonic()
         if saver_after and idle > saver_after and not screen.saver:
-            screen.saver = True
-            events.record("screen_saver")
+            screen.start_saver()
+            events.record("screen_saver", style=screen.saver_style, slides=len(screen._slides))
         if screen.saver:
             screen.draw_saver()
             pygame.display.flip()
-            clock.tick(10)
+            clock.tick(24 if screen._slides else 10)
             continue
         screen.edge_scroll(time.monotonic())
         screen.draw()

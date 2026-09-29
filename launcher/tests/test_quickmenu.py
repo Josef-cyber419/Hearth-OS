@@ -15,7 +15,7 @@ def make(state=None, discord_available=True):
 
 def test_tabs_and_close():
     menu, _, _ = make()
-    assert [t.title for t in menu.tabs] == ["Audio", "Mixer", "Discord", "System"]
+    assert [t.title for t in menu.tabs] == ["Audio", "Mixer", "Discord", "Stats", "System"]
     menu.handle(Nav.TAB_PREV)
     assert menu.current.key == "system"
     assert menu.handle(Nav.BACK) == CLOSE
@@ -125,7 +125,7 @@ def test_pointer_picks_options_and_tabs():
     menu.handle(Nav.UP)
     menu.point_at("output")
     assert not menu.on_tabs and menu.selected.key == "output"
-    menu.open_tab(3)
+    menu.open_tab(4)
     assert menu.current.key == "system"
 
 

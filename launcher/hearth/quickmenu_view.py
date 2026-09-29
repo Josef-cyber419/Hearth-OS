@@ -48,6 +48,29 @@ class Icons:
                                               (cx - s * 0.6, box.bottom + s * 0.4)])
             for dx in (-0.45, 0, 0.45):
                 style.circle(surf, bg, (cx + dx * s, box.centery), max(2, int(s * 0.13)))
+        elif name == "battery":
+            body = pygame.Rect(0, 0, s * 1.6, s * 0.9)
+            body.center = (cx - s * 0.1, cy)
+            pygame.draw.rect(surf, color, body, w, border_radius=max(1, int(s * 0.15)))
+            surf.fill(color, (body.right, cy - s * 0.2, max(2, int(s * 0.18)), s * 0.4))
+            surf.fill(color, (body.x + w * 2, body.y + w * 2, int(body.w * 0.2), body.h - w * 4))
+        elif name == "download":
+            pygame.draw.line(surf, color, (cx, cy - s * 0.85), (cx, cy + s * 0.3), w + 1)
+            pygame.draw.polygon(surf, color, [(cx - s * 0.5, cy - s * 0.05), (cx + s * 0.5, cy - s * 0.05),
+                                              (cx, cy + s * 0.5)])
+            pygame.draw.line(surf, color, (cx - s * 0.85, cy + s * 0.85), (cx + s * 0.85, cy + s * 0.85), w + 1)
+        elif name == "info":
+            style.circle(surf, color, (cx, cy), s * 0.9)
+            surf.fill(bg, (cx - w // 2, cy - s * 0.1, max(2, w), s * 0.6))
+            style.circle(surf, bg, (cx, cy - s * 0.4), max(2, int(s * 0.12)))
+        elif name == "gauge":  # a rev counter
+            box = pygame.Rect(0, 0, s * 1.8, s * 1.8)
+            box.center = (cx, cy + s * 0.25)
+            pygame.draw.arc(surf, color, box, 0, math.pi, w + 1)
+            angle = math.pi * 0.28
+            pygame.draw.line(surf, color, (cx, cy + s * 0.25),
+                             (cx + math.cos(angle) * s * 0.75, cy + s * 0.25 - math.sin(angle) * s * 0.75), w + 1)
+            style.circle(surf, color, (cx, cy + s * 0.25), max(2, int(s * 0.16)))
         elif name == "power":
             box = pygame.Rect(0, 0, s * 1.6, s * 1.6)
             box.center = (cx, cy + s * 0.08)
@@ -137,6 +160,38 @@ class QuickMenuView:
         self._origin = panel.topleft
         if pointer is not None and t >= 1.0:
             style.draw_pointer(surf, pointer, self.u, self.lv)
+
+    def draw_toast(self, surf: pygame.Surface, toast, now: float) -> None:
+        """A notice, top right: slides in, waits, slides out (toasts.SECONDS)."""
+        from .toasts import SECONDS
+
+        lv = self.lv
+        age = now - (toast.shown_at or now)
+        e = ease_out(min(1.0, age / 0.35)) * ease_out(min(1.0, max(0.0, SECONDS - age) / 0.35))
+        w, h = self.px(560), self.px(118)
+        card = pygame.Surface((w, h), pygame.SRCALPHA)
+        card.blit(style.gradient((w, h), (*style.lighten(lv.panel, 0.06), 248), (*lv.panel, 244), vertical=True),
+                  (0, 0))
+        style.stripes(card, 0, 0, h, self.px(10), (lv.accent, lv.second))
+        style.rounded(card, self.radius)
+        icon = {"battery": "battery", "download": "download", "update": "download"}.get(toast.icon, "info")
+        Icons.draw(card, icon, (self.px(64), h // 2), self.px(40), lv.accent, bg=lv.panel)
+        x = self.px(108)
+        title = style.fit(self.f_label.render(toast.title, True, lv.text), w - x - self.px(24))
+        detail = style.fit(self.f_detail.render(toast.detail, True, lv.dim), w - x - self.px(24)) \
+            if toast.detail else None
+        th = title.get_height() + (detail.get_height() if detail else 0)
+        y = (h - th) // 2
+        card.blit(title, (x, y))
+        if detail:
+            card.blit(detail, (x, y + title.get_height()))
+        card.set_alpha(int(255 * e))
+        sw = surf.get_width()
+        shadow = style.soft_shadow((w, h), self.radius, self.px(24), 150)
+        shadow.set_alpha(int(255 * e))
+        pos = (int(sw - self.margin - w + (1 - e) * self.px(80)), self.margin + self.px(20))
+        surf.blit(shadow, (pos[0] - self.px(24), pos[1] - self.px(24) + self.px(6)))
+        surf.blit(card, pos)
 
     def _stagger(self, t: float, i: int) -> float:
         """Content settles in, top to bottom, as the panel arrives, and is
@@ -273,12 +328,24 @@ class QuickMenuView:
             s.blit(letter, letter.get_rect(center=c))
             x += self.px(68)
 
-        label_color = lv.dim if item.kind == "info" else lv.text
+        label_color = (lv.accent if item.alert else lv.dim) if item.kind == "info" else lv.text
         if confirming:
             label = style.tracked(self.f_value, "PRESS A AGAIN TO CONFIRM", lv.accent, 0.08)
         else:
             label = self.f_label.render(item.label, True, label_color)
         detail = self.f_detail.render(item.detail, True, lv.dim) if item.detail and not confirming else None
+        if item.kind == "meter":  # a live reading: value on the right, a bar under it
+            top = rect.y + self.px(14)
+            s.blit(label, (x, top))
+            shown = self.smooth.get((item.key, "value"), max(0.0, min(100.0, item.value or 0)), self._dt)
+            value = style.tracked(self.f_value, item.unit, lv.accent if item.alert else lv.text, 0.06)
+            s.blit(value, (inner.right - value.get_width(), top - self.px(2)))
+            if detail:
+                room = inner.right - value.get_width() - self.px(20) - (x + label.get_width() + self.px(14))
+                s.blit(style.fit(detail, max(1, room)), (x + label.get_width() + self.px(14), top + self.px(6)))
+            self._gauge(s, pygame.Rect(x, rect.bottom - self.px(26), inner.right - x, max(2, self.px(5))),
+                        shown, False, False)
+            return
         if item.kind == "slider":
             top = rect.y + self.px(14)
             s.blit(label, (x, top))

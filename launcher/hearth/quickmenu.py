@@ -25,7 +25,7 @@ CLOSE = "close"
 class Item:
     key: str
     label: str
-    kind: str  # "slider" | "toggle" | "choice" | "action" | "info"
+    kind: str  # "slider" | "toggle" | "choice" | "action" | "info" | "meter" (a live reading)
     value: Any = None
     options: tuple[str, ...] = ()
     detail: str = ""
@@ -35,6 +35,7 @@ class Item:
     on_change: Callable[[Any], None] | None = None
     on_select: Callable[[], str | None] | None = None
     on_mute: Callable[[bool], None] | None = None
+    alert: bool = False  # a reading to worry about (shown in the accent colour)
     # Sliders: range, step, and how the value reads ("{}%", "{:.1f} s", ...).
     low: float = 0
     high: float = 100
@@ -51,7 +52,7 @@ class Item:
 
     @property
     def selectable(self) -> bool:
-        return self.kind != "info"
+        return self.kind not in ("info", "meter")
 
 
 @dataclass
@@ -165,6 +166,8 @@ class QuickMenu:
                 item.value = (item.value + step) % len(item.options)
                 if item.on_change:
                     item.on_change(item.value)
+        elif item.kind == "action" and nav in (Nav.LEFT, Nav.RIGHT) and item.on_change:
+            item.on_change(1 if nav is Nav.RIGHT else -1)
         elif item.kind == "action" and nav is Nav.SELECT:
             if item.confirm and confirming != item.key:
                 self.confirming = item.key
@@ -189,6 +192,7 @@ class Actions(Protocol):
     def update(self) -> str | None: ...
     def report(self) -> str | None: ...
     def set_wii_mouse(self, on: bool) -> str | None: ...
+    def media(self, bus: str, action: str) -> str | None: ...
 
 
 @dataclass
@@ -202,15 +206,77 @@ class Context:
     wii: dict | None = None
     # Set while a game runs inside a frontend (ES-DE): the frontend's name
     frontend: str | None = None
+    # How hard the PC is working (perf.Reading); None until measured
+    perf: Any = None
+    # Media players on the bus (media.Player), playing ones first
+    media: list = field(default_factory=list)
 
 
 def build_tabs(ctx: Context) -> list[Tab]:
-    return [_audio_tab(ctx), _mixer_tab(ctx), _discord_tab(ctx), _system_tab(ctx)]
+    return [_audio_tab(ctx), _mixer_tab(ctx), _discord_tab(ctx), _performance_tab(ctx), _system_tab(ctx)]
+
+
+def _gb(n: int | None) -> str:
+    return f"{n / 1024 ** 3:.1f}" if n else "?"
+
+
+def _performance_tab(ctx: Context) -> Tab:
+    """Usage and temperatures, live, and a plain warning when it runs hot."""
+    from . import perf as perf_
+
+    tab = Tab("performance", "Stats", "gauge")
+    r = ctx.perf
+    if r is None:
+        tab.items.append(Item("perf-status", "Measuring…", "info", detail="A moment while Hearth takes a reading"))
+        return tab
+    tab.items.append(Item("perf-status", r.status, "info", alert=bool(r.warnings),
+                          detail=" · ".join(r.warnings) or "Temperatures and clocks are where they should be"))
+
+    def temp(t: float | None) -> str:
+        return f"{t:.0f}°C" if t is not None else "–"
+
+    cpu_detail = []
+    if r.cpu_mhz:
+        cpu_detail.append(f"{r.cpu_mhz / 1000:.1f}" + (f"/{r.cpu_max_mhz / 1000:.1f}" if r.cpu_max_mhz else "") + " GHz")
+    tab.items.append(Item(
+        "perf-cpu", "Processor", "meter", value=r.cpu_load or 0,
+        detail=" · ".join(cpu_detail),
+        unit=(f"{r.cpu_load:.0f}%" if r.cpu_load is not None else "–") + "  ·  " + temp(r.cpu_temp),
+        alert=r.cpu_temp is not None and r.cpu_temp >= perf_.CPU_WARM))
+    gpu_detail = []
+    if r.gpu_hotspot is not None:
+        gpu_detail.append(f"hotspot {temp(r.gpu_hotspot)}")
+    if r.gpu_mhz:
+        gpu_detail.append(f"{r.gpu_mhz:.0f}" + (f"/{r.gpu_max_mhz:.0f}" if r.gpu_max_mhz else "") + " MHz")
+    if r.gpu_watts:
+        gpu_detail.append(f"{r.gpu_watts:.0f}" + (f"/{r.gpu_cap_watts:.0f}" if r.gpu_cap_watts else "") + " W")
+    hot = r.gpu_hotspot if r.gpu_hotspot is not None else r.gpu_temp
+    if r.gpu_load is not None or r.gpu_temp is not None:
+        tab.items.append(Item(
+            "perf-gpu", "Graphics", "meter", value=r.gpu_load or 0, detail=" · ".join(gpu_detail),
+            unit=(f"{r.gpu_load:.0f}%" if r.gpu_load is not None else "–") + "  ·  " + temp(r.gpu_temp),
+            alert=hot is not None and hot >= perf_.GPU_WARM))
+    if r.ram_total:
+        vram = f"video {_gb(r.vram_used)}/{_gb(r.vram_total)} GB" if r.vram_total else ""
+        tab.items.append(Item(
+            "perf-ram", "Memory", "meter", value=100 * (r.ram_used or 0) / r.ram_total, detail=vram,
+            unit=f"{_gb(r.ram_used)} of {_gb(r.ram_total)} GB",
+            alert=(r.ram_used or 0) / r.ram_total > 0.92))
+    return tab
 
 
 def _audio_tab(ctx: Context) -> Tab:
     a, snap = ctx.audio, ctx.snapshot
     tab = Tab("audio", "Audio", "speaker")
+    if ctx.media:
+        # Now playing (the player that's playing, or the first one): control it from here.
+        # One row: A plays/pauses, Left/Right skip back/forward.
+        p, act = ctx.media[0], ctx.actions
+        tab.items.append(Item(
+            "media", p.summary, "action",
+            detail=f"{p.name} · {'Playing: A to pause' if p.playing else 'Paused: A to play'} · Left/Right to skip",
+            on_select=lambda b=p.bus: act.media(b, "PlayPause"),
+            on_change=lambda step, b=p.bus: act.media(b, "Next" if step > 0 else "Previous")))
     out, mic = snap.output(), snap.input()
     if out:
         tab.items.append(Item(

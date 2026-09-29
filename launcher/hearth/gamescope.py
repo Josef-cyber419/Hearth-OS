@@ -170,12 +170,16 @@ class Gamescope:
         self._set_cardinals(win, "STEAM_OVERLAY", [1])
         self.set_overlay_visible(win, False)
 
-    def set_overlay_visible(self, win, visible: bool, opacity: float = 1.0) -> None:
+    def set_overlay_visible(self, win, visible: bool, opacity: float = 1.0, focus: bool = True) -> None:
+        """Show or hide the overlay. `focus`: it takes keyboard/mouse input
+        (the Quick Menu); without it, it only shows (a notice), and input
+        carries on reaching the app underneath."""
+        takes_input = visible and focus
         self._set_cardinals(win, "_NET_WM_WINDOW_OPACITY", [int(OPAQUE * opacity) if visible else 0])
         # 1 = the overlay gets keyboard/mouse input, like Steam's Quick Access menu.
-        self._set_cardinals(win, "STEAM_INPUT_FOCUS", [1 if visible else 0])
+        self._set_cardinals(win, "STEAM_INPUT_FOCUS", [1 if takes_input else 0])
         try:
-            self.set_click_through(win, not visible)
+            self.set_click_through(win, not takes_input)
         except Exception as e:  # no SHAPE extension: only the pointer is affected
             log.debug("click-through: %s", e)
         self.d.sync()  # wait until the X server has applied it

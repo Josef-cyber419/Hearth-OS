@@ -39,6 +39,10 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   controller batteries, confirm dialogs for power actions, and a backdrop that
   glows with the focused game's art or app's colour. Scales cleanly from 720p
   to 4K.
+- **Find anything**: the **View** button (Share on PlayStation, − on Switch)
+  or the Search tile searches every app and game as you type, with the
+  controller or a keyboard. **Y** on a game shows its details: play time,
+  last played, platform.
 - **Make it yours**: press **X** on any tile (app or game) to star it into the
   **Favorites** row at the top; **Y → Move** rearranges tiles in a row. How
   Hearth compares with smart TVs and consoles, and what's next:
@@ -65,7 +69,11 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   keyboard's **Windows** key) for a panel over whatever's playing, in the same livery, with the game paused. Switch audio
   output and microphone, set volumes, mix per-app volume, run Discord in the
   background (mute, deafen, voice volume, or bring it up with the controller as a
-  mouse), and sleep/restart/power off. See [docs/QUICK_MENU.md](docs/QUICK_MENU.md).
+  mouse), play/pause/skip what's playing, watch **CPU and GPU load and
+  temperatures** (it says plainly if the PC is running hot or slowing down), and
+  sleep/restart/power off. Small notices pop up over games for a controller
+  running low or an app that finished installing. See
+  [docs/QUICK_MENU.md](docs/QUICK_MENU.md).
 - **Quick Resume, like an Xbox**: hold **Guide** in a game and it pauses where
   you are and you're back home; it waits in a **Quick Resume** row on top (up to
   3 games), and picking it carries on instantly, with nothing reloading. Y on
@@ -93,7 +101,7 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   calibration); emulator tuning; Bluetooth pairing; Wi-Fi with an on-screen
   keyboard and a connection test; hardware, temperatures, storage, updates and
   problem reports. Also the things TVs and consoles are expected to have: a
-  screen saver (OLED-friendly), sleep when idle, screen edges for TVs that
+  screen saver with your games' art (OLED-friendly), optional UI sounds, sleep when idle, screen edges for TVs that
   crop, Nintendo-style confirm button, and Xbox, PlayStation or Nintendo
   button names on screen. Changes apply at once.
 - **Customisable without rebuilding**: copy

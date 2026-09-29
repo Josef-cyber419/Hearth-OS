@@ -134,13 +134,16 @@ def test_options_pin_from_home(home, monkeypatch, shipped_config):
         screen.rebuild = build
         assert screen.home.config.rows[0].title == "Continue"
         screen.handle(Nav.OPTIONS)
-        assert [c[0] for c in screen.options[1]] == ["Add to Favorites", "Remove from Continue", "Cancel"]
+        assert [c[0] for c in screen.options[1]] == ["Play", "Add to Favorites", "Remove from Continue", "Cancel"]
         screen.draw()
+        screen.handle(Nav.DOWN)
         screen.handle(Nav.SELECT)
         assert settings.load()["favorites"] == ["game:steam:620"]
         assert [r.title for r in screen.home.config.rows[:2]] == ["Favorites", "Continue"]
         assert screen.home.config.rows[screen.home.row].title == "Continue"  # stays where you were
         screen.handle(Nav.OPTIONS)
+        assert [c[0] for c in screen.options[1]][:3] == ["Play", "Remove from Favorites", "Remove from Continue"]
+        screen.handle(Nav.DOWN)
         screen.handle(Nav.DOWN)
         screen.handle(Nav.SELECT)  # Remove from Continue
         assert settings.load()["hide_recent"] == [screen.home.selected.id.removeprefix("game:")] or \

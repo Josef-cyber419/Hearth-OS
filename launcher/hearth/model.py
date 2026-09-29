@@ -20,6 +20,7 @@ class Nav(Enum):
     TAB_NEXT = auto()
     OPTIONS = auto()  # Y / the Menu-style "more" button: favourite, move, hide, ...
     FAVORITE = auto()  # X: star / unstar the tile (the Favorites row)
+    SEARCH = auto()  # View / Share / −, or "/": search games and apps
 
 
 @dataclass

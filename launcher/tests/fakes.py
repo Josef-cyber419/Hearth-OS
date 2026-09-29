@@ -77,3 +77,6 @@ class FakeActions:
 
     def set_wii_mouse(self, on):
         return self._record("wii_mouse", on)
+
+    def media(self, bus, action):
+        return self._record("media", bus, action)

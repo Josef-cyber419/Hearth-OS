@@ -46,6 +46,8 @@ class Game:
     last_played: float = 0.0
     art: str | None = None
     favorite: bool = False  # ES-DE's favourite star
+    playtime: float = 0.0  # seconds played (Steam's own count, or Hearth's for the rest)
+    plays: int = 0  # times started (ES-DE's count), when known
 
     @property
     def platform(self) -> str:
@@ -126,6 +128,22 @@ def _lower_keys(d: dict) -> dict:
 NOT_GAMES = re.compile(r"^(Proton|Steam Linux Runtime|Steamworks Common|Steam Audio|SteamVR)", re.I)
 
 
+def steam_playtime(root: Path) -> dict[str, float]:
+    """Minutes played, per app, as Steam counts them."""
+    minutes: dict[str, float] = {}
+    for cfg in glob.glob(str(root / "userdata/*/config/localconfig.vdf")):
+        data = _lower_keys(_vdf_file(Path(cfg)))
+        apps = (data.get("userlocalconfigstore", {}).get("software", {}).get("valve", {})
+                .get("steam", {}).get("apps", {}))
+        for appid, info in apps.items():
+            if isinstance(info, dict):
+                try:
+                    minutes[appid] = max(minutes.get(appid, 0.0), float(info.get("playtime", 0)))
+                except ValueError:
+                    pass
+    return minutes
+
+
 def steam_last_played(root: Path) -> dict[str, float]:
     played: dict[str, float] = {}
     for cfg in glob.glob(str(root / "userdata/*/config/localconfig.vdf")):
@@ -156,6 +174,7 @@ def steam_games() -> list[Game]:
     games: dict[str, Game] = {}
     for root in steam_roots():
         played = steam_last_played(root)
+        minutes = steam_playtime(root)
         folders = _lower_keys(_vdf_file(root / "steamapps/libraryfolders.vdf")).get("libraryfolders", {})
         paths = {root} | {Path(v["path"]) for v in folders.values() if isinstance(v, dict) and v.get("path")}
         for lib in paths:
@@ -168,7 +187,7 @@ def steam_games() -> list[Game]:
                     continue  # not fully installed
                 last = max(played.get(appid, 0.0), float(state.get("lastplayed", 0) or 0))
                 games[appid] = Game(f"steam:{appid}", name, "steam", (STEAM_LAUNCHER, f"steam://rungameid/{appid}"),
-                                    last, steam_art(root, appid))
+                                    last, steam_art(root, appid), playtime=minutes.get(appid, 0.0) * 60)
     return list(games.values())
 
 
@@ -273,6 +292,8 @@ def gamelist(system: str) -> dict[str, dict]:
             "favorite": (g.findtext("favorite") or "").strip().lower() == "true",
             "hidden": (g.findtext("hidden") or "").strip().lower() == "true",
             "lastplayed": _esde_time(g.findtext("lastplayed")),
+            "playcount": int((g.findtext("playcount") or "0").strip() or 0)
+            if (g.findtext("playcount") or "0").strip().isdigit() else 0,
         }
     return out
 
@@ -322,7 +343,8 @@ def rom_games() -> list[Game]:
             if command is None:
                 continue
             games.append(Game(f"rom:{system}:{rom.name}", info.get("name") or pretty(rom.stem), system, command,
-                              info.get("lastplayed", 0.0), rom_art(system, rom), info.get("favorite", False)))
+                              info.get("lastplayed", 0.0), rom_art(system, rom), info.get("favorite", False),
+                              plays=info.get("playcount", 0)))
     return games
 
 
@@ -458,10 +480,49 @@ def all_games() -> list[Game]:
         games += port_games()
     except Exception:
         log.exception("reading ~/Games")
-    ours = played()
-    games = [g if ours.get(g.key, 0) <= g.last_played else
-             Game(g.key, g.title, g.system, g.command, ours[g.key], g.art, g.favorite) for g in games]
+    from dataclasses import replace
+
+    ours, seconds = played(), playtimes()
+    games = [replace(g, last_played=max(g.last_played, ours.get(g.key, 0)),
+                     # Steam counts its own games' time (including those started
+                     # here); Hearth counts the rest.
+                     playtime=g.playtime if g.is_steam else g.playtime + seconds.get(g.key, 0.0))
+             for g in games]
     return sorted(games, key=lambda g: (-g.last_played, g.title.lower()))
+
+
+def _playtime_path() -> Path:
+    return state_dir() / "playtime.json"
+
+
+def playtimes() -> dict[str, float]:
+    """Seconds each game has been in front, counted by Hearth."""
+    try:
+        data = json.loads(_playtime_path().read_text())
+        return {k: float(v) for k, v in data.items()} if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def add_playtime(key: str, seconds: float) -> None:
+    if seconds <= 0:
+        return
+    data = playtimes()
+    data[key] = data.get(key, 0.0) + seconds
+    try:
+        path = _playtime_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(json.dumps(data))
+        os.replace(tmp, path)
+    except OSError as e:
+        log.debug("can't record play time: %s", e)
+
+
+def details(key: str, games: list[Game] | None = None) -> Game | None:
+    """One game, with its play time and last played (for the details card)."""
+    games = all_games() if games is None else games
+    return next((g for g in games if g.key == key), None)
 
 
 def recent(games: list[Game], limit: int = RECENT, hidden: set[str] | None = None) -> list[Game]:
