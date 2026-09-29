@@ -147,6 +147,16 @@ title = "Watch"
   color = "#cc7b19"
 
   [[rows.apps]]
+  # VacuumStream: a controller-first Twitch app (browse, follow, watch) with
+  # Twitch's own player, like VacuumTube is for YouTube. Not on Flathub:
+  # installed and kept up to date per user by hearth-twitch-update.
+  id = "twitch"
+  name = "Twitch"
+  command = "/usr/libexec/hearth/hearth-twitch"
+  requires_files = ["~/Applications/VacuumStream.AppImage"]
+  color = "#9146ff"
+
+  [[rows.apps]]
   # Android apps via Waydroid, using Bazzite's Game Mode launcher. Hidden
   # until Android is set up (`ujust setup-waydroid`); see docs/STREAMING.md.
   id = "android"

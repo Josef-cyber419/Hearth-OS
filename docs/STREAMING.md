@@ -12,6 +12,7 @@ like a smart TV or console. No keyboard, no mouse, no browser.
 | Jellyfin | Jellyfin Desktop in `--tv` mode | Yes. Needs a Jellyfin server (your NAS or another PC). |
 | Plex | Plex HTPC, Plex's TV app | Yes. |
 | Moonlight | Stream games from another PC | Yes. |
+| Twitch | [VacuumStream](https://github.com/eliottness/VacuumStream): a controller-first Twitch app (live channels, follows, categories, past broadcasts) with Twitch's own player, in the spirit of VacuumTube. Not on Flathub: Hearth installs it into `~/Applications` and checks for updates weekly (`hearth-twitch-update`), verifying each download's checksum | Yes. Watch as a guest, or sign in with a code on your phone for your follows. Early-stage software, so expect rough edges. |
 | Emulation | ES-DE + emulators, see [EMULATION.md](EMULATION.md) | Yes. |
 | Android | Android apps in a container (Waydroid) | Partly. See below. |
 

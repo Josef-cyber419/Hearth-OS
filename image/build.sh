@@ -40,6 +40,7 @@ fi
 # --- services -----------------------------------------------------------------
 systemctl enable hearth-flatpak-setup.service hearth-cec-poweroff.service
 systemctl --global enable hearth-esde-update.timer
+systemctl --global enable hearth-twitch-update.timer
 
 # --- automatic updates --------------------------------------------------------
 # Bazzite's deck images turn off their updater and leave updates to Steam's

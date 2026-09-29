@@ -68,7 +68,8 @@ def launch(app: cfg.App, dry_run: bool = False, gs: Gamescope | None = None,
     events.record("app_start", id=app.id, scope=bool(unit))
     info = {"id": app.id, "name": app.name, "unit": unit, "pid": proc.pid, "started": time.time(),
             "home_button": app.home_button, "tag_windows": app.tag_windows, "art": app.art,
-            "platform": app.platform, "color": app.color, "resumable": resumable(app, config)}
+            "platform": app.platform, "color": app.color, "resumable": resumable(app, config),
+            "pointer": app.pointer}
     PROCS[app.id] = proc
     return run_foreground(info, gs, hold_seconds, config)
 
