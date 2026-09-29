@@ -137,6 +137,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Tag and publish releases
+        # Tags are made by the release API (gh release create --target), not
+        # pushed: GitHub won't let this token push a tag onto an older commit
+        # whose workflow files differ from today's.
         run: |
           current=$(cat VERSION)
           for version in $(python3 tools/release_notes.py --versions); do
@@ -144,23 +147,20 @@ jobs:
             if gh release view "$tag" >/dev/null 2>&1; then
               continue
             fi
-            if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-              if [[ "$version" == "$current" ]]; then
-                commit=$GITHUB_SHA
-              else  # released before tagging started
-                commit=$(awk -v v="$version" '$1 == v {print $2}' tools/past-releases.txt)
-              fi
-              if [[ -z "$commit" ]]; then
-                echo "::warning::$tag: no commit known for it; skipped"
-                continue
-              fi
-              git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-                tag -a "$tag" -m "Hearth OS $version" "$commit"
-              git push origin "refs/tags/$tag"
+            if git rev-parse -q --verify "refs/tags/$tag^{commit}" >/dev/null; then
+              commit=$(git rev-parse "refs/tags/$tag^{commit}")
+            elif [[ "$version" == "$current" ]]; then
+              commit=$GITHUB_SHA
+            else  # released before tagging started
+              commit=$(awk -v v="$version" '$1 == v {print $2}' tools/past-releases.txt)
+            fi
+            if [[ -z "$commit" ]]; then
+              echo "::warning::$tag: no commit known for it; skipped"
+              continue
             fi
             latest=false
             [[ "$version" == "$current" ]] && latest=true
             python3 tools/release_notes.py "$version" > notes.md
-            gh release create "$tag" --verify-tag --title "Hearth OS $version" \
+            gh release create "$tag" --target "$commit" --title "Hearth OS $version" \
               --notes-file notes.md --latest="$latest"
           done
