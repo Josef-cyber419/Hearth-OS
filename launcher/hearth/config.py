@@ -12,9 +12,9 @@ on top, so you keep getting new default tiles after updates:
       id = "kodi"                     # same id: change just these fields
       color = "#000000"
       [[rows.apps]]
-      id = "twitch"                   # new id: a new tile
-      name = "Twitch"
-      flatpak = "tv.twitch.Twitch"
+      id = "vlc"                      # new id: a new tile
+      name = "VLC"
+      flatpak = "org.videolan.VLC"
 
     [[rows]]
     title = "Mine"                    # new title: a new row, before System

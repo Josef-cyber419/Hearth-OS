@@ -146,6 +146,50 @@ title = "Watch"
   flatpak = "tv.plex.PlexHTPC"
   color = "#cc7b19"
 
+  # Streaming websites, full screen in Chrome with the controller as a mouse
+  # (hearth-web). Twitch plays at full quality; Netflix, Prime Video,
+  # Paramount+ and Peacock send a PC browser 720p-1080p at most (their DRM
+  # keeps HD/4K for certified devices, see docs/STREAMING.md).
+  [[rows.apps]]
+  id = "twitch"
+  name = "Twitch"
+  command = ["/usr/libexec/hearth/hearth-web", "twitch", "https://www.twitch.tv"]
+  requires_files = ["/var/lib/flatpak/app/com.google.Chrome"]
+  pointer = true
+  color = "#9146ff"
+
+  [[rows.apps]]
+  id = "netflix"
+  name = "Netflix"
+  command = ["/usr/libexec/hearth/hearth-web", "netflix", "https://www.netflix.com"]
+  requires_files = ["/var/lib/flatpak/app/com.google.Chrome"]
+  pointer = true
+  color = "#e50914"
+
+  [[rows.apps]]
+  id = "prime-video"
+  name = "Prime Video"
+  command = ["/usr/libexec/hearth/hearth-web", "prime-video", "https://www.primevideo.com"]
+  requires_files = ["/var/lib/flatpak/app/com.google.Chrome"]
+  pointer = true
+  color = "#00a8e1"
+
+  [[rows.apps]]
+  id = "paramount-plus"
+  name = "Paramount+"
+  command = ["/usr/libexec/hearth/hearth-web", "paramount-plus", "https://www.paramountplus.com"]
+  requires_files = ["/var/lib/flatpak/app/com.google.Chrome"]
+  pointer = true
+  color = "#0064ff"
+
+  [[rows.apps]]
+  id = "peacock"
+  name = "Peacock"
+  command = ["/usr/libexec/hearth/hearth-web", "peacock", "https://www.peacocktv.com"]
+  requires_files = ["/var/lib/flatpak/app/com.google.Chrome"]
+  pointer = true
+  color = "#1b1b1b"
+
   [[rows.apps]]
   # Android apps via Waydroid, using Bazzite's Game Mode launcher. Hidden
   # until Android is set up (`ujust setup-waydroid`); see docs/STREAMING.md.

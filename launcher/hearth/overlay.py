@@ -134,6 +134,17 @@ class Actions:
         return None  # stay open to show progress
 
 
+def pointer_app_in_front(state: dict) -> bool:
+    """Is the app in front one the controller drives as a mouse (pointer =
+    true: Discord, the streaming websites)?"""
+    focus = state["focus"]
+    if focus in state["background"]:
+        return bool(state["background"][focus].get("pointer", False))
+    if focus == "foreground":
+        return bool((state["foreground"] or {}).get("pointer", False))
+    return False
+
+
 def focus_key(state: dict) -> str:
     """The app in front: "home", a background app's id, or the foreground app's id."""
     if state["focus"] == "foreground":
@@ -409,9 +420,7 @@ class Overlay:
             self._update_checked = now
             threading.Thread(target=self.check_staged, daemon=True).start()
 
-        focus = self.state["focus"]
-        self.pointer_active = (not self.open and focus in self.state["background"]
-                               and self.state["background"][focus].get("pointer", False))
+        self.pointer_active = not self.open and pointer_app_in_front(self.state)
         if not self.pointer_active:
             self.pointer.reset()
         self.tag_windows()

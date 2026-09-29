@@ -112,9 +112,9 @@ title = "Watch"                   # an existing row: change it
   id = "kodi"                     # an existing tile: change only these fields
   color = "#0f6fa8"
   [[rows.apps]]
-  id = "twitch"                   # a new tile
-  name = "Twitch"
-  flatpak = "tv.twitch.Twitch"
+  id = "vlc"                      # a new tile
+  name = "VLC"
+  flatpak = "org.videolan.VLC"
 
 [[rows]]
 title = "Retro"                   # a new row (goes before System)

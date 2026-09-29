@@ -101,9 +101,9 @@ title = "Watch"
   id = "kodi"
   color = "#000000"
   [[rows.apps]]
-  id = "twitch"
-  name = "Twitch"
-  flatpak = "tv.twitch.Twitch"
+  id = "vlc"
+  name = "VLC"
+  flatpak = "org.videolan.VLC"
 [[rows]]
 title = "Mine"
   [[rows.apps]]
@@ -116,7 +116,7 @@ title = "Mine"
     assert titles[-2:] == ["Mine", "System"]  # new rows go before System
     watch = next(r for r in config.rows if r.title == "Watch")
     ids = [a.id for a in watch.apps]
-    assert "plex" not in ids and ids[-1] == "twitch"
+    assert "plex" not in ids and ids[-1] == "vlc"
     kodi = config.app("kodi")
     assert kodi.color == "#000000" and kodi.command == ("flatpak", "run", "tv.kodi.Kodi")
     assert config.pause_game is False
