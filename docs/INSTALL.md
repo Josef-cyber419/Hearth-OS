@@ -45,7 +45,8 @@ A PC follows one of two builds, and updates within it automatically:
 
 - **live** (`:latest`, from `main`): what's released. The default.
 - **staging** (`:staging`, from the `staging` branch): new work, to try on
-  the TV before it goes live.
+  the TV before it goes live. For now it mirrors live (see the README's
+  *Branches and updates*).
 
 `hearthctl channel` shows which one this PC is on; `hearthctl channel
 staging` or `hearthctl channel live` switches (restart to finish).

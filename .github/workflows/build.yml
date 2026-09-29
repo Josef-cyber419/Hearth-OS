@@ -1,8 +1,15 @@
 name: build
 
 # main is live: its image is tagged :latest, which PCs follow by default.
-# staging is where new work lands first: its image is tagged :staging
-# (switch a PC to it with `hearthctl channel staging`).
+# staging is for testing new work before it goes live: its image is tagged
+# :staging (switch a PC to it with `hearthctl channel staging`).
+#
+# For now staging mirrors main: every build of main also publishes :staging
+# and moves the staging branch to match. Set MIRROR_STAGING to "false" once
+# new work should land on staging first.
+env:
+  MIRROR_STAGING: "true"
+
 on:
   push:
     branches: [main, staging]
@@ -72,7 +79,32 @@ jobs:
         if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          if [[ "$GITHUB_REF" == refs/heads/main ]]; then channel=latest; else channel=staging; fi
-          podman tag "$IMAGE:latest" "$IMAGE:$channel"
-          podman push "$IMAGE:$channel"
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            channels=(latest)
+            [[ "$MIRROR_STAGING" == true ]] && channels+=(staging)
+          else
+            channels=(staging)
+          fi
+          for channel in "${channels[@]}"; do
+            podman tag "$IMAGE:latest" "$IMAGE:$channel"
+            podman push "$IMAGE:$channel"
+          done
           podman push "$IMAGE:${{ github.sha }}"
+
+  mirror-staging:
+    # Keep the staging branch on main's commit while staging mirrors main.
+    # Fast-forward only: if staging has its own commits, this fails loudly
+    # instead of throwing them away.
+    needs: image
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        if: env.MIRROR_STAGING == 'true'
+        with:
+          fetch-depth: 0
+      - name: Move staging to main
+        if: env.MIRROR_STAGING == 'true'
+        run: git push origin "HEAD:refs/heads/staging"

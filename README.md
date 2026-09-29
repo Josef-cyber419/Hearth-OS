@@ -171,12 +171,15 @@ confirmed working there. What still needs checking on real hardware is in
 | Branch | What it is | Image | PCs following it |
 |---|---|---|---|
 | `main` | **Live**: what's released | `ghcr.io/<owner>/hearth-os:latest` | every install, by default |
-| `staging` | **Testing**: new work lands here first | `ghcr.io/<owner>/hearth-os:staging` | only ones switched with `hearthctl channel staging` |
+| `staging` | **Testing**: for trying new work before it goes live (mirrors `main` for now) | `ghcr.io/<owner>/hearth-os:staging` | only ones switched with `hearthctl channel staging` |
 
-Changes go to `staging` first by pull request; once they've been tried on
-the TV, `staging` is merged into `main` and goes live. Both images are built
-and tested by CI on every push, and `main` is also rebuilt daily to pick up
-Bazzite and Fedora updates. `hearthctl channel live` switches back.
+For now there's one PC, so changes are merged straight into `main` and
+`staging` mirrors it: every build of `main` also publishes `:staging` and
+moves the `staging` branch along. When more devices run Hearth, turning off
+`MIRROR_STAGING` in the [build workflow](.github/workflows/build.yml) makes
+`staging` the place new work lands first, to be tried before it's merged into
+`main`. Images are built and tested by CI on every push, and `main` is also
+rebuilt daily to pick up Bazzite and Fedora updates.
 
 ## Repository layout
 
