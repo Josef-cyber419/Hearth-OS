@@ -68,6 +68,8 @@ class QuickMenu:
         self.tab = 0
         self._selected: dict[str, str] = {}
         self.confirming: str | None = None
+        # On the tab row (Up from the top option): Left/Right switch tabs.
+        self.on_tabs = False
         self.set_tabs(tabs)
 
     def set_tabs(self, tabs: list[Tab]) -> None:
@@ -96,6 +98,21 @@ class QuickMenu:
         if any(i.key == key and i.selectable for i in self.current.items):
             self._selected[self.current.key] = key
 
+    def point_at(self, key: str) -> None:
+        """A pointer (mouse, Wii Remote) is on an option."""
+        self.on_tabs = False
+        self.select(key)
+
+    def open_tab(self, index: int) -> None:
+        """A tab was clicked."""
+        if 0 <= index < len(self.tabs):
+            self.tab = index
+            self.on_tabs = False
+
+    def _at_top(self) -> bool:
+        items = [i.key for i in self.current.items if i.selectable]
+        return not items or self._selected.get(self.current.key) == items[0]
+
     def _move(self, delta: int) -> None:
         items = [i for i in self.current.items if i.selectable]
         if not items:
@@ -112,6 +129,15 @@ class QuickMenu:
             return CLOSE
         if nav in (Nav.TAB_PREV, Nav.TAB_NEXT):
             self.tab = (self.tab + (1 if nav is Nav.TAB_NEXT else -1)) % len(self.tabs)
+            return None
+        if self.on_tabs:
+            if nav in (Nav.LEFT, Nav.RIGHT):
+                self.tab = (self.tab + (1 if nav is Nav.RIGHT else -1)) % len(self.tabs)
+            elif nav in (Nav.DOWN, Nav.SELECT):
+                self.on_tabs = False
+            return None
+        if nav is Nav.UP and self._at_top():
+            self.on_tabs = True
             return None
         if nav in (Nav.UP, Nav.DOWN):
             self._move(-1 if nav is Nav.UP else 1)

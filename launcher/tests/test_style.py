@@ -103,3 +103,41 @@ def test_quick_menu_items_fully_shown_once_open(surface):
     view = QuickMenuView((1280, 720))
     assert all(view._stagger(1.0, i) == 1.0 for i in range(20))
     assert view._stagger(0.0, 0) == 0.0
+
+
+def test_button_names_follow_the_last_input():
+    style.set_prompts("auto")
+    style.note_input("playstation")
+    assert style.glyph_for("A") == "cross"
+    style.note_input("keyboard")
+    assert style.glyph_for("A") == "ENTER" and style.glyph_for("B") == "ESC"
+    style.note_input("wii")
+    assert style.glyph_for("START") == "+"
+    style.set_prompts("nintendo")  # a fixed choice wins
+    assert style.glyph_for("A") == "B"
+    style.set_prompts("auto")
+    style.note_input("xbox")
+
+
+def test_controller_family_from_its_name():
+    assert style.controller_family("DualSense Wireless Controller") == "playstation"
+    assert style.controller_family("Sony Interactive Entertainment Wireless Controller") == "playstation"
+    assert style.controller_family("Nintendo Switch Pro Controller") == "nintendo"
+    assert style.controller_family("Xbox Wireless Controller") == "xbox"
+    assert style.controller_family("") == "xbox"
+
+
+def test_keys_switch_hints_unless_a_wii_remote_sent_them(monkeypatch):
+    import pygame
+
+    from hearth import input as input_
+
+    mapper = input_.InputMapper()
+    style.set_prompts("auto")
+    monkeypatch.setattr(input_, "wii_recently", lambda: False)
+    mapper.translate(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert style.prompt_style() == "keyboard"
+    monkeypatch.setattr(input_, "wii_recently", lambda: True)
+    mapper.translate(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
+    assert style.prompt_style() == "wii"
+    style.note_input("xbox")

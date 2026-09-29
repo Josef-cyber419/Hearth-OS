@@ -13,6 +13,15 @@ key (e.g. programmed on a FLIRC) opens it too, and so does tapping a keyboard's
 | Left / Right | Adjust a slider, change a device |
 | A | Toggle, mute a slider, run an action |
 | B, Start, or tap Guide | Close |
+| Up from the top entry | Onto the tabs: Left / Right switch tabs, Down goes back |
+
+**With a mouse** (after the Windows key, say): Hearth's own pointer appears,
+pointing at an entry picks it, a click uses it or opens a tab, the wheel
+scrolls or turns a slider, and a right click closes the menu.
+
+Button hints follow what you used last: Xbox, PlayStation or Nintendo names,
+keyboard keys, or a Wii Remote's buttons (Settings → Controllers → *Button
+names on screen* can fix one instead).
 
 **Hold Guide** (1.5 s) to go home with the game paused for **Quick Resume**
 (or closed, if you set Settings → Controllers → *Holding Guide in a game* to

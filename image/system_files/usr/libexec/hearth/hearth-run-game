@@ -7,6 +7,13 @@ program=${1:?usage: hearth-run-game PROGRAM [ARGS...]}
 shift
 cd "$(dirname "$program")" || exit 1
 
+# Hearth finds and shows an app's windows through gamescope's X server. SDL 3
+# games (Dusklight...) prefer Wayland when they can reach it, and a Wayland
+# window never appears: the game runs, you hear it, and the screen stays on
+# Hearth's "starting" view. Ask SDL (2 and 3) for X11. Steam does the same
+# for its games.
+export SDL_VIDEODRIVER=x11 SDL_VIDEO_DRIVER=x11
+
 # Downloads often lose the "executable" permission.
 [[ -x $program ]] || chmod u+x "$program" 2>/dev/null
 

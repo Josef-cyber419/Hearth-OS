@@ -104,3 +104,44 @@ def test_refresh_keeps_selection():
     fresh, _, _ = make()
     menu.set_tabs(fresh.tabs)
     assert menu.selected.key == key
+
+
+def test_up_from_the_top_reaches_the_tab_row():
+    menu, _, _ = make()
+    assert menu.selected.key == "volume" and not menu.on_tabs
+    menu.handle(Nav.UP)
+    assert menu.on_tabs
+    menu.handle(Nav.RIGHT)
+    assert menu.current.key == "mixer"
+    menu.handle(Nav.LEFT)
+    menu.handle(Nav.LEFT)
+    assert menu.current.key == "system"  # wraps round
+    menu.handle(Nav.DOWN)
+    assert not menu.on_tabs and menu.selected is not None
+
+
+def test_pointer_picks_options_and_tabs():
+    menu, _, _ = make()
+    menu.handle(Nav.UP)
+    menu.point_at("output")
+    assert not menu.on_tabs and menu.selected.key == "output"
+    menu.open_tab(3)
+    assert menu.current.key == "system"
+
+
+def test_view_knows_where_tabs_and_options_are():
+    import pygame
+
+    from hearth.quickmenu_view import QuickMenuView
+
+    pygame.init()
+    menu, _, _ = make()
+    view = QuickMenuView((1280, 720))
+    surf = pygame.Surface((1280, 720), pygame.SRCALPHA)
+    view.draw(surf, menu, "Game", paused=False, t=1.0, pointer=(10, 10))
+    tab_rect, _ = view.tab_hits[1]
+    center = (tab_rect.centerx + view._origin[0], tab_rect.centery + view._origin[1])
+    assert view.hit(center) == ("tab", 1)
+    item_rect, key = view.item_hits[0]
+    assert view.hit((item_rect.centerx + view._origin[0], item_rect.centery + view._origin[1])) == ("item", key)
+    assert view.hit((5, 5)) is None  # left of the panel: the game

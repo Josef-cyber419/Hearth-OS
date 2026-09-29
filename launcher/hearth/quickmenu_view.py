@@ -81,7 +81,10 @@ class QuickMenuView:
         self._dt = 0.0
         self._backdrop = self._make_backdrop()
         self._shadow: pygame.Surface | None = None
-        self.item_hits: list[tuple[pygame.Rect, str]] = []  # where each option is (for a pointer)
+        # Where each option and tab is on screen (for a mouse or pointer).
+        self.item_hits: list[tuple[pygame.Rect, str]] = []
+        self.tab_hits: list[tuple[pygame.Rect, int]] = []
+        self._origin = (0, 0)  # the panel's top left on screen
         self.set_theme(livery, motion, clock)
 
     def set_theme(self, livery: str, motion: str = "full", clock: str = "24h") -> None:
@@ -97,7 +100,19 @@ class QuickMenuView:
     def px(self, v: float) -> int:
         return int(v * self.u)
 
-    def draw(self, surf: pygame.Surface, menu: QuickMenu, title: str, paused: bool, t: float = 1.0) -> None:
+    def hit(self, pos: tuple[int, int]) -> tuple[str, object] | None:
+        """What's at a screen position: ("tab", index), ("item", key) or None."""
+        x, y = pos[0] - self._origin[0], pos[1] - self._origin[1]
+        for rect, index in self.tab_hits:
+            if rect.collidepoint(x, y):
+                return "tab", index
+        for rect, key in self.item_hits:
+            if rect.collidepoint(x, y):
+                return "item", key
+        return None
+
+    def draw(self, surf: pygame.Surface, menu: QuickMenu, title: str, paused: bool, t: float = 1.0,
+             pointer: tuple[int, int] | None = None) -> None:
         now = time.monotonic()
         self._dt, self._last = min(0.1, now - self._last), now
         surf.fill((0, 0, 0, 0))
@@ -119,6 +134,9 @@ class QuickMenuView:
         self._shadow.set_alpha(int(255 * e))
         surf.blit(self._shadow, (panel.x - self.px(40), panel.y - self.px(40) + self.px(10)))
         surf.blit(layer, panel.topleft)
+        self._origin = panel.topleft
+        if pointer is not None and t >= 1.0:
+            style.draw_pointer(surf, pointer, self.u, self.lv)
 
     def _stagger(self, t: float, i: int) -> float:
         """Content settles in, top to bottom, as the panel arrives, and is
@@ -152,7 +170,8 @@ class QuickMenuView:
 
         y = self._draw_tabs(s, menu, y + self.px(18), t)
         footer_h = self.px(76)
-        self._draw_items(s, menu, pygame.Rect(0, y + self.px(18), r.w, r.h - y - self.px(18) - footer_h), t)
+        self._draw_items(s, menu, pygame.Rect(0, y + self.px(18), r.w, r.h - y - self.px(18) - footer_h), t,
+                         highlight=0.35 if menu.on_tabs else 1.0)
         style.blend_rect(s, pygame.Rect(pad, r.h - footer_h, r.w - pad - self.pad_r, max(1, self.px(1))),
                          (*lv.text, 22))
         self._draw_footer(s, pygame.Rect(0, r.h - footer_h, r.w, footer_h))
@@ -182,9 +201,14 @@ class QuickMenuView:
         tab_w = (s.get_width() - pad - self.pad_r) / n
         tab_h = self.px(78)
         layer = pygame.Surface((s.get_width(), tab_h + self.px(12)), pygame.SRCALPHA)
+        self.tab_hits = []
         for i, tab in enumerate(menu.tabs):
             x = int(pad + i * tab_w)
             active = i == menu.tab
+            self.tab_hits.append((pygame.Rect(x, y, int(tab_w), tab_h), i))
+            if active and menu.on_tabs:  # on the tab row: show which tab Left/Right is on
+                style.blend_rect(layer, pygame.Rect(x + self.px(6), 0, int(tab_w) - self.px(12), tab_h),
+                                 (*lv.text, 22), self.px(8))
             glow = self.smooth.get(("tab", i), 1.0 if active else 0.0, self._dt)
             color = mix(lv.dim, lv.text, glow)
             Icons.draw(layer, tab.icon, (int(x + tab_w / 2), self.px(22)), self.px(28), color, bg=lv.panel)

@@ -244,12 +244,13 @@ def test_wii_mouse_setting():
     o.config = cfg.parse({"rows": [{"apps": [
         {"id": "kodi", "name": "Kodi", "command": "kodi"},
         {"id": "discord", "name": "Discord", "command": "d", "background": True, "pointer": True}]}]})
-    state = {"focus": "home", "foreground": None, "background": {}, "wii_mouse": {}}
+    state = {"focus": "home", "foreground": None, "background": {}}
     o.state = state
+    o._wii_mouse_apps = {}
     assert not o.wii_mouse()
     state.update(focus="foreground", foreground={"id": "kodi"})
     assert focus_key(state) == "kodi" and not o.wii_mouse()
-    state["wii_mouse"]["kodi"] = True
+    o._wii_mouse_apps["kodi"] = True  # switched on in the Quick Menu
     assert o.wii_mouse()
     state.update(focus="discord", background={"discord": {"pointer": True}})
     assert o.wii_mouse()
@@ -339,3 +340,27 @@ def test_wii_test_without_dolphinbar(monkeypatch):
     monkeypatch.setattr(wiimote, "find", lambda: [])
     lines = []
     assert ctl.cmd_wii_test(1.0, out=lines.append) == 1 and "mode 4" in lines[0]
+
+
+def test_wii_mouse_switch_is_remembered(tmp_path, monkeypatch):
+    from hearth import overlay, settings
+
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+    o = Overlay.__new__(Overlay)
+    o.config = cfg.parse({"rows": [{"apps": [{"id": "kodi", "name": "Kodi", "command": "kodi"}]}]})
+    o.state = {"focus": "foreground", "foreground": {"id": "kodi"}, "background": {}}
+    o._wii_mouse_apps = {}
+    monkeypatch.setattr(overlay.session, "read", lambda: o.state)
+    overlay.Actions(o).set_wii_mouse(True)
+    assert o.wii_mouse()
+    assert settings.load()["wii_mouse_apps"] == {"kodi": True}  # still on after a restart
+
+
+def test_flip_turns_the_pointer_round():
+    aim = wiimote.Aim(smoothing=0)
+    down = [wiimote.Dot(412, 600, 3), wiimote.Dot(612, 600, 3)]
+    normal = aim.update(down)[1]
+    aim = wiimote.Aim(smoothing=0)
+    aim.configure(flip=True, steadiness=0)
+    assert abs(aim.update(down)[1] - (1 - normal)) < 1e-6
+    assert cfg.parse({"wii_remote": {"flip_vertical": True}}).wii_flip

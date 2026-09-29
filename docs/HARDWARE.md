@@ -82,13 +82,17 @@ GameCube controller adapter.)
 
 **Settings → Wii Remote** has the rest: where the sensor bar is (above or below
 the TV), pointer speed and steadiness, holding the remote sideways (NES style),
-mouse mode, and **Calibrate the pointer**: aim at two targets and the pointer
-lands exactly where you point, whatever your TV size and seating distance.
+mouse mode, **Flip up/down** (if the pointer goes up when you aim down), and
+**Calibrate the pointer**: aim at two targets and the pointer lands exactly
+where you point, whatever your TV size and seating distance.
+
+While a Wii game is paused for Quick Resume, Hearth takes the remotes back from
+Dolphin, and gives them to Dolphin again when you pick the game up.
 
 **As a mouse**, the pointer moves the mouse, A clicks and 2 right-clicks. That's
 automatic in Discord, and Quick Menu → System → *Wii Remote pointer as mouse*
 switches it for whatever's in front, like a browser in Desktop Mode or a PC
-game's menus. Set when it's on in `apps.toml`:
+game's menus (remembered for that app). Set when it's on in `apps.toml`:
 
 ```toml
 [wii_remote]

@@ -88,6 +88,7 @@ class Aim:
     smoothing: float = 0.45  # 0 = raw, towards 1 = steadier but laggier
     offset: float = BAR_OFFSET  # +: bar below the TV, -: above
     calibration: tuple[float, float, float, float] | None = None
+    flip: bool = False  # up/down turned round (Settings → Wii Remote → Flip up/down)
     x: float | None = None
     y: float | None = None
     raw: tuple[float, float] | None = None  # the bar's middle, in camera coordinates
@@ -115,6 +116,8 @@ class Aim:
             mx, my = dots[0].x, dots[0].y
         self.raw = (mx, my)
         tx, ty = self.to_screen(mx, my)
+        if self.flip:
+            ty = 1.0 - ty
         tx, ty = min(1.0, max(0.0, tx)), min(1.0, max(0.0, ty))
         if self.x is None or self.y is None:
             self.x, self.y = tx, ty
@@ -141,7 +144,8 @@ class Aim:
                 0.5 + (my / IR_HEIGHT - 0.5 + self.offset) * self.gain)
 
     def configure(self, speed: int = 100, steadiness: int = 45, bar: str = "below",
-                  calibration: tuple[float, float, float, float] | None = None) -> None:
+                  calibration: tuple[float, float, float, float] | None = None, flip: bool = False) -> None:
+        self.flip = flip
         self.gain = BASE_GAIN * speed / 100
         self.smoothing = max(0.0, min(0.9, steadiness / 100))
         self.offset = BAR_OFFSET if bar == "below" else -BAR_OFFSET
@@ -305,11 +309,29 @@ def find(sys_class: Path = Path("/sys/class/hidraw")) -> list[str]:
     return out
 
 
-def dolphin_running(proc: Path = Path("/proc")) -> bool:
-    """Dolphin talks to the remotes itself; Hearth lets go while it runs."""
+def _frozen(pid: str, proc: Path, cgroups: Path) -> bool:
+    """Is the process paused (Quick Resume freezes an app's whole cgroup)?"""
+    try:
+        path = (proc / pid / "cgroup").read_text().strip().split("::", 1)[1]
+    except (OSError, IndexError):
+        return False
+    group = cgroups / path.lstrip("/")
+    while group != cgroups and cgroups in group.parents:
+        try:
+            if "frozen 1" in (group / "cgroup.events").read_text():
+                return True
+        except OSError:
+            pass
+        group = group.parent
+    return False
+
+
+def dolphin_running(proc: Path = Path("/proc"), cgroups: Path = Path("/sys/fs/cgroup")) -> bool:
+    """Dolphin talks to the remotes itself; Hearth lets go while it runs.
+    Not while it's paused for Quick Resume: then Hearth needs the remotes."""
     for comm in proc.glob("[0-9]*/comm"):
         try:
-            if comm.read_text().startswith("dolphin-emu"):
+            if comm.read_text().startswith("dolphin-emu") and not _frozen(comm.parent.name, proc, cgroups):
                 return True
         except OSError:
             continue

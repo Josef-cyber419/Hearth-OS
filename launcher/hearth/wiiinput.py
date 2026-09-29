@@ -124,12 +124,13 @@ class WiiInput:
         self._was_connected: set[str] = set()
         self.sideways = False
         self._aim: dict = {}
+        self.on_input: Callable[[], None] | None = None  # a button went to the app in front
 
     def configure(self, config) -> None:
         """Apply the Wii Remote settings (see config.Config)."""
         self.sideways = config.wii_hold == "sideways"
         self._aim = {"speed": config.wii_speed, "steadiness": config.wii_steadiness, "bar": config.wii_bar,
-                     "calibration": config.wii_calibration}
+                     "calibration": config.wii_calibration, "flip": getattr(config, "wii_flip", False)}
         for r in self.remotes.values():
             r.aim.configure(**self._aim)
 
@@ -223,6 +224,8 @@ class WiiInput:
             held = turn_sideways(held)
         pressed, released = held & ~self._held, self._held & ~held
         self._held = held
+        if pressed and self.on_input:
+            self.on_input()
         navs = self._home(pressed, released, held, now)
         if menu_open:
             self._lift_everything()

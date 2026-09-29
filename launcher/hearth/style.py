@@ -268,28 +268,59 @@ def roundel(surf: pygame.Surface, center, radius: float, text: str, font: pygame
 
 
 # Which controller's button names to show (Settings → Controllers).
-_prompts = {"style": "xbox", "swap": False}
+# "auto" follows whatever was used last (see note_input).
+_prompts = {"style": "auto", "swap": False, "last": "xbox"}
 _POSITION = {"A": "south", "B": "east", "X": "west", "Y": "north"}  # the Xbox names, by position
 _LABELS = {
     "xbox": {"south": "A", "east": "B", "west": "X", "north": "Y", "START": "MENU", "GUIDE": "GUIDE"},
     "playstation": {"south": "cross", "east": "circle", "west": "square", "north": "triangle",
                     "START": "OPTIONS", "GUIDE": "PS"},
     "nintendo": {"south": "B", "east": "A", "west": "Y", "north": "X", "START": "+", "GUIDE": "HOME"},
+    # The keys that do the same (input.KEYS), and a Wii Remote's buttons
+    # (wiiinput.KEYS: A, B, − for options, + for the menu).
+    "keyboard": {"south": "ENTER", "east": "ESC", "west": "X", "north": "F2", "START": "TAB", "GUIDE": "WIN",
+                 "LB": "Q", "RB": "E"},
+    "wii": {"south": "A", "east": "B", "west": "1", "north": "−", "START": "+", "GUIDE": "HOME"},
 }
+# Controller names (as SDL reports them) that aren't Xbox-style.
+_FAMILIES = (("playstation", ("playstation", "dualsense", "dualshock", "ps3", "ps4", "ps5", "sony")),
+             ("nintendo", ("nintendo", "switch", "pro controller", "joy-con", "joycon")))
 
 
 def set_prompts(style_name: str, confirm: str = "south") -> None:
-    _prompts["style"] = style_name if style_name in _LABELS else "xbox"
+    _prompts["style"] = style_name if style_name in _LABELS or style_name == "auto" else "auto"
     _prompts["swap"] = confirm == "east"
+
+
+def controller_family(name: str) -> str:
+    """"xbox", "playstation" or "nintendo", from a controller's name."""
+    lower = (name or "").lower()
+    for family, words in _FAMILIES:
+        if any(w in lower for w in words):
+            return family
+    return "xbox"
+
+
+def note_input(family: str) -> None:
+    """Something was just used: "xbox", "playstation", "nintendo",
+    "keyboard" or "wii". With automatic button names, hints follow it."""
+    if family in _LABELS:
+        _prompts["last"] = family
+
+
+def prompt_style() -> str:
+    return _prompts["last"] if _prompts["style"] == "auto" else _prompts["style"]
 
 
 def glyph_for(button: str) -> str:
     """What's printed on the button that does what Xbox's `button` does here."""
-    labels = _LABELS[_prompts["style"]]
+    style_name = prompt_style()
+    labels = _LABELS[style_name]
     position = _POSITION.get(button)
     if position is None:
         return labels.get(button, button)
-    if _prompts["swap"] and button in ("A", "B"):
+    # Hearth's own Nintendo-style confirm swaps controller buttons, not keys.
+    if _prompts["swap"] and button in ("A", "B") and style_name not in ("keyboard", "wii"):
         position = "east" if button == "A" else "south"
     return labels[position]
 
