@@ -37,6 +37,7 @@ POINTER_SECONDS = 2.5  # the pointer hides this long after it last moved
 BACKDROP_DELAY = 0.22
 BACKDROP_FADE = 0.45
 BATTERY_SECONDS = 20.0  # how often the status bar re-reads controller batteries
+NETWORK_SECONDS = 5.0  # and the network connection
 GAMES_SECONDS = 30.0  # how long a read of the game library is reused
 # The ambient screen saver: each game's art for this long, cross-fading over
 # SLIDE_FADE, drifting slowly across (Ken Burns), dimmed to be kind to OLEDs.
@@ -44,6 +45,7 @@ SLIDE_SECONDS = 20.0
 SLIDE_FADE = 2.5
 SLIDE_DIM = 150  # of 255: how much darker the art is shown
 SLIDE_MAX = 60  # pictures in one showing (picked at random from the library)
+SAVER_CAPTURES = 20  # your newest screenshots join them
 # Resting the pointer near the top or bottom edge scrolls the rows.
 EDGE_ZONE = 0.12  # fraction of the screen's height at each edge
 EDGE_FIRST = 0.35  # seconds at the edge before the first step
@@ -96,6 +98,21 @@ def load_art(path: str | None) -> pygame.Surface | None:
         except (pygame.error, OSError, FileNotFoundError):
             _art[path] = None
     return _art[path]
+
+
+def _wrap(font: pygame.font.Font, text: str, width: int) -> list[str]:
+    """Words into lines that fit `width`."""
+    lines, line = [], ""
+    for word in text.split():
+        trial = f"{line} {word}".strip()
+        if line and font.size(trial)[0] > width:
+            lines.append(line)
+            line = word
+        else:
+            line = trial
+    if line:
+        lines.append(line)
+    return lines
 
 
 def _soft_glow(size: tuple[int, int], color, at: tuple[float, float], reach: float, alpha: int) -> pygame.Surface:
@@ -338,6 +355,10 @@ class HomeScreen:
         self._saver_t0 = 0.0
         self.hints = (("A", "Open"), ("X", "Favorite"), ("Y", "Options"), ("VIEW", "Search"), ("GUIDE", "Quick Menu"))
         self.search = None  # the search screen, while it's open (search.Search)
+        self.gallery = None  # the Captures screen, while it's open (gallery.Gallery)
+        self.whats_new: tuple[str, list[str]] | None = None  # (version, notes) to show once after an update
+        self._thumbs: dict = {}  # screenshot path -> thumbnail (loaded one per frame)
+        self._full: dict = {}  # screenshot path -> full-screen image (the last few)
         self._games: tuple[float, list] | None = None  # (read at, library.all_games())
         self._details = None  # the game the Options card is about (library.Game), if it's a game
         self._search_t0 = 0.0
@@ -348,6 +369,8 @@ class HomeScreen:
         self._backdrop_t0 = 0.0
         self._batteries: list = []
         self._batteries_at = -1e9
+        self._link = None  # netstate.Link: how the PC is connected, by the clock
+        self._link_at = -1e9
         self._moving_rect: pygame.Rect | None = None
         # Moving a tile (Options → Move): (row, the tile's id, where it started).
         self.moving: tuple[int, str, list[str]] | None = None
@@ -568,6 +591,20 @@ class HomeScreen:
         """Apply a navigation action; returns the app to launch, if any."""
         self.intro = None  # any input skips the entrance animation
         self.message = None
+        if self.whats_new is not None:
+            if nav in (Nav.SELECT, Nav.BACK, Nav.MENU):
+                from . import whatsnew
+
+                whatsnew.mark_seen(self.whats_new[0])
+                events.record("whats_new_seen", version=self.whats_new[0])
+                self.whats_new = None
+            return None
+        if self.gallery is not None:
+            if self.gallery.handle(nav) == "close":
+                self.gallery = None
+                if self.rebuild is not None:  # the Captures tile hides once they're all deleted
+                    self.reload(self.rebuild(), "captures")
+            return None
         if self.search is not None:
             result = self.search.handle(nav)
             if result == "close":
@@ -614,6 +651,9 @@ class HomeScreen:
             return None
         if app.command and app.command[0] == "hearth:search":
             self.open_search()
+            return None
+        if app.command and app.command[0] == "hearth:captures":
+            self.open_gallery()
             return None
         question = self.ask(app) if self.ask else None
         if app.confirm or question:
@@ -673,6 +713,14 @@ class HomeScreen:
         self.search = Search(self.search_catalog())
         self._search_t0 = time.monotonic()
         events.record("search")
+
+    def open_gallery(self) -> None:
+        from . import captures
+        from .gallery import Gallery
+
+        self.gallery = Gallery(captures.all_captures())
+        self._gallery_t0 = time.monotonic()
+        events.record("captures_open", count=len(self.gallery.items))
 
     def type_text(self, text: str) -> None:
         """A real keyboard typing into search."""
@@ -809,6 +857,10 @@ class HomeScreen:
             self._draw_options()
         if self.search is not None:
             self._draw_search()
+        if self.gallery is not None:
+            self._draw_gallery()
+        if self.whats_new is not None:
+            self._draw_whats_new()
         self._draw_pointer()
 
     # -- the backdrop: the focused tile's art or colour, softly ------------------
@@ -901,6 +953,46 @@ class HomeScreen:
             x = body.x - int(26 * th.u)
         return x
 
+    def _draw_network(self, layer: pygame.Surface, right: int, cy: int) -> int:
+        """Wi-Fi bars, a wired plug, or "offline", ending at `right`. Returns
+        the x where it starts."""
+        from . import netstate
+
+        th, lv = self.theme, self.theme.lv
+        u = th.u
+        now = time.monotonic()
+        if now - self._link_at > NETWORK_SECONDS:
+            self._link_at = now
+            try:
+                self._link = netstate.link()
+            except OSError:
+                self._link = None
+        link = self._link
+        if link is None:
+            return right
+        if link.kind == "none":
+            label = style.tracked(th.font_date, "OFFLINE", lv.accent, 0.14)
+            layer.blit(label, (right - label.get_width(), cy - label.get_height() // 2))
+            return right - label.get_width() - int(26 * u)
+        if link.kind == "wired":
+            # A plug: a box with two prongs, and its lead.
+            w, h = int(18 * u), int(14 * u)
+            body = pygame.Rect(right - w, cy - h // 2 + int(2 * u), w, h)
+            pygame.draw.rect(layer, lv.dim, body, border_radius=max(1, int(3 * u)))
+            for dx in (0.3, 0.7):
+                layer.fill(lv.dim, (body.x + int(w * dx) - max(1, int(u)), body.y - int(6 * u),
+                                    max(2, int(3 * u)), int(6 * u)))
+            layer.fill(lv.dim, (body.centerx - max(1, int(u)), body.bottom, max(2, int(3 * u)), int(5 * u)))
+            return body.x - int(26 * u)
+        # Wi-Fi: four bars, the ones beyond the signal faint.
+        bw, gap, tall = max(2, int(5 * u)), max(1, int(3 * u)), int(20 * u)
+        x = right - 4 * bw - 3 * gap
+        for i in range(4):
+            h = int(tall * (i + 1) / 4)
+            color = lv.dim if i < link.bars else style.mix(lv.dim, lv.panel, 0.7)
+            layer.fill(color, (x + i * (bw + gap), cy + tall // 2 - h, bw, h))
+        return x - int(26 * u)
+
     def _draw_header(self) -> None:
         th, s, lv = self.theme, self.surface, self.theme.lv
         a = self._appear(0.0, 0.5)
@@ -920,7 +1012,8 @@ class HomeScreen:
         date = style.tracked(th.font_date, time.strftime("%a %d %b").upper(), lv.dim, 0.22)
         date_rect = date.get_rect(bottomright=(clock_rect.x - int(22 * th.u), clock_rect.bottom - int(12 * th.u)))
         layer.blit(date, date_rect)
-        status_right = self._draw_batteries(layer, date_rect.x - int(28 * th.u), date_rect.centery)
+        net_x = self._draw_network(layer, date_rect.x - int(28 * th.u), date_rect.centery)
+        status_right = self._draw_batteries(layer, net_x, date_rect.centery)
         if self.badge:
             text = style.tracked(th.font_date, self.badge.upper(), lv.accent, 0.14)
             chip = text.get_rect().inflate(int(30 * th.u), int(14 * th.u))
@@ -1234,6 +1327,176 @@ class HomeScreen:
                               ("B", "Close")):
             x = style.button_hint(s, x, cy, button, text_, th.type, lv)
 
+    # -- what's new (once, after an update) ---------------------------------------
+
+    def _draw_whats_new(self) -> None:
+        th, s, lv = self.theme, self.surface, self.theme.lv
+        u = th.u
+        version, notes = self.whats_new
+        shade = pygame.Surface(s.get_size(), pygame.SRCALPHA)
+        shade.fill((0, 0, 0, 190))
+        s.blit(shade, (0, 0))
+        box_w = int(th.width * 0.62)
+        pad = int(46 * u)
+        f_head = th.type(24, "text", "semibold")
+        f_body = th.type(24, "text", "regular")
+        text_w = box_w - 2 * pad - int(30 * u)
+        blocks = []
+        for note in notes:
+            head, sep, rest = note.partition(": ")
+            short = bool(sep) and len(head) < 40
+            body = rest[:1].upper() + rest[1:] if short else note
+            blocks.append((head if short else "", _wrap(f_body, body, text_w)))
+        line_h = f_body.get_linesize()
+        caption = style.tracked(th.font_date, "UPDATED", lv.dim, 0.3)
+        title = style.tracked(th.font_title, f"WHAT'S NEW IN {version}", lv.text, 0.06)
+        top_h = pad + caption.get_height() + title.get_height() + int(26 * u)
+        max_h = int(th.height * 0.82)
+        body_h, shown = 0, []
+        for head, lines in blocks:
+            h = (line_h if head else 0) + line_h * len(lines) + int(14 * u)
+            if top_h + body_h + h + pad + int(60 * u) > max_h:
+                break
+            shown.append((head, lines))
+            body_h += h
+        more = len(shown) < len(blocks)
+        box_h = top_h + body_h + (line_h if more else 0) + pad + int(60 * u)
+        box = pygame.Rect(0, 0, box_w, box_h)
+        box.center = (th.width // 2, th.height // 2)
+        card = pygame.Surface(box.size, pygame.SRCALPHA)
+        card.blit(style.gradient(box.size, style.lighten(lv.panel, 0.05), lv.panel, vertical=True), (0, 0))
+        stripe_w = style.stripes(card, int(28 * u), 0, box.h, max(4, int(12 * u)), (lv.accent, lv.second))
+        style.rounded(card, th.radius)
+        x = int(28 * u) + stripe_w + int(34 * u)
+        y = pad
+        card.blit(caption, (x, y))
+        y += caption.get_height() + int(4 * u)
+        card.blit(style.fit(title, box_w - x - pad), (x, y))
+        y += title.get_height() + int(26 * u)
+        for head, lines in shown:
+            if head:
+                card.blit(f_head.render(head, True, lv.accent), (x, y))
+                y += line_h
+            for line in lines:
+                card.blit(f_body.render(line, True, lv.text), (x, y))
+                y += line_h
+            y += int(14 * u)
+        if more:
+            card.blit(f_body.render("…and more: see CHANGELOG.md", True, lv.dim), (x, y))
+        style.button_hint(card, x, box.h - pad, "A", "OK", th.type, lv)
+        s.blit(card, box)
+
+    # -- captures (screenshots) --------------------------------------------------
+
+    def _thumb(self, path, size: tuple[int, int], load: bool) -> tuple[pygame.Surface | None, bool]:
+        """(the thumbnail if it's ready, whether this call had to load it)."""
+        key = (path, size)
+        if key in self._thumbs:
+            return self._thumbs[key], False
+        if not load:
+            return None, False
+        if len(self._thumbs) > 64:
+            self._thumbs.clear()
+        try:
+            self._thumbs[key] = cover(pygame.image.load(str(path)), size)
+        except (pygame.error, OSError):
+            self._thumbs[key] = None
+        return self._thumbs[key], True
+
+    def _full_image(self, path, size: tuple[int, int]) -> pygame.Surface | None:
+        if path not in self._full:
+            if len(self._full) > 2:
+                self._full.pop(next(iter(self._full)))
+            try:
+                img = pygame.image.load(str(path))
+                scale = min(size[0] / img.get_width(), size[1] / img.get_height())
+                self._full[path] = pygame.transform.smoothscale(
+                    img, (max(1, int(img.get_width() * scale)), max(1, int(img.get_height() * scale))))
+            except (pygame.error, OSError):
+                self._full[path] = None
+        return self._full[path]
+
+    def _draw_gallery(self) -> None:
+        from .gallery import COLS
+
+        th, s, lv = self.theme, self.surface, self.theme.lv
+        g = self.gallery
+        u, m = th.u, th.margin
+        p = 1.0 if self.reduced else ease_out((time.monotonic() - self._gallery_t0) / CONFIRM_SECONDS)
+        self.background.set_alpha(int(255 * p))
+        s.blit(self.background, (0, 0))
+        self.background.set_alpha(None)
+        cap = g.current
+        if g.full and cap is not None:
+            s.fill((0, 0, 0))
+            img = self._full_image(cap.path, (th.width, th.height))
+            if img is not None:
+                s.blit(img, img.get_rect(center=(th.width // 2, th.height // 2)))
+            # A caption band along the bottom.
+            band = pygame.Surface((th.width, th.footer_h + int(70 * u)), pygame.SRCALPHA)
+            band.fill((0, 0, 0, 170))
+            s.blit(band, (0, th.height - band.get_height()))
+            title = style.fit(style.tracked(th.font_row, cap.title.upper(), lv.text, 0.2), th.width // 2)
+            when = style.tracked(th.font_date, f"{cap.when.upper()}  ·  {g.pick + 1} OF {len(g.items)}", lv.dim, 0.2)
+            ty = th.height - band.get_height() + int(22 * u)
+            s.blit(title, (m, ty))
+            s.blit(when, (m, ty + title.get_height() + int(6 * u)))
+        else:
+            y = th.header_h - int(40 * u)
+            head = style.tracked(th.font_date, "CAPTURES", lv.dim, 0.3)
+            s.blit(head, (m, y))
+            count = style.tracked(th.font_date, f"{len(g.items)} SCREENSHOT{'S' if len(g.items) != 1 else ''}",
+                                  lv.dim, 0.22)
+            s.blit(count, count.get_rect(topright=(th.width - m, y)))
+            if not g.items:
+                msg = style.tracked(th.font_row, "NO SCREENSHOTS YET", lv.text, 0.2)
+                s.blit(msg, msg.get_rect(center=(th.width // 2, th.height // 2 - int(20 * u))))
+                how = th.font_date.render("Take one from the Quick Menu (Guide) → System → Take a screenshot",
+                                          True, lv.dim)
+                s.blit(how, how.get_rect(center=(th.width // 2, th.height // 2 + int(30 * u))))
+            gap = int(24 * u)
+            tw = (th.width - 2 * m - gap * (COLS - 1)) // COLS
+            tsize = (tw, tw * 9 // 16)
+            label_h = th.font_date.get_height() + int(12 * u)
+            row_h = tsize[1] + label_h + gap
+            top = y + head.get_height() + int(24 * u)
+            rows_shown = max(1, (th.height - th.footer_h - top) // row_h)
+            first_row = max(0, g.pick // COLS - rows_shown + 1)
+            loaded = False
+            for i, c in enumerate(g.items[first_row * COLS:(first_row + rows_shown) * COLS]):
+                idx = first_row * COLS + i
+                r, col = divmod(i, COLS)
+                rect = pygame.Rect(m + col * (tw + gap), top + r * row_h, *tsize)
+                thumb, just_loaded = self._thumb(c.path, tsize, load=not loaded)
+                loaded = loaded or just_loaded  # one new picture per frame keeps it smooth
+                if thumb is not None:
+                    s.blit(thumb, rect)
+                else:
+                    style.blend_rect(s, rect, (*lv.text, 18), int(8 * u))
+                focused = idx == g.pick
+                if focused:
+                    pygame.draw.rect(s, lv.text, rect.inflate(int(8 * u), int(8 * u)), max(2, int(4 * u)),
+                                     border_radius=int(8 * u))
+                label = style.fit(th.font_date.render(f"{c.title} · {c.when}", True, lv.text if focused else lv.dim),
+                                  tw)
+                s.blit(label, (rect.x, rect.bottom + int(8 * u)))
+        # Hints.
+        cy = th.height - th.footer_h // 2
+        x = m
+        if g.confirming:
+            hints = (("A", "Delete it"), ("B", "Keep it"))
+            ask = style.tracked(th.font_row, "DELETE THIS SCREENSHOT?", lv.accent, 0.2)
+            s.blit(ask, ask.get_rect(midright=(th.width - m, cy)))
+        elif g.full:
+            hints = (("D-PAD", "Previous / next"), ("X", "Delete"), ("B", "Back"))
+        else:
+            hints = (("A", "View"), ("X", "Delete"), ("B", "Close")) if g.items else (("B", "Close"),)
+        for button, text_ in hints:
+            x = style.button_hint(s, x, cy, button, text_, th.type, lv)
+        if g.message and not g.confirming:
+            note = style.tracked(th.font_date, g.message.upper(), lv.accent, 0.2)
+            s.blit(note, note.get_rect(midright=(th.width - m, cy)))
+
     # -- the screen saver ------------------------------------------------------
 
     def start_saver(self) -> None:
@@ -1253,6 +1516,13 @@ class HomeScreen:
                     self._slides.append((game.title, game.platform, game.art))
         except Exception:  # no art is fine: the clock saver then
             log.exception("screen saver art")
+        try:
+            from . import captures
+
+            for cap in captures.all_captures()[:SAVER_CAPTURES]:  # your latest screenshots too
+                self._slides.append((cap.title, "Screenshot", str(cap.path)))
+        except Exception:
+            log.exception("screen saver captures")
         import random
 
         random.Random(int(self._saver_t0)).shuffle(self._slides)
@@ -1440,6 +1710,7 @@ def run(
     offset: tuple[int, int] = (0, 0),
     hints: tuple | None = None,
     ask: Callable[[App], str | None] | None = None,
+    whats_new: tuple[str, list[str]] | None = None,
 ) -> App | None:
     """Show the home screen until the user picks an app.
 
@@ -1452,7 +1723,8 @@ def run(
     (the Library). After `saver_after` seconds without input the screen saver
     shows; after `sleep_after` the PC sleeps (0 = never). `offset` is where
     this surface sits on the screen (a safe-area inset), for the pointer.
-    `ask` may return a question to confirm before a tile opens.
+    `ask` may return a question to confirm before a tile opens. `whats_new`
+    (version, notes) is shown once, after an update.
     """
     screen = HomeScreen(surface, home, title, livery=livery, motion=motion, intro=intro)
     screen.message = message
@@ -1461,6 +1733,7 @@ def run(
     screen.back_exits = back_exits
     screen.saver_style = saver_style
     screen.ask = ask
+    screen.whats_new = whats_new
     if hints:
         screen.hints = hints
     screen.badge = badge

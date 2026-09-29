@@ -8,7 +8,7 @@ Ordered roughly by how much it improves a living-room PC for the money.
 Hearth is built for AMD Radeon. Bazzite's Game Mode (gamescope) works best
 there: HDR, VRR, and the Steam Deck-style performance overlay all work with
 the open-source drivers. Intel Arc works but is less tested. NVIDIA isn't
-supported.
+supported yet. The full list is in [COMPATIBILITY.md](COMPATIBILITY.md).
 
 **The HDMI 2.1 catch (AMD):** the HDMI Forum doesn't allow HDMI 2.1 in AMD's
 open-source Linux driver, so AMD's HDMI port tops out at HDMI 2.0 (4K60, no 4K120,

@@ -6,6 +6,22 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
+## 0.21.0 (2026-09-29)
+
+- **Captures**: take a screenshot of whatever's playing from the Quick Menu
+  (System → Take a screenshot) or with `hearthctl screenshot`. A Captures tile
+  shows them all: view one full screen, flip through, delete ones you don't
+  want. They're kept in your Pictures folder, named after the game.
+- **Your screenshots in the screen saver**, mixed in with your games' art.
+- **What's new**: after an update, the home screen shows once what the new
+  version brought (like this).
+- **Network by the clock**: Wi-Fi signal bars, a plug when wired, or
+  "offline" when there's no connection.
+- **A simpler install guide** and a **hardware compatibility** list: AMD and
+  Intel graphics are supported; NVIDIA is left for later.
+- **A progress report for every version**, with lines of code, tests and
+  what's working, in `reports/`.
+
 ## 0.20.0 (2026-09-29)
 
 - **Epic Games and Battle.net**: an Epic Games tile (Heroic, also GOG and

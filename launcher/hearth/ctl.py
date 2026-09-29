@@ -6,6 +6,7 @@ or over SSH from another computer).
   hearthctl logs [-f]       Hearth's log (home screen + Quick Menu)
   hearthctl events [-n N]   timeline: launches, exits, crashes, frame rates
   hearthctl report          save everything needed to fix a problem, in one file
+  hearthctl screenshot      capture the screen into ~/Pictures/Hearth (the Captures tile)
   hearthctl update          install OS + app updates now (restart to finish)
   hearthctl channel [live|staging]  which build this PC follows; switch between them
   hearthctl rollback        go back to the previous OS version
@@ -319,6 +320,20 @@ def cmd_report(screenshot: bool, out: str | None) -> int:
     return 0
 
 
+def cmd_screenshot() -> int:
+    from . import captures
+
+    state = session.read()
+    title = ((state["background"].get(state["focus"]) or {}).get("name") if state["focus"] in state["background"]
+             else (state["foreground"] or {}).get("name")) or "Home"
+    path = captures.take(title)
+    if path is None:
+        print("Couldn't take a screenshot (is Game Mode running? DISPLAY must be gamescope's)")
+        return 1
+    print(f"Saved {path}")
+    return 0
+
+
 def cmd_request(kind: str) -> int:
     session.update(lambda s: s["requests"].append(kind))
     return 0
@@ -565,6 +580,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--screenshot", action="store_true", help="include a screenshot (only works in Game Mode)")
     p.add_argument("-o", "--out", help="folder to save to (default: ~/hearth-reports)")
     sub.add_parser("update")
+    sub.add_parser("screenshot")
     p = sub.add_parser("channel", help="show or switch update channel: live or staging")
     p.add_argument("name", nargs="?", choices=sorted(updates.CHANNELS))
     p = sub.add_parser("rollback")
@@ -598,6 +614,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_report(args.screenshot, args.out)
     if args.cmd == "update":
         return cmd_update()
+    if args.cmd == "screenshot":
+        return cmd_screenshot()
     if args.cmd == "channel":
         return cmd_channel(args.name)
     if args.cmd == "rollback":

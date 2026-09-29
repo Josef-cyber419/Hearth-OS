@@ -479,10 +479,13 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                   clock=config.clock, swap_confirm=config.confirm == "east", offset=offset,
                   saver_after=config.screensaver_minutes * 60, saver_style=config.screensaver,
                   ask=lambda a: eviction_question(a, config))
+    from . import whatsnew
+
     app = ui.run(view, home, config.title, message=state["message"], allow_quit=dev_mode, stats=stats,
                  badge="Update ready: restart to finish" if ready else None,
                  running=set(current["background"]), intro=state["intro"],
-                 rebuild=lambda: home_config(args), sleep_after=config.sleep_minutes * 60, **common)
+                 rebuild=lambda: home_config(args), sleep_after=config.sleep_minutes * 60,
+                 whats_new=whatsnew.pending(updates.hearth_version()), **common)
     state["message"] = None
     state["intro"] = None
     frames = stats.summary()
