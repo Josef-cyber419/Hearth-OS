@@ -24,7 +24,7 @@ from typing import Callable
 
 import pygame
 
-from . import bluetooth, events, network, session, settings, style, updates, wiimote
+from . import bluetooth, events, network, session, settings, storage, style, updates, wiimote
 from . import config as cfg
 from . import input as input_
 from .config import App
@@ -44,7 +44,8 @@ CATEGORIES = [
     ("emulation", "Emulation", "Emulator settings tuned for this PC and your TV."),
     ("bluetooth", "Bluetooth", "Pair controllers and headsets."),
     ("network", "Network", "Wired and Wi-Fi connections."),
-    ("system", "System", "Versions, storage, updates and help."),
+    ("storage", "Storage", "Drives added after install: set them up for Steam games and ROMs."),
+    ("system", "System", "Versions, updates and help."),
 ]
 
 
@@ -297,7 +298,7 @@ class SettingsApp:
         self.calibrating: Calibration | None = None
         self.launch: App | None = None  # an app to open on the way out (Desktop Mode)
         self.data: dict = {"net": None, "wifi": None, "networks": [], "bt_power": None, "bt": [],
-                           "os": None, "loaded": set()}
+                           "os": None, "drives": None, "loaded": set()}
         self._refreshed = 0.0
         self.reload()
         self.menu = QuickMenu([])
@@ -322,6 +323,9 @@ class SettingsApp:
 
     def load_for(self, category: str, force: bool = False) -> None:
         """Fetch what a category shows (in the background) the first time it's opened."""
+        if category == "storage":  # drives come and go: look every time
+            self.jobs.start("drives-load", self._load_drives)
+            return
         if category in self.data["loaded"] and not force:
             return
         self.data["loaded"].add(category)
@@ -347,6 +351,10 @@ class SettingsApp:
         self.data["bt"] = bluetooth.devices() if self.data["bt_power"] else []
         return None
 
+    def _load_drives(self) -> None:
+        self.data["drives"] = storage.drives()
+        return None
+
     def _load_os(self) -> None:
         status = updates.os_status()
         self.data["os"] = status
@@ -363,7 +371,7 @@ class SettingsApp:
     def build(self) -> list[Tab]:
         pages = {"appearance": self._appearance, "home": self._home, "controllers": self._controllers,
                  "wii": self._wii, "emulation": self._emulation, "bluetooth": self._bluetooth,
-                 "network": self._network, "system": self._system}
+                 "network": self._network, "storage": self._storage, "system": self._system}
         tabs = []
         for key, title, _ in CATEGORIES:
             tab = Tab(key, title, "")
@@ -714,23 +722,117 @@ class SettingsApp:
             return None
         return self._net_job(key, "Connecting…", lambda: network.connect(net.ssid, saved=net.saved)[1])
 
+    def _storage(self) -> list[Item]:
+        free, total = storage.system_space()
+        items = [
+            Item("storage", "This PC's drive", "info",
+                 detail=f"{storage.gb(free)} free of {storage.gb(total)}" if total else "?"),
+            Item("storage-use", "What's using space", "action",
+                 detail=self.note("storage-use", "Games, ROMs and emulator data"),
+                 on_select=lambda: self.jobs.start("storage-use", storage_breakdown, "Measuring…")),
+            Item("drives-scan", "Look for drives again", "action",
+                 detail=self.note("drives-scan", "After plugging one in or fitting one inside"),
+                 on_select=lambda: self.jobs.start("drives-scan", lambda: (self._load_drives(), None)[1],
+                                                   "Looking…")),
+        ]
+        drives = self.data["drives"]
+        if drives is None:
+            items.append(Item("drives-none", "Looking for drives…", "info"))
+        elif not drives:
+            items.append(Item("drives-none", "No other drives", "info",
+                              detail="Plug one in (USB) or fit one inside, then look again"))
+        for drive in drives or ():
+            items += self._drive_items(drive)
+        return items
+
+    def _drive_items(self, drive: storage.Drive) -> list[Item]:
+        key = f"drive-{drive.path}"
+        mount = drive.mounted_at
+        if mount and drive.ready:
+            try:
+                free = f"{storage.gb(shutil.disk_usage(mount).free)} free"
+            except OSError:
+                free = ""
+            games = storage.steam_games_on(mount)
+            items = [
+                Item(key, drive.name, "info",
+                     detail=self.note(key, " · ".join(p for p in (f"Ready at {mount}", free) if p))),
+                Item(f"{key}-steam", "Steam games on it", "toggle", value=storage.has_steam_library(mount),
+                     detail=self.note(f"{key}-steam", f"{games} installed there" if games else
+                                      "Then choose it when installing a game in Steam"),
+                     on_change=lambda on: self._drive_job(f"{key}-steam", "Updating Steam's library list…",
+                                                          lambda: (storage.add_steam_library if on
+                                                                   else storage.remove_steam_library)(mount))),
+                Item(f"{key}-roms", "ROMs on it", "toggle", value=storage.roms_on(mount),
+                     detail=self.note(f"{key}-roms", "Moves your ROMs folder there; ES-DE finds them as before"),
+                     on_change=lambda on: self._move_roms(f"{key}-roms", mount, on)),
+                Item(f"{key}-release", "Stop using it", "action", confirm=True,
+                     detail=self.note(f"{key}-release", "Nothing on it is erased; it can be unplugged after"),
+                     on_select=lambda: self._release(drive)),
+            ]
+            return items
+        if mount:  # set up by Hearth, but not mounted right now
+            return [
+                Item(key, drive.name, "info", detail=self.note(key, "Set up, but not mounted: restart to use it")),
+                Item(f"{key}-release", "Forget it", "action", confirm=True,
+                     detail=self.note(f"{key}-release", "Stop looking for it at start-up"),
+                     on_select=lambda: self._release(drive)),
+            ]
+        items = [Item(key, drive.name, "info",
+                      detail=self.note(key, f"Not set up · on it now: {drive.contents}"))]
+        part = drive.usable_part
+        if part is not None:
+            items.append(Item(f"{key}-use", "Use it for games (keeps its files)", "action",
+                              detail=f"It's formatted {part.fstype}, which suits Linux games",
+                              on_select=lambda: self._drive_job(
+                                  key, "Setting it up…",
+                                  lambda: storage.use(part, storage.free_name(drive))[1])))
+        items.append(Item(f"{key}-erase", "Erase it and set it up for games", "action", confirm=True,
+                          confirm_label=f"Press A again to erase {drive.model or 'this drive'}",
+                          detail=f"Deletes everything on it: {drive.contents}",
+                          on_select=lambda: self._drive_job(
+                              key, "Erasing and setting it up… (a minute or so)",
+                              lambda: storage.erase(drive, storage.free_name(drive))[1])))
+        return items
+
+    def _drive_job(self, key: str, busy: str, work: Callable[[], str | None]) -> None:
+        def run() -> str | None:
+            try:
+                return work()
+            finally:
+                self._load_drives()
+
+        self.jobs.start(key, run, busy)
+        return None
+
+    def _move_roms(self, key: str, mount: str, on: bool) -> None:
+        def progress(message: str) -> None:
+            self.jobs.messages[key] = message
+
+        to = Path(mount) / storage.ROMS_FOLDER if on else storage.roms_link()
+        self._drive_job(key, "Moving ROMs…", lambda: storage.move_roms(to, progress=progress))
+        return None
+
+    def _release(self, drive: storage.Drive) -> None:
+        key = f"drive-{drive.path}-release"
+        busy = storage.in_use(drive)
+        if busy:
+            self.jobs.messages[key] = f"It still has {' and '.join(busy)}: turn those off first"
+            return None
+        part = drive.mounted_part
+        if part is None:
+            return None
+        self._drive_job(f"drive-{drive.path}", "Stopping…", lambda: storage.release(part)[1])
+        return None
+
     def _system(self) -> list[Item]:
         d = self.data
         os_status = d["os"]
-        try:
-            usage = shutil.disk_usage(Path.home())
-            storage = f"{usage.free / 1e9:.0f} GB free of {usage.total / 1e9:.0f} GB"
-        except OSError:
-            storage = "?"
         items = [
             Item("version", "Hearth", "info", detail=updates.hearth_version()),
             Item("os", "Operating system", "info",
                  detail=(f"{os_status.image or 'unknown image'} · {os_status.booted or '?'}" if os_status
                          else "Checking…")),
-            Item("storage", "Storage", "info", detail=storage),
-            Item("storage-use", "What's using space", "action",
-                 detail=self.note("storage-use", "Games, ROMs and emulator data"),
-                 on_select=lambda: self.jobs.start("storage-use", storage_breakdown, "Measuring…")),
             Item("hardware", "Hardware", "info", detail=hardware_summary()),
             Item("temps", "Temperatures", "info", detail=temperatures() or "Not available"),
             Item("address", "Network address", "info",

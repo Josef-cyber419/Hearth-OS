@@ -149,6 +149,8 @@ OBS from Desktop Mode.)
 - **Keyboard with trackpad** (e.g. Logitech K400 Plus): for the occasional trip
   into Desktop Mode, sign-ins, and typing searches. Keep it in a drawer.
 - **Storage**: NVMe SSD, 2 TB or more if you keep a Steam library and ROMs.
+  A drive added later (inside, or USB) is set up from Settings → Storage: see
+  [STORAGE.md](STORAGE.md).
 - **Audio**: TV's eARC to a soundbar or AV receiver. Enable passthrough in Kodi
   for Dolby Atmos / DTS:X from your media library.
 - **Small quiet case with good airflow**: it lives next to the TV. Tune fan

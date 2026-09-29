@@ -330,7 +330,8 @@ class QuickMenuView:
 
         label_color = (lv.accent if item.alert else lv.dim) if item.kind == "info" else lv.text
         if confirming:
-            label = style.tracked(self.f_value, "PRESS A AGAIN TO CONFIRM", lv.accent, 0.08)
+            label = style.fit(style.tracked(self.f_value, (item.confirm_label or "Press A again to confirm").upper(),
+                                            lv.accent, 0.08), max(1, inner.right - x))
         else:
             label = self.f_label.render(item.label, True, label_color)
         detail = self.f_detail.render(item.detail, True, lv.dim) if item.detail and not confirming else None

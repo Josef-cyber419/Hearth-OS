@@ -32,6 +32,7 @@ class Item:
     muted: bool = False
     avatar: str | None = None
     confirm: bool = False
+    confirm_label: str = ""  # instead of "Press A again to confirm", e.g. naming what gets erased
     on_change: Callable[[Any], None] | None = None
     on_select: Callable[[], str | None] | None = None
     on_mute: Callable[[bool], None] | None = None

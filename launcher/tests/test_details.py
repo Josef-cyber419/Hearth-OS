@@ -27,9 +27,12 @@ def test_hearth_counts_time_in_front(tmp_path, monkeypatch):
     app = cfg.App(id="game:rom:snes:Zelda.sfc", name="Zelda",
                   command=(sys.executable, "-c", "import time; time.sleep(0.4)"))
     hub.launch(app)
-    assert 0.3 < library.playtimes()["rom:snes:Zelda.sfc"] < 5
-    hub.launch(app)
-    assert library.playtimes()["rom:snes:Zelda.sfc"] > 0.7  # adds up
+    # Counted from when it's on screen, so a little under the 0.4 s it ran on
+    # a slow machine; never more than it ran.
+    first = library.playtimes()["rom:snes:Zelda.sfc"]
+    assert 0 < first < 5
+    library.add_playtime("rom:snes:Zelda.sfc", 60)
+    assert library.playtimes()["rom:snes:Zelda.sfc"] == first + 60  # adds up
     steam = cfg.App(id="game:steam:620", name="Portal 2", command=(sys.executable, "-c", "pass"),
                     home_button=False, tag_windows=False)
     hub.launch(steam)

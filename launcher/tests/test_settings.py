@@ -4,7 +4,7 @@ import time
 import pygame
 import pytest
 
-from hearth import bluetooth, network, session, settings, settings_app, style, wiimote
+from hearth import bluetooth, network, session, settings, settings_app, storage, style, wiimote
 from hearth import config as cfg
 from hearth.model import Nav
 from hearth.settings_app import Calibration, Keyboard, SettingsApp, SettingsView
@@ -174,6 +174,9 @@ def offline(monkeypatch):
     monkeypatch.setattr(bluetooth, "powered", lambda run=None: True)
     monkeypatch.setattr(bluetooth, "devices", lambda run=None: [
         bluetooth.Device("AA:00:00:00:00:01", "Pad", True, True, "input-gaming")])
+    monkeypatch.setattr(storage, "drives", lambda *a, **k: [
+        storage.Drive("/dev/sda", "Samsung SSD 870 EVO", 256 * 10**9, "sata",
+                      parts=(storage.Part("/dev/sda2", 255 * 10**9, "ntfs", "Games", "ABCD"),))])
     return connects
 
 
@@ -293,3 +296,106 @@ def test_run_loop_exits_on_back(shipped_config, offline):
         assert settings_app.run(surface, shipped_config, max_frames=30, input_blocked=lambda: False) is None
     finally:
         pygame.quit()
+
+
+# -- storage page --------------------------------------------------------------
+
+
+@pytest.fixture
+def drives(monkeypatch, tmp_path):
+    """A new SATA SSD from Windows, and a drive Hearth set up, mounted at tmp_path/games."""
+    games = tmp_path / "games"
+    games.mkdir()
+    new = storage.Drive("/dev/sda", "Samsung SSD 870 EVO", 256 * 10**9, "sata",
+                        parts=(storage.Part("/dev/sda2", 255 * 10**9, "ntfs", "Games", "ABCD"),))
+    part = storage.Part("/dev/sdb1", 2000 * 10**9, "ext4", "games", "u1", (str(games),))
+    ready = storage.Drive("/dev/sdb", "Crucial MX500", 2000 * 10**9, "sata", parts=(part,),
+                          mounted_at=str(games), mounted_part=part)
+    monkeypatch.setattr(storage, "drives", lambda *a, **k: [new, ready])
+    monkeypatch.setattr(storage.Drive, "ready", property(lambda self: bool(self.mounted_at)))
+    calls = []
+    monkeypatch.setattr(storage, "helper", lambda *a: (calls.append(a), (True, "Ready at /var/mnt/games"))[1])
+    monkeypatch.setattr(storage, "free_name", lambda drive, *a: "games2")
+    return calls, games
+
+
+def open_storage(shipped_config):
+    app = SettingsApp(shipped_config)
+    app.menu.tab = [c[0] for c in settings_app.CATEGORIES].index("storage")
+    app.load_for("storage")
+    wait_jobs(app)
+    app.zone = "items"
+    return app
+
+
+def test_storage_lists_drives_and_what_can_be_done(shipped_config, offline, drives):
+    app = open_storage(shipped_config)
+    items = {i.key: i for i in app.menu.current.items}
+    new = items["drive-/dev/sda"]
+    assert new.kind == "info" and new.label == "Samsung SSD 870 EVO (256 GB)"
+    assert "Not set up" in new.detail and "Games (255 GB)" in new.detail
+    assert "drive-/dev/sda-use" not in items  # NTFS: can't be used as it is
+    erase = items["drive-/dev/sda-erase"]
+    assert erase.confirm and "Deletes everything on it: Games (255 GB)" in erase.detail
+    ready = items["drive-/dev/sdb"]
+    assert "Ready at" in ready.detail and "free" in ready.detail
+    assert items["drive-/dev/sdb-steam"].kind == "toggle" and items["drive-/dev/sdb-roms"].kind == "toggle"
+    assert "drive-/dev/sdb-erase" not in items  # not offered once it's in use
+
+
+def test_erasing_takes_two_presses(shipped_config, offline, drives):
+    calls, _ = drives
+    app = open_storage(shipped_config)
+    app.menu.select("drive-/dev/sda-erase")
+    app.handle(Nav.SELECT)
+    assert calls == [] and app.menu.confirming == "drive-/dev/sda-erase"
+    app.handle(Nav.SELECT)
+    wait_jobs(app)
+    assert calls == [("format", "/dev/sda", "games2")]
+    assert app.jobs.messages["drive-/dev/sda"] == "Ready at /var/mnt/games"
+
+
+def test_moving_away_cancels_the_erase(shipped_config, offline, drives):
+    calls, _ = drives
+    app = open_storage(shipped_config)
+    app.menu.select("drive-/dev/sda-erase")
+    app.handle(Nav.SELECT)
+    app.handle(Nav.UP)
+    app.menu.select("drive-/dev/sda-erase")
+    app.handle(Nav.SELECT)
+    wait_jobs(app)
+    assert calls == []  # the first press didn't count any more
+
+
+def test_roms_and_steam_toggles(shipped_config, offline, drives, monkeypatch):
+    calls, games = drives
+    moved, steam = [], []
+    monkeypatch.setattr(storage, "move_roms", lambda to, progress=None: (moved.append(to), "Done: moved")[1])
+    monkeypatch.setattr(storage, "add_steam_library", lambda mount: (steam.append(("add", mount)), "Done")[1])
+    app = open_storage(shipped_config)
+    app.menu.select("drive-/dev/sdb-roms")
+    app.handle(Nav.SELECT)
+    wait_jobs(app)
+    assert moved == [games / "ROMs"] and app.jobs.messages["drive-/dev/sdb-roms"] == "Done: moved"
+    app.menu.select("drive-/dev/sdb-steam")
+    app.handle(Nav.SELECT)
+    wait_jobs(app)
+    assert steam == [("add", str(games))]
+
+
+def test_stop_using_a_drive_still_in_use_is_refused(shipped_config, offline, drives, monkeypatch):
+    calls, _ = drives
+    monkeypatch.setattr(storage, "in_use", lambda drive: ["the ROMs"])
+    app = open_storage(shipped_config)
+    app.menu.select("drive-/dev/sdb-release")
+    app.handle(Nav.SELECT)
+    app.handle(Nav.SELECT)
+    wait_jobs(app)
+    assert calls == []
+    assert app.jobs.messages["drive-/dev/sdb-release"] == "It still has the ROMs: turn those off first"
+    monkeypatch.setattr(storage, "in_use", lambda drive: [])
+    app.menu.select("drive-/dev/sdb-release")
+    app.handle(Nav.SELECT)
+    app.handle(Nav.SELECT)
+    wait_jobs(app)
+    assert calls == [("release", "/dev/sdb1")]
