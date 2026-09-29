@@ -159,10 +159,24 @@ through a session with 26 checks, and records a video. See
 
 ## Project status
 
-Early. The launcher is tested and the image build checks its own
-assumptions, but nothing has been run on real hardware yet. See
-[the checklist](docs/ARCHITECTURE.md#verify-on-real-hardware) of what to
-confirm first.
+Hearth runs day to day on a living-room PC (Ryzen 7 5800X3D, Radeon RX 6750
+XT, 24 GB, ASUS TUF A520M) with an Xbox controller and a Wii Remote on a
+DolphinBar. Emulation (ES-DE and Dolphin) and the Wii Remote pointer are
+confirmed working there. What still needs checking on real hardware is in
+[the checklist](docs/ARCHITECTURE.md#verify-on-real-hardware); the latest
+[progress report](reports/Hearth-OS-progress-report.pdf) has the full picture.
+
+## Branches and updates
+
+| Branch | What it is | Image | PCs following it |
+|---|---|---|---|
+| `main` | **Live**: what's released | `ghcr.io/<owner>/hearth-os:latest` | every install, by default |
+| `staging` | **Testing**: new work lands here first | `ghcr.io/<owner>/hearth-os:staging` | only ones switched with `hearthctl channel staging` |
+
+Changes go to `staging` first by pull request; once they've been tried on
+the TV, `staging` is merged into `main` and goes live. Both images are built
+and tested by CI on every push, and `main` is also rebuilt daily to pick up
+Bazzite and Fedora updates. `hearthctl channel live` switches back.
 
 ## Repository layout
 
@@ -173,5 +187,7 @@ image/system_files/           files copied into the image, laid out like /
 launcher/hearth/              the home screen / session hub (Python)
 launcher/tests/               tests (headless, run in CI)
 docs/                         install, hardware, architecture
+reports/                      progress reports
+tools/gamescope-lab/          run Hearth in real gamescope in Docker, no TV needed
 .github/workflows/build.yml   tests + builds and publishes the image to GHCR
 ```

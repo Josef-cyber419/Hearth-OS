@@ -1,8 +1,11 @@
 name: build
 
+# main is live: its image is tagged :latest, which PCs follow by default.
+# staging is where new work lands first: its image is tagged :staging
+# (switch a PC to it with `hearthctl channel staging`).
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
   schedule:
     # Rebuild daily so the image picks up Bazzite and Fedora updates.
@@ -66,8 +69,10 @@ jobs:
             .
 
       - name: Push
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging')
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          podman push "$IMAGE:latest"
+          if [[ "$GITHUB_REF" == refs/heads/main ]]; then channel=latest; else channel=staging; fi
+          podman tag "$IMAGE:latest" "$IMAGE:$channel"
+          podman push "$IMAGE:$channel"
           podman push "$IMAGE:${{ github.sha }}"

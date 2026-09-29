@@ -8,8 +8,10 @@ automatically from then on.
 
 1. Push this repo to GitHub with `main` as the default branch. The
    [`build` workflow](../.github/workflows/build.yml) builds and pushes to
-   `ghcr.io/<your-github-user>/hearth-os` (for AMD/Intel graphics), and
-   rebuilds daily to pick up Bazzite updates.
+   `ghcr.io/<your-github-user>/hearth-os` (for AMD/Intel graphics): `:latest`
+   from `main`, `:staging` from the `staging` branch. It rebuilds `main`
+   daily to pick up Bazzite updates. The image is named after the project,
+   not the repository, so renaming the repository doesn't affect installs.
 2. GHCR packages start out private. Either make the package public
    (GitHub → your profile → Packages → hearth-os → Package settings → Change
    visibility), or run `sudo podman login ghcr.io` on the PC before switching.
@@ -36,6 +38,17 @@ After the reboot you land on the Hearth home screen. On first boot with
 networking, `hearth-flatpak-setup.service` installs Kodi, Moonlight, the emulators,
 VacuumTube (YouTube) and Jellyfin in the background. Their tiles appear as each install
 finishes, the next time you return to the home screen.
+
+### Update channels
+
+A PC follows one of two builds, and updates within it automatically:
+
+- **live** (`:latest`, from `main`): what's released. The default.
+- **staging** (`:staging`, from the `staging` branch): new work, to try on
+  the TV before it goes live.
+
+`hearthctl channel` shows which one this PC is on; `hearthctl channel
+staging` or `hearthctl channel live` switches (restart to finish).
 
 Undo: `sudo bootc rollback` (or choose the previous entry in the boot menu),
 or `sudo bootc switch ghcr.io/ublue-os/bazzite-deck:stable` to go back to

@@ -165,7 +165,11 @@ pausing games (systemd scopes). That's the list below.
 
 ## Verify on real hardware
 
-These couldn't be tested without a real machine. Check them first, in this order:
+These couldn't be tested without a real machine. On the first real install
+(Ryzen 7 5800X3D + RX 6750 XT): the image builds and boots into Hearth,
+ES-DE and Dolphin run games, and the Wii Remote pointer works. Steam's
+*Switch to Desktop* can still hang there (hold Guide for 4 s to get home;
+root cause still open). The rest, in order:
 
 1. **The image builds** against current `bazzite-deck:stable`. `image/build.sh`
    fails loudly if Bazzite's Game Mode session isn't one Hearth overrides.

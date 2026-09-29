@@ -133,11 +133,13 @@ Changes show up the next time you return to the home screen. Add
 Two ways, depending on how permanent the change is:
 
 - **Try it on the TV now**: clone this repo on the PC, then
-  `hearthctl dev ~/test-os-thing/launcher` and restart Game Mode. The home
+  `hearthctl dev ~/hearth-os/launcher` and restart Game Mode. The home
   screen and Quick Menu run from your checkout. Edit, restart Game Mode to
   test, and `hearthctl dev --off` to go back.
-- **Ship it**: push to `main`. CI runs the tests, builds the image, and the PC
-  picks it up with its next automatic update.
+- **Ship it**: open a pull request into `staging`. CI runs the tests and
+  builds the image; once merged, PCs on the staging channel (`hearthctl
+  channel staging`) get it with their next update. Merging `staging` into
+  `main` makes it live for everyone.
 
 Develop on any computer without the TV: see "Try the home screen" in the
 README, and run `pytest` in `launcher/`. To see your change inside real

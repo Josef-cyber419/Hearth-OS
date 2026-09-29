@@ -15,6 +15,9 @@ from pathlib import Path
 
 VERSION_FILE = Path("/usr/share/hearth/version.json")
 HELPER = "/usr/libexec/hearth/hearth-update"
+# Update channels: the image tag each follows. "live" is built from the main
+# branch, "staging" from the staging branch (new work, to try before it goes live).
+CHANNELS = {"live": "latest", "staging": "staging"}
 
 
 def hearth_version() -> str:
@@ -59,6 +62,28 @@ def parse_status(data: dict) -> OsStatus:
         staged=_label(staged) if staged else None,
         rollback=_label(rollback) if rollback else None,
     )
+
+
+def split_image(image: str) -> tuple[str, str]:
+    """ "docker://ghcr.io/you/hearth-os:latest" -> ("ghcr.io/you/hearth-os", "latest")."""
+    ref = image.split("://", 1)[-1]
+    name, sep, tag = ref.rpartition(":")
+    if not sep or "/" in tag:  # no tag (a ":" in a registry port doesn't count)
+        return ref, "latest"
+    return name, tag
+
+
+def channel_of(image: str | None) -> str | None:
+    """The channel an image follows ("live", "staging"), or its tag if it's neither."""
+    if not image:
+        return None
+    tag = split_image(image)[1]
+    return next((name for name, t in CHANNELS.items() if t == tag), tag)
+
+
+def channel_image(image: str, channel: str) -> str:
+    """The same image on another channel."""
+    return f"{split_image(image)[0]}:{CHANNELS[channel]}"
 
 
 def os_status() -> OsStatus:
