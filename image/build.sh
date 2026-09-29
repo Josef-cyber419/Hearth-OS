@@ -60,6 +60,10 @@ JSON
 
 # --- sanity checks ------------------------------------------------------------
 visudo -cf /etc/sudoers.d/hearth
+# Settings → Storage (hearth-storage) needs these to set up added drives.
+for tool in lsblk findmnt blkid wipefs sfdisk mkfs.ext4 udevadm swapon; do
+    command -v "$tool" >/dev/null || { echo "build.sh: $tool missing (needed by hearth-storage)" >&2; exit 1; }
+done
 if udevadm verify --help >/dev/null 2>&1; then
     udevadm verify --resolve-names=never /usr/lib/udev/rules.d/70-hearth-*.rules
 fi

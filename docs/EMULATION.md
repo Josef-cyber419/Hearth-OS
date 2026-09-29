@@ -31,11 +31,10 @@ The plan: use the desktop for maintenance, and the TV screen for playing.
 5. **Artwork**: in ES-DE press Start → *Scraper*, create a free ScreenScraper
    account, and let it download box art and videos for everything.
 
-**Games on a second drive?** Bazzite mounts extra drives under `/run/media`
-or `/var/mnt`. Make a `ROMs` folder on the drive, then replace `~/ROMs` with a
-link to it (in a terminal: `rm -r ~/ROMs && ln -s /var/mnt/games/ROMs ~/ROMs`,
-with your drive's path). Emulators already have permission to read those
-locations.
+**Games on a second drive?** Settings → **Storage** sets the drive up (see
+[Adding a drive](STORAGE.md)), then **ROMs on it** moves your ROMs folder
+there. `~/ROMs` becomes a link to the drive, so ES-DE and the emulators find
+everything as before.
 
 Only use games, BIOS files and keys you've dumped from hardware you own.
 
@@ -76,8 +75,8 @@ They appear in a **PC games** row on the home screen and under **PC** in the
 Library. Star one (**X**) for the **Favorites** row; it shows in **Continue** once played.
 Guide works like any game: tap for the Quick Menu, hold to go home (Quick
 Resume keeps it paused). You don't need to make the file executable; Hearth
-does. On a second drive, link it the same way as `ROMs` above
-(`ln -s /var/mnt/games/Games ~/Games`).
+does. On a second drive set up in Settings → Storage, make a `Games` folder
+on it and link it: `ln -s /var/mnt/games/Games ~/Games`.
 
 ## Consoles, emulators and your hardware
 

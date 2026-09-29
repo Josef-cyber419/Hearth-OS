@@ -1,0 +1,190 @@
+#!/usr/bin/bash
+# Privileged helper (allowed via /etc/sudoers.d/hearth) for Settings → Storage:
+# setting up drives added after install for games and ROMs. Only these fixed
+# actions are accepted, and never on the drive the system runs from.
+#   format DISK NAME   erase the whole DISK: one ext4 partition labelled NAME,
+#                      then `use` it
+#   use PART NAME      mount PART at /var/mnt/NAME now and at every boot (fstab,
+#                      by UUID, `nofail` so a missing drive never stops boot)
+#                      and make its top folder the user's. Keeps its files.
+#   release PART       stop mounting PART (unmount, drop the fstab entry).
+#                      Nothing is erased.
+set -euo pipefail
+
+FSTAB=${HEARTH_FSTAB:-/etc/fstab}
+MNT=${HEARTH_MNT:-/var/mnt}
+TAG=x-hearth  # a user-space mount option: marks the fstab entries Hearth made
+SYSTEM_MOUNTS=(/ /sysroot /boot /boot/efi /usr /etc /var /home /var/home)
+
+die() {
+    echo "$*" >&2
+    exit 1
+}
+
+usage() {
+    echo "usage: hearth-storage format DISK NAME | use PART NAME | release PART" >&2
+    exit 2
+}
+
+valid_name() {
+    [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9_-]{0,15}$ ]] || die "Not a usable name: $1"
+}
+
+block() {
+    local dev=$1 pattern=$2
+    [[ $dev =~ $pattern ]] || die "Not a drive Hearth sets up: $dev"
+    [[ -b $dev ]] || die "No such drive: $dev"
+}
+
+DISK_RE='^/dev/(sd[a-z]+|vd[a-z]+|nvme[0-9]+n[0-9]+|mmcblk[0-9]+)$'
+PART_RE='^/dev/(sd[a-z]+[0-9]+|vd[a-z]+[0-9]+|nvme[0-9]+n[0-9]+p[0-9]+|mmcblk[0-9]+p[0-9]+)$'
+
+# A device and everything it sits on (partition, disk, LUKS, LVM...), so that
+# two devices share a disk exactly when these lists overlap.
+disks_of() {
+    lsblk -nrpso PATH "$1" 2>/dev/null
+}
+
+# Disks the running system uses: anything behind its own mounts, and swap.
+system_disks() {
+    local m src
+    for m in "${SYSTEM_MOUNTS[@]}"; do
+        src=$(findmnt -nvo SOURCE --mountpoint "$m" 2>/dev/null) || continue
+        [[ $src == /dev/* ]] && disks_of "$src"
+    done
+    for src in $(swapon --noheadings --raw --show=NAME 2>/dev/null); do
+        [[ $src == /dev/* ]] && disks_of "$src"
+    done
+    true
+}
+
+refuse_system() {
+    local dev=$1 d s
+    for d in $(disks_of "$dev"); do
+        for s in $(system_disks); do
+            [[ $d == "$s" ]] && die "That's the drive the system runs from: Hearth won't change it."
+        done
+    done
+    true
+}
+
+# Where a device (and anything on it) is mounted, one per line.
+mounts_of() {
+    local dev
+    for dev in $(lsblk -nrpo PATH "$1" 2>/dev/null); do
+        findmnt -nl -o TARGET --source "$dev" 2>/dev/null || true
+    done
+    lsblk -nrpo PATH,MOUNTPOINT "$1" 2>/dev/null | awk '$2 == "[SWAP]" {print "[SWAP]"}'
+}
+
+# Unmount it from places a desktop or Hearth mounts drives; anything else is in
+# use by the system or a person, so leave it and stop.
+unmount_all() {
+    local m
+    while IFS= read -r m; do
+        [[ -z $m ]] && continue
+        case $m in
+            /run/media/* | "$MNT"/*) umount "$m" || die "Couldn't unmount $m: something is using it." ;;
+            *) die "It's in use at $m: Hearth won't change it." ;;
+        esac
+    done < <(mounts_of "$1")
+}
+
+drop_fstab() {  # remove Hearth's fstab entry for a UUID
+    local uuid=$1 tmp
+    [[ -f $FSTAB ]] || return 0
+    tmp=$(mktemp "$FSTAB.XXXXXX")
+    awk -v u="UUID=$uuid" -v tag="$TAG" '!($1 == u && $4 ~ ("(^|,)" tag "(,|$)"))' "$FSTAB" >"$tmp"
+    chmod 644 "$tmp"
+    mv "$tmp" "$FSTAB"
+}
+
+reload_systemd() {
+    systemctl daemon-reload 2>/dev/null || true
+}
+
+do_use() {
+    local part=$1 name=$2 fstype uuid dir src
+    fstype=$(blkid -o value -s TYPE "$part" || true)
+    uuid=$(blkid -o value -s UUID "$part" || true)
+    case $fstype in
+        ext4 | btrfs | xfs) ;;
+        "") die "It has no filesystem: set it up (erase) instead." ;;
+        *) die "It's formatted $fstype, which doesn't suit Steam games on Linux: set it up (erase) instead." ;;
+    esac
+    [[ -n $uuid ]] || die "It has no filesystem ID (UUID)."
+    dir="$MNT/$name"
+    src=$(findmnt -nvo SOURCE --mountpoint "$dir" 2>/dev/null || true)
+    if [[ -n $src && $src != "$part" ]]; then
+        die "$dir is already in use."
+    fi
+    unmount_all "$part"
+    drop_fstab "$uuid"
+    echo "UUID=$uuid $dir $fstype defaults,nofail,x-systemd.device-timeout=10s,$TAG 0 0" >>"$FSTAB"
+    mkdir -p "$dir"
+    reload_systemd
+    mount --fstab "$FSTAB" "$dir"
+    if [[ -n ${SUDO_USER:-} ]]; then
+        chown "$SUDO_USER:" "$dir"  # the top folder only: files already there keep their owners
+    fi
+    echo "Ready at $dir"
+}
+
+do_format() {
+    local disk=$1 name=$2 part uuid
+    unmount_all "$disk"
+    while read -r part; do
+        uuid=$(blkid -o value -s UUID "$part" 2>/dev/null || true)
+        [[ -n $uuid ]] && drop_fstab "$uuid"
+    done < <(lsblk -nrpo PATH,TYPE "$disk" | awk '$2 == "part" {print $1}')
+    wipefs -a -q "$disk"
+    printf 'label: gpt\n,,L\n' | sfdisk -q --wipe always --wipe-partitions always "$disk"
+    udevadm settle
+    part=$(lsblk -nrpo PATH,TYPE "$disk" | awk '$2 == "part" {print $1; exit}')
+    [[ -n $part ]] || die "Couldn't create a partition on $disk."
+    mkfs.ext4 -q -F -m 0 -L "$name" "$part"  # -m 0: no space held back for root on a games drive
+    udevadm settle
+    do_use "$part" "$name"
+}
+
+do_release() {
+    local part=$1 uuid dir
+    uuid=$(blkid -o value -s UUID "$part" || true)
+    [[ -n $uuid ]] || die "It has no filesystem ID (UUID)."
+    dir=$(awk -v u="UUID=$uuid" -v tag="$TAG" '$1 == u && $4 ~ ("(^|,)" tag "(,|$)") {print $2; exit}' "$FSTAB")
+    [[ -n $dir ]] || die "Hearth didn't set this drive up."
+    local tries=0
+    while findmnt -n --mountpoint "$dir" >/dev/null 2>&1 && ((tries++ < 5)); do
+        umount "$dir" || die "Couldn't unmount it: something is using it (close Steam and try again)."
+    done
+    drop_fstab "$uuid"
+    reload_systemd
+    rmdir "$dir" 2>/dev/null || true
+    echo "Released: it's no longer used"
+}
+
+case "${1:-}" in
+    format)
+        [[ $# -eq 3 ]] || usage
+        valid_name "$3"
+        block "$2" "$DISK_RE"
+        refuse_system "$2"
+        do_format "$2" "$3"
+        ;;
+    use)
+        [[ $# -eq 3 ]] || usage
+        valid_name "$3"
+        block "$2" "$PART_RE"
+        refuse_system "$2"
+        do_use "$2" "$3"
+        ;;
+    release)
+        [[ $# -eq 2 ]] || usage
+        block "$2" "$PART_RE"
+        refuse_system "$2"
+        do_release "$2"
+        ;;
+    *)
+        usage
+        ;;
+esac

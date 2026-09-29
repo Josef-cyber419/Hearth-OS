@@ -99,8 +99,9 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   stick dead zone and controller-as-mouse speed; the Wii Remote (sensor bar position, pointer
   speed and steadiness, sideways hold, mouse mode, and a two-target pointer
   calibration); emulator tuning; Bluetooth pairing; Wi-Fi with an on-screen
-  keyboard and a connection test; hardware, temperatures, storage, updates and
-  problem reports. Also the things TVs and consoles are expected to have: a
+  keyboard and a connection test; **drives added after install**, set up for
+  Steam games and ROMs ([STORAGE.md](docs/STORAGE.md)); hardware,
+  temperatures, updates and problem reports. Also the things TVs and consoles are expected to have: a
   screen saver with your games' art (OLED-friendly), optional UI sounds, sleep when idle, screen edges for TVs that
   crop, Nintendo-style confirm button, and Xbox, PlayStation or Nintendo
   button names on screen. Changes apply at once.

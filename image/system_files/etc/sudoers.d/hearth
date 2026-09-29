@@ -2,4 +2,7 @@
 # password prompt, which a TV remote can't answer. Fixed actions only.
 # hearth-session clear-desktop-login: Steam's "Switch to Desktop" inside Hearth
 # returns home instead (see /usr/libexec/hearth/hearth-steam).
+# hearth-storage: Settings → Storage sets up added drives for games. It checks
+# its own arguments and never touches the drive the system runs from.
 %wheel ALL=(root) NOPASSWD: /usr/libexec/hearth/hearth-update apply, /usr/libexec/hearth/hearth-update rollback, /usr/libexec/hearth/hearth-session clear-desktop-login
+%wheel ALL=(root) NOPASSWD: /usr/libexec/hearth/hearth-storage format *, /usr/libexec/hearth/hearth-storage use *, /usr/libexec/hearth/hearth-storage release *
