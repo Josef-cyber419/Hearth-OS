@@ -46,6 +46,8 @@ CATEGORIES = [
     ("bluetooth", "Bluetooth", "Pair controllers and headsets."),
     ("network", "Network", "Wired and Wi-Fi connections."),
     ("storage", "Storage", "Drives added after install: set them up for Steam games and ROMs."),
+    ("family", "Family", "A daily play-time limit, a bedtime, and tiles locked with a PIN."),
+    ("privacy", "Privacy", "No ads or tracking in Hearth, and how to turn off your TV's tracking."),
     ("system", "System", "Versions, updates and help."),
 ]
 
@@ -330,12 +332,13 @@ class SettingsApp:
         self.calibrating: Calibration | None = None
         self.launch: App | None = None  # an app to open on the way out (Desktop Mode)
         self.data: dict = {"net": None, "wifi": None, "networks": [], "bt_power": None, "bt": [],
-                           "os": None, "drives": None, "ip": None, "audio": None, "loaded": set()}
+                           "os": None, "drives": None, "ip": None, "audio": None, "tv": None, "loaded": set()}
         # Network changes being picked, not applied yet (each one reconnects).
         self.ip_method: str | None = None  # "auto" | "manual"
         self.ip_edit: dict | None = None  # the manual (static) address, router and prefix
         self.dns_choice: int | None = None
         self._refreshed = 0.0
+        self.family_unlocked = False  # the PIN was entered this time in Settings
         self.reload()
         self.menu = QuickMenu([])
         self.refresh()
@@ -374,6 +377,8 @@ class SettingsApp:
             self.jobs.start("bt-load", self._load_bluetooth)
         elif category == "system":
             self.jobs.start("os-load", self._load_os)
+        elif category == "privacy":
+            self.jobs.start("tv-load", self._load_tv)
 
     def _load_network(self, rescan: bool = False) -> None:
         if not network.available():
@@ -405,6 +410,12 @@ class SettingsApp:
         self.data["drives"] = storage.drives()
         return None
 
+    def _load_tv(self) -> None:
+        from . import tv
+
+        self.data["tv"] = tv.vendor() or ""  # asks the TV over HDMI-CEC; "" when it can't
+        return None
+
     def _load_os(self) -> None:
         status = updates.os_status()
         self.data["os"] = status
@@ -422,7 +433,9 @@ class SettingsApp:
         pages = {"appearance": self._appearance, "home": self._home, "audio": self._audio,
                  "controllers": self._controllers,
                  "wii": self._wii, "emulation": self._emulation, "bluetooth": self._bluetooth,
-                 "network": self._network, "storage": self._storage, "system": self._system}
+                 "network": self._network, "storage": self._storage, "family": self._family,
+                 "privacy": self._privacy,
+                 "system": self._system}
         tabs = []
         for key, title, _ in CATEGORIES:
             tab = Tab(key, title, "")
@@ -451,6 +464,109 @@ class SettingsApp:
                  on_change=lambda v: self.put("theme", "safe_area", int(v))),
         ]
 
+    # -- Watch next: Jellyfin and Plex sign-in -------------------------------------
+
+    def _watch_items(self) -> list[Item]:
+        from . import watchnext
+
+        acc = watchnext.accounts()
+        items = [Item("home-watch", "Watch next: shows and films in progress", "toggle", value=self.config.home_watch,
+                      detail="From Jellyfin, Plex and Kodi; pick one to carry on where you stopped",
+                      on_change=lambda on: self.put("home", "watch", bool(on)))]
+        jf, plex = acc.get("jellyfin"), acc.get("plex")
+        if jf:
+            items.append(Item("jellyfin", "Jellyfin", "action", confirm=True,
+                              detail=self.note("jellyfin", f"Connected to {jf.get('name')} as {jf.get('user')}: "
+                                                           "A to disconnect"),
+                              on_select=lambda: self._disconnect("jellyfin")))
+        else:
+            items.append(Item("jellyfin", "Connect Jellyfin", "action",
+                              detail=self.note("jellyfin", "Finds your server; approve with a code on your phone"),
+                              on_select=self._connect_jellyfin))
+        if plex:
+            items.append(Item("plex", "Plex", "action", confirm=True,
+                              detail=self.note("plex", f"Connected to {plex.get('name')}: A to disconnect"),
+                              on_select=lambda: self._disconnect("plex")))
+        else:
+            items.append(Item("plex", "Connect Plex", "action",
+                              detail=self.note("plex", "Shows a code to enter at plex.tv/link"),
+                              on_select=lambda: self.jobs.start("plex", self._plex_link, "Asking Plex for a code…")))
+        return items
+
+    def _disconnect(self, name: str) -> None:
+        from . import watchnext
+
+        watchnext.set_account(name, None)
+        self.jobs.messages.pop(name, None)
+        events.record("media_disconnect", service=name)
+        self.refresh()
+
+    def _connect_jellyfin(self) -> None:
+        if self.jobs.messages.get("jellyfin", "").startswith("No Jellyfin server found"):
+            self.open_keyboard("Jellyfin server address (e.g. 192.168.1.20)",
+                               lambda text: self.jobs.start("jellyfin", lambda: self._jellyfin_link(text),
+                                                            "Connecting…"))
+            return
+        self.jobs.start("jellyfin", self._jellyfin_link, "Looking for your Jellyfin server…")
+
+    def _wait_for(self, key: str, check, message: str, seconds: float = 300, every: float = 3.0):
+        """Show `message` and ask check() every few seconds until it returns
+        something (or time runs out: None)."""
+        self.jobs.messages[key] = message
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            time.sleep(every)
+            result = check()
+            if result:
+                return result
+        return None
+
+    def _jellyfin_link(self, address: str | None = None) -> str:
+        import urllib.error
+
+        from . import watchnext
+
+        if address:
+            server = watchnext.normalize_server(address)
+        else:
+            found = watchnext.discover_jellyfin()
+            if not found:
+                return "No Jellyfin server found on this network: press A to type its address"
+            server = watchnext.normalize_server(found[0]["Address"])
+        try:
+            qc = watchnext.quick_connect_start(server)
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                return "Turn on Quick Connect in Jellyfin (Dashboard > General), then press A again"
+            raise
+        except OSError as e:
+            return f"Couldn't reach {server}: {getattr(e, 'reason', e)}"
+        code = qc["Code"]
+        account = self._wait_for("jellyfin", lambda: watchnext.quick_connect_finish(server, qc["Secret"]),
+                                 f"Enter code {code[:3]} {code[3:]} in Jellyfin on your phone: "
+                                 "your profile > Quick Connect")
+        if account is None:
+            return "The code ran out: press A for a new one"
+        watchnext.set_account("jellyfin", account)
+        events.record("media_connect", service="jellyfin")
+        watchnext.refresh_soon()
+        return f"Connected to {account['name']} as {account['user']}"
+
+    def _plex_link(self) -> str:
+        from . import watchnext
+
+        pin = watchnext.plex_pin_start()
+        account = self._wait_for("plex", lambda: watchnext.plex_pin_finish(pin["id"]),
+                                 f"Go to plex.tv/link on your phone and enter {pin['code']}")
+        if account is None:
+            return "The code ran out: press A for a new one"
+        if not account["servers"]:
+            return "Signed in, but no Plex server found on your account"
+        watchnext.set_account("plex", account)
+        events.record("media_connect", service="plex")
+        watchnext.refresh_soon()
+        return f"Connected to {account['name']}"
+
     def _reset_order(self) -> None:
         data = settings.load()
         data.pop("order", None)
@@ -469,6 +585,7 @@ class SettingsApp:
             Item("home-recent", "Continue: recently played games", "toggle", value=c.home_recent,
                  detail="A row of what you played last, Steam and emulated",
                  on_change=lambda on: self.put("home", "recent", bool(on))),
+            *self._watch_items(),
             Item("home-pins", "Favorites row", "toggle", value=c.home_pins,
                  detail="Press X on any tile to star it (Y → Move to reorder); ES-DE favourites show too",
                  on_change=lambda on: self.put("home", "pins", bool(on))),
@@ -1040,6 +1157,130 @@ class SettingsApp:
             return None
         self._drive_job(f"drive-{drive.path}", "Stopping…", lambda: storage.release(part)[1])
         return None
+
+    # -- Family: household limits behind a PIN ----------------------------------------
+
+    def _family(self) -> list[Item]:
+        from . import family
+
+        r = family.rules()
+        if not r.active:
+            return [
+                Item("family-about", "Household limits", "info",
+                     detail="For everyone on this PC: a daily game-time limit, a bedtime, locked tiles"),
+                Item("family-pin", "Set a PIN to start", "action", detail=self.note(
+                     "family-pin", f"{family.PIN_LENGTH} digits; you'll need it to change these, or to play past "
+                                   "the limits"),
+                     on_select=self._set_pin),
+            ]
+        if not self.family_unlocked:
+            return [Item("family-unlock", "Enter the PIN to change these", "action",
+                         detail=self.note("family-unlock", "Household limits are on"),
+                         on_select=self._unlock_family)]
+        played = family.played_today()
+        daily = list(family.DAILY_CHOICES)
+        bed = list(family.BEDTIMES)
+        items = [
+            Item("family-daily", "Game time each day", "choice",
+                 value=daily.index(r.daily_minutes) if r.daily_minutes in daily else 0,
+                 options=tuple("No limit" if m == 0 else family.minutes_text(m * 60) for m in daily),
+                 detail=f"Played today: {family.minutes_text(played)}. Films and TV apps don't count",
+                 on_change=lambda i: self.put("family", "daily_minutes", daily[i])),
+            Item("family-bedtime", "Bedtime", "choice", value=bed.index(r.bedtime) if r.bedtime in bed else 0,
+                 options=tuple("None" if not b else b.replace("-", " to ") for b in bed),
+                 detail="Games need the PIN in these hours",
+                 on_change=lambda i: self.put("family", "bedtime", bed[i])),
+            Item("family-when", "When time's up", "choice", value=1 if r.when_up == "close" else 0,
+                 options=("Remind", "Close the game"),
+                 detail="Closing warns a minute first, to save. The PIN gives "
+                        f"{family.EXTRA_MINUTES} minutes more",
+                 on_change=lambda i: self.put("family", "when_up", ("remind", "close")[i])),
+        ]
+        items.append(Item("family-locks", "Locked tiles", "info",
+                          detail="These always need the PIN, whatever the time"))
+        for row in self.config.rows:
+            for app in row.apps:
+                if app.builtin:
+                    continue
+                items.append(Item(f"lock-{app.id}", app.name, "toggle", value=app.id in r.locked,
+                                  on_change=lambda on, a=app.id: self._set_locked(a, on)))
+        items += [
+            Item("family-change", "Change the PIN", "action", detail=self.note("family-pin", ""),
+                 on_select=self._set_pin),
+            Item("family-off", "Turn household limits off", "action", confirm=True,
+                 detail="Removes the PIN and every limit", on_select=self._family_off),
+        ]
+        return items
+
+    def _set_locked(self, app_id: str, on: bool) -> None:
+        from . import family
+
+        locked = family.rules().locked
+        (locked.add if on else locked.discard)(app_id)
+        self.put("family", "locked", sorted(locked))
+
+    def _set_pin(self) -> None:
+        from . import family
+
+        def chosen(pin: str) -> None:
+            if not family.valid_pin(pin):
+                self.jobs.messages["family-pin"] = f"A PIN is {family.PIN_LENGTH} digits: try again"
+            else:
+                family.set_pin(pin)
+                self.family_unlocked = True
+                self.jobs.messages["family-pin"] = "PIN set"
+                events.record("family_pin_set")
+            self.refresh()
+
+        self.open_keyboard(f"New PIN ({family.PIN_LENGTH} digits)", chosen, secret=True)
+
+    def _unlock_family(self) -> None:
+        from . import family
+
+        def entered(pin: str) -> None:
+            self.family_unlocked = family.check_pin(pin)
+            self.jobs.messages["family-unlock"] = "" if self.family_unlocked else "Not that one"
+            events.record("family_unlock", ok=self.family_unlocked)
+            self.refresh()
+
+        self.open_keyboard("PIN", entered, secret=True)
+
+    def _family_off(self) -> None:
+        from . import family
+
+        family.set_pin(None)
+        self.family_unlocked = False
+        events.record("family_off")
+        self.refresh()
+
+    def _privacy(self) -> list[Item]:
+        from . import privacy
+
+        detected = privacy.guide_for(self.data["tv"])
+        chosen = (settings.load().get("privacy") or {}).get("tv")
+        guide = privacy.BY_KEY.get(chosen) or detected
+        keys = [g.key for g in privacy.GUIDES]
+        if self.data["tv"] is None:
+            how = "Asking the TV…"
+        elif detected is not None:
+            how = f"Found over HDMI: {self.data['tv']}"
+        elif self.data["tv"]:
+            how = f"Your TV calls itself {self.data['tv']}: pick the closest"
+        else:
+            how = "Pick your TV's make (Hearth can tell with a CEC adapter)"
+        items = [
+            Item("hearth", "Hearth", "info", detail=privacy.HEARTH_PROMISE),
+            Item("leaves", "What leaves this PC", "info", detail=privacy.WHAT_LEAVES),
+            Item("tv-make", "Your TV", "choice", value=keys.index(guide.key) if guide else len(keys) - 1,
+                 options=tuple(g.name for g in privacy.GUIDES), detail=how,
+                 on_change=lambda i: self.put("privacy", "tv", keys[i])),
+            Item("tv-why", "Turn off your TV's tracking", "info", detail=privacy.WHY_TV),
+        ]
+        shown = guide or privacy.BY_KEY["other"]
+        items += [Item(f"tv-step-{n}", f"Step {n}", "info", detail=step) for n, step in enumerate(shown.steps, 1)]
+        items.append(Item("tv-look", "Can't find it?", "info",
+                          detail=f"Menus move between models: search the TV's settings for {shown.look_for}"))
+        return items
 
     def _system(self) -> list[Item]:
         d = self.data

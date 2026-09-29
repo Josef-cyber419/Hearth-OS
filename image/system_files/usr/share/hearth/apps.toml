@@ -106,14 +106,31 @@ title = "Play"
   color = "#2a2a2e"
 
   [[rows.apps]]
-  # Battle.net through Lutris: starts it once installed, otherwise opens
-  # Lutris's Battle.net installer. The controller works as a mouse there.
+  # Battle.net, the EA app and Ubisoft Connect run through Lutris: each tile
+  # starts its app once installed, otherwise opens Lutris's installer for it.
+  # The controller works as a mouse there.
   id = "battlenet"
   name = "Battle.net"
-  command = "/usr/libexec/hearth/hearth-battlenet"
+  command = ["/usr/libexec/hearth/hearth-lutris-app", "battlenet"]
   flatpak = "net.lutris.Lutris"
   pointer = true
   color = "#0e4d8a"
+
+  [[rows.apps]]
+  id = "ea"
+  name = "EA app"
+  command = ["/usr/libexec/hearth/hearth-lutris-app", "ea-app"]
+  flatpak = "net.lutris.Lutris"
+  pointer = true
+  color = "#c3242b"
+
+  [[rows.apps]]
+  id = "ubisoft"
+  name = "Ubisoft Connect"
+  command = ["/usr/libexec/hearth/hearth-lutris-app", "ubisoft-connect"]
+  flatpak = "net.lutris.Lutris"
+  pointer = true
+  color = "#1f4fa0"
 
   [[rows.apps]]
   id = "moonlight"

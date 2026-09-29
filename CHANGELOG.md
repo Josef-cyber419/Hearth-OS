@@ -6,6 +6,22 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
+## 0.22.0 (2026-09-29)
+
+- **Watch next**: films and episodes you're partway through on Jellyfin, Plex
+  and Kodi, in a row with progress bars; pick one to carry on where you
+  stopped. Connect in Settings → Home screen with a code on your phone.
+- **Family**: a daily game-time limit, a bedtime and locked tiles, with a PIN
+  (Settings → Family). Films and TV apps don't count.
+- **EA app and Ubisoft Connect** tiles; their games join the Library.
+- **Privacy**: Settings → Privacy shows how to turn off your TV's own
+  tracking, for its make.
+- **The TV follows you**: pressing Guide switches the TV to Hearth, and waking
+  keeps trying until the TV answers (with a CEC adapter).
+- **Lighter**: an idle home screen stops redrawing and keeps less in memory;
+  all of Hearth idles under 2% of one core. `hearthctl footprint` shows what's
+  using the PC.
+
 ## 0.21.0 (2026-09-29)
 
 - **Captures**: take a screenshot of whatever's playing from the Quick Menu

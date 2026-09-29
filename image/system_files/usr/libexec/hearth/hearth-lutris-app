@@ -1,0 +1,34 @@
+#!/usr/bin/bash
+# A store app that runs under Lutris (Wine/Proton): Battle.net, the EA app,
+# Ubisoft Connect. Usage: hearth-lutris-app <lutris slug>
+# Starts it once Lutris has it installed; until then opens Lutris's
+# installer for it (pick "Install", then sign in).
+set -euo pipefail
+slug=${1:?usage: hearth-lutris-app <slug>}
+if [[ ! $slug =~ ^[a-z0-9-]+$ ]]; then
+    echo "hearth-lutris-app: bad slug: $slug" >&2
+    exit 2
+fi
+if flatpak info net.lutris.Lutris >/dev/null 2>&1; then
+    lutris=(flatpak run net.lutris.Lutris)
+    db="$HOME/.var/app/net.lutris.Lutris/data/lutris/pga.db"
+elif command -v lutris >/dev/null; then
+    lutris=(lutris)
+    db="$HOME/.local/share/lutris/pga.db"
+else
+    echo "hearth-lutris-app: Lutris isn't installed" >&2
+    exit 1
+fi
+installed=$(python3 - "$db" "$slug" <<'PY'
+import sqlite3, sys
+try:
+    con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True, timeout=1)
+    print(con.execute("SELECT COUNT(*) FROM games WHERE slug = ? AND installed = 1", (sys.argv[2],)).fetchone()[0])
+except sqlite3.Error:
+    print(0)
+PY
+)
+if [[ $installed -gt 0 ]]; then
+    exec "${lutris[@]}" "lutris:rungame/$slug"
+fi
+exec "${lutris[@]}" "lutris:install/$slug"

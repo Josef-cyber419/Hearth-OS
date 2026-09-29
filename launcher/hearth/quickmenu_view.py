@@ -66,6 +66,10 @@ class Icons:
             surf.fill(color, (cx - s * 0.4, body.y - s * 0.3, s * 0.8, s * 0.4))
             style.circle(surf, bg, body.center, max(3, int(s * 0.42)))
             style.circle(surf, color, body.center, max(2, int(s * 0.24)))
+        elif name == "clock":
+            pygame.draw.circle(surf, color, (cx, cy), s * 0.9, w + 1)
+            pygame.draw.line(surf, color, (cx, cy), (cx, cy - s * 0.55), w + 1)
+            pygame.draw.line(surf, color, (cx, cy), (cx + s * 0.4, cy + s * 0.2), w + 1)
         elif name == "info":
             style.circle(surf, color, (cx, cy), s * 0.9)
             surf.fill(bg, (cx - w // 2, cy - s * 0.1, max(2, w), s * 0.6))
@@ -182,7 +186,7 @@ class QuickMenuView:
         style.stripes(card, 0, 0, h, self.px(10), (lv.accent, lv.second))
         style.rounded(card, self.radius)
         icon = {"battery": "battery", "download": "download", "update": "download",
-                "camera": "camera"}.get(toast.icon, "info")
+                "camera": "camera", "clock": "clock"}.get(toast.icon, "info")
         Icons.draw(card, icon, (self.px(64), h // 2), self.px(40), lv.accent, bg=lv.panel)
         x = self.px(108)
         title = style.fit(self.f_label.render(toast.title, True, lv.text), w - x - self.px(24))

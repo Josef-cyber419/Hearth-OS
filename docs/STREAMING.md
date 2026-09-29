@@ -16,6 +16,31 @@ like a smart TV or console. No keyboard, no mouse, no browser.
 | Emulation | ES-DE + emulators, see [EMULATION.md](EMULATION.md) | Yes. |
 | Android | Android apps in a container (Waydroid) | Partly. See below. |
 
+## Watch next: carry on where you stopped
+
+A **Watch next** row at the top of the home screen shows the films and
+episodes you're partway through, with how much is left, from:
+
+- **Jellyfin**: Settings → Home screen → **Connect Jellyfin**. Hearth finds
+  your server on the network and shows a code; approve it in the Jellyfin app
+  on your phone (your profile → **Quick Connect**). If your server isn't
+  found, press A again to type its address. Quick Connect has to be on in the
+  server's dashboard (General).
+- **Plex**: Settings → Home screen → **Connect Plex**, then enter the code at
+  **plex.tv/link** on your phone.
+- **Kodi**: nothing to set up: Hearth reads what's in progress from Kodi's
+  own library.
+
+Picking one plays it at once from where you stopped. Jellyfin and Plex play
+straight from your server, full screen, with the controller (A pauses, the
+d-pad skips, B stops), and your server is told how far you got, so your
+phone and other TVs pick up there too. Kodi items open in Kodi, which resumes
+them. (If Kodi opens without playing, turn on *Settings → Services → Control →
+Allow remote control from applications on this system* in Kodi.) Hearth
+checks for changes every few minutes in the background. Sign-ins are kept in
+`~/.config/hearth/media-accounts.json`, readable only by you; disconnect from
+the same place in Settings.
+
 ## Why no Netflix, Disney+, Prime Video, Max…
 
 These services use DRM (Widevine), and they only send HD and 4K to

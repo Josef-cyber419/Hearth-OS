@@ -40,6 +40,18 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   dialogs for power actions, and a backdrop that glows with the focused game's
   art or app's colour. Scales cleanly from 720p to 4K. After an update it
   shows once **what's new** in that version.
+- **Watch next**: a row of the films and episodes you're partway through on
+  **Jellyfin**, **Plex** and **Kodi**, with a progress bar; pick one and it
+  carries on where you stopped, and your server hears how far you got.
+  Connecting takes a code on your phone, no typing passwords
+  ([STREAMING.md](docs/STREAMING.md#watch-next-carry-on-where-you-stopped)).
+- **Family**: a daily game-time limit, a bedtime and locked tiles, behind a
+  PIN, for the whole household; films and TV apps don't count against it
+  ([FAMILY.md](docs/FAMILY.md)).
+- **Private, and light**: no ads, no sponsored tiles, nothing sent about what
+  you watch or play. Settings → Privacy shows how to turn off your **TV's own
+  tracking**, for its make. Hearth itself idles at under 2% of one processor
+  core and about 300 MB ([PERFORMANCE.md](docs/PERFORMANCE.md)).
 - **Captures**: take a screenshot over any game from the Quick Menu; the
   **Captures** tile shows them all (full screen, flip through, delete), and
   they appear in the screen saver. Kept in `~/Pictures/Hearth`.
@@ -51,9 +63,10 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   **Favorites** row at the top; **Y → Move** rearranges tiles in a row. How
   Hearth compares with smart TVs and consoles, and what's next:
   [docs/COMPARISON.md](docs/COMPARISON.md).
-- **Epic Games, GOG and Battle.net too**: an Epic Games tile (Heroic, also
-  GOG and Amazon) and a Battle.net tile (Lutris). Their installed games join
-  Steam's in the Library, Continue and Search, and start directly. See
+- **Every PC store in one Library**: an Epic Games tile (Heroic, also GOG and
+  Amazon), and Battle.net, EA app and Ubisoft Connect tiles (Lutris). Their
+  installed games join Steam's in the Library, Continue and Search, and start
+  directly. See
   [docs/GAME_STORES.md](docs/GAME_STORES.md).
 - **Your games up front**: a **Continue** row of what you played last, across
   Steam and every emulated console, with their artwork. The **Library** tile lists
@@ -101,7 +114,9 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   (see [Streaming services](docs/STREAMING.md) for why Netflix and similar
   services aren't there, and the options for adding them).
 - **Your TV follows the PC**: with a CEC adapter, the TV turns on and switches
-  input when the PC wakes, and goes to standby when it sleeps.
+  input when the PC wakes (trying again until the TV answers), goes to standby
+  when it sleeps, and, like a console, **pressing Guide brings the TV to
+  Hearth** if someone left it on another input.
 - **Settings app, with the remote**: a Settings tile with everything in one
   place: livery, motion and clock; which tiles show; **audio** (where sound
   plays, which microphone, with a test sound); the Guide button,

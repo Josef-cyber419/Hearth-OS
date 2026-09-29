@@ -26,6 +26,13 @@ device:
   it sleeps
 
 Hearth sets it up automatically (see `image/system_files/usr/lib/udev/rules.d`).
+Like a console, **pressing Guide turns the TV on and switches it to Hearth**
+(if someone left it on another input), and so does waking the home screen
+from its screen saver. Hearth keeps asking for a few seconds until the TV
+says it's on, because many TVs ignore the first request while they start up.
+If it never works, turn on CEC in the TV's settings (every brand names it
+differently: Anynet+ on Samsung, SimpLink on LG, BRAVIA Sync on Sony).
+`/etc/hearth/cec.conf` turns the automatic wake and standby off.
 Some users report the passthrough limiting 4K HDR bandwidth; check reviews
 against the resolution you want. If it's a problem for you, a FLIRC gives you
 remote control, but not TV power/input control.
