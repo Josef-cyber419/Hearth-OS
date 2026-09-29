@@ -181,7 +181,10 @@ brought. A change merged into `main` bumps it (a new minor version, or a patch
 for a fix on its own) and adds its changelog entry. CI then tags it
 (`v0.20.0`), publishes a GitHub release with those notes, and pins an image to
 it (`ghcr.io/<owner>/hearth-os:0.20.0`), so any version can be installed or
-gone back to with `bootc switch`.
+gone back to with `bootc switch`. Versions from before tagging began (0.1.0 to
+0.19.0) are published too once the repository has a `RELEASE_TOKEN` secret (a
+fine-grained token with Contents and Workflows read/write): GitHub doesn't let
+the workflow's own token tag commits that old.
 
 ## Branches and updates
 
