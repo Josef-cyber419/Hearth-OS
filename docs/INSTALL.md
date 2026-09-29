@@ -64,6 +64,10 @@ plain Bazzite.
 - **Emulation**: ES-DE installs itself in the background shortly after first
   login, then the Emulation tile appears. Add games from Desktop Mode. See
   [EMULATION.md](EMULATION.md).
+- **Epic Games and Battle.net**: sign in from their tiles; see
+  [GAME_STORES.md](GAME_STORES.md).
+- **A fixed IP address** (for port forwarding, or streaming to this PC):
+  Settings → Network → IP address → Manual.
 - **YouTube**: opens YouTube's TV interface (via VacuumTube). Sign in with a
   code from your phone, the same way you would on a smart TV.
 - **Netflix, Disney+ and other paid services**: not included by default. See

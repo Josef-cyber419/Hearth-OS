@@ -47,6 +47,10 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   **Favorites** row at the top; **Y → Move** rearranges tiles in a row. How
   Hearth compares with smart TVs and consoles, and what's next:
   [docs/COMPARISON.md](docs/COMPARISON.md).
+- **Epic Games, GOG and Battle.net too**: an Epic Games tile (Heroic, also
+  GOG and Amazon) and a Battle.net tile (Lutris). Their installed games join
+  Steam's in the Library, Continue and Search, and start directly. See
+  [docs/GAME_STORES.md](docs/GAME_STORES.md).
 - **Your games up front**: a **Continue** row of what you played last, across
   Steam and every emulated console, with their artwork. The **Library** tile lists
   every installed Steam game and every ROM, by platform. Games start directly:
@@ -95,11 +99,13 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - **Your TV follows the PC**: with a CEC adapter, the TV turns on and switches
   input when the PC wakes, and goes to standby when it sleeps.
 - **Settings app, with the remote**: a Settings tile with everything in one
-  place: livery, motion and clock; which tiles show; the Guide button,
+  place: livery, motion and clock; which tiles show; **audio** (where sound
+  plays, which microphone, with a test sound); the Guide button,
   stick dead zone and controller-as-mouse speed; the Wii Remote (sensor bar position, pointer
   speed and steadiness, sideways hold, mouse mode, and a two-target pointer
   calibration); emulator tuning; Bluetooth pairing; Wi-Fi with an on-screen
-  keyboard and a connection test; **drives added after install**, set up for
+  keyboard, a connection test, a **static IP address** and **DNS servers**
+  (Cloudflare, Google, Quad9 or your own); **drives added after install**, set up for
   Steam games and ROMs ([STORAGE.md](docs/STORAGE.md)); hardware,
   temperatures, updates and problem reports. Also the things TVs and consoles are expected to have: a
   screen saver with your games' art (OLED-friendly), optional UI sounds, sleep when idle, screen edges for TVs that

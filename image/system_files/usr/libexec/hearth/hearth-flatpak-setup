@@ -30,3 +30,9 @@ app_ids /usr/share/hearth/emulators.list | while read -r app; do
         --filesystem=/run/media --filesystem=/var/mnt \
         "$app"
 done
+
+# Game launchers install games, so they need the other drives too.
+for app in com.heroicgameslauncher.hgl net.lutris.Lutris; do
+    flatpak info --system "$app" >/dev/null 2>&1 &&
+        flatpak override --system --filesystem=/run/media --filesystem=/var/mnt "$app"
+done

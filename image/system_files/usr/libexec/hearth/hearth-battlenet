@@ -1,0 +1,28 @@
+#!/usr/bin/bash
+# The Battle.net tile: Battle.net runs under Lutris (Wine/Proton). Starts it
+# once Lutris has it installed; until then opens Lutris's Battle.net installer
+# (pick "Install", then sign in).
+set -euo pipefail
+if flatpak info net.lutris.Lutris >/dev/null 2>&1; then
+    lutris=(flatpak run net.lutris.Lutris)
+    db="$HOME/.var/app/net.lutris.Lutris/data/lutris/pga.db"
+elif command -v lutris >/dev/null; then
+    lutris=(lutris)
+    db="$HOME/.local/share/lutris/pga.db"
+else
+    echo "hearth-battlenet: Lutris isn't installed" >&2
+    exit 1
+fi
+installed=$(python3 - "$db" <<'PY'
+import sqlite3, sys
+try:
+    con = sqlite3.connect(f"file:{sys.argv[1]}?mode=ro", uri=True, timeout=1)
+    print(con.execute("SELECT COUNT(*) FROM games WHERE slug = 'battlenet' AND installed = 1").fetchone()[0])
+except sqlite3.Error:
+    print(0)
+PY
+)
+if [[ $installed -gt 0 ]]; then
+    exec "${lutris[@]}" lutris:rungame/battlenet
+fi
+exec "${lutris[@]}" lutris:install/battlenet

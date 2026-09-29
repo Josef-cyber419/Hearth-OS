@@ -144,7 +144,7 @@ def run_foreground(info: dict, gs: Gamescope | None, hold_seconds: float, config
         watcher.stop()
         session.update(lambda s: s.update(foreground=None, focus="home", paused=False, suspend_request=False))
         key = library.key_of(info["id"])
-        if key and not key.startswith("steam:"):  # Steam counts its own games' time
+        if key and not library.counts_own_time(key):  # Steam and Lutris count their own games' time
             library.add_playtime(key, time.monotonic() - in_front_since)
     if suspended:
         return None
