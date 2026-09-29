@@ -28,6 +28,11 @@ RETURN_SECONDS = 0.55
 LAUNCH_SECONDS = 0.42
 CONFIRM_SECONDS = 0.18
 POINTER_SECONDS = 2.5  # the pointer hides this long after it last moved
+# The backdrop follows the focused tile (its artwork, blurred, or its colour)
+# once focus rests this long, then fades across over BACKDROP_FADE seconds.
+BACKDROP_DELAY = 0.22
+BACKDROP_FADE = 0.45
+BATTERY_SECONDS = 20.0  # how often the status bar re-reads controller batteries
 # Resting the pointer near the top or bottom edge scrolls the rows.
 EDGE_ZONE = 0.12  # fraction of the screen's height at each edge
 EDGE_FIRST = 0.35  # seconds at the edge before the first step
@@ -80,6 +85,35 @@ def load_art(path: str | None) -> pygame.Surface | None:
         except (pygame.error, OSError, FileNotFoundError):
             _art[path] = None
     return _art[path]
+
+
+def _soft_glow(size: tuple[int, int], color, at: tuple[float, float], reach: float, alpha: int) -> pygame.Surface:
+    """A soft round glow of `color`, strongest at `at` (fractions of the
+    screen) and gone `reach` screen-heights away. Worked out on a tiny
+    image and scaled up in steps, so it has no edge at all."""
+    w, h = size
+    gw, gh = 64, 36
+    small = pygame.Surface((gw, gh), pygame.SRCALPHA)
+    cx, cy, r = at[0] * gw, at[1] * gh, reach * gh
+    for y in range(gh):
+        for x in range(gw):
+            d = ((x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2) ** 0.5 / r
+            if d < 1:
+                small.set_at((x, y), (*color, int(alpha * (1 - d) ** 2)))
+    mid = pygame.transform.smoothscale(small, (w // 4, h // 4))
+    return pygame.transform.smoothscale(mid, (w, h))
+
+
+def _star(surf: pygame.Surface, color, center, r: float) -> None:
+    import math
+
+    cx, cy = center
+    pts = []
+    for i in range(10):
+        a = -math.pi / 2 + i * math.pi / 5
+        rr = r if i % 2 == 0 else r * 0.45
+        pts.append((cx + rr * math.cos(a), cy + rr * math.sin(a)))
+    pygame.draw.polygon(surf, color, pts)
 
 
 def cover(img: pygame.Surface, size: tuple[int, int]) -> pygame.Surface:
@@ -244,7 +278,17 @@ class HomeScreen:
         self.back_exits = False  # the Library: B leaves it
         self.exit = False
         self.saver = False  # the screen saver is showing
-        self.hints = (("A", "Open"), ("Y", "Options"), ("START", "System"), ("GUIDE", "Quick Menu"))
+        self.hints = (("A", "Open"), ("X", "Favorite"), ("Y", "Options"), ("GUIDE", "Quick Menu"))
+        self.favorites: set[str] = self._load_favorites()
+        self._backdrops: dict[str, pygame.Surface] = {}
+        self._backdrop: tuple[str, pygame.Surface] | None = None  # showing now
+        self._backdrop_prev: pygame.Surface | None = None  # fading out
+        self._backdrop_t0 = 0.0
+        self._batteries: list = []
+        self._batteries_at = -1e9
+        self._moving_rect: pygame.Rect | None = None
+        # Moving a tile (Options → Move): (row, the tile's id, where it started).
+        self.moving: tuple[int, str, list[str]] | None = None
 
     # -- caches ----------------------------------------------------------------
 
@@ -301,32 +345,57 @@ class HomeScreen:
 
     # -- input -----------------------------------------------------------------
 
-    # -- the Options popup (Y): pin, unpin, hide -------------------------------
+    # -- the Options popup (Y): favourite, move, hide ---------------------------
+
+    @staticmethod
+    def _load_favorites() -> set[str]:
+        from . import layout
+
+        try:
+            return set(layout.favorites())
+        except Exception:  # a broken settings file mustn't break the home screen
+            return set()
+
+    def toggle_favorite(self) -> None:
+        """X: star or unstar the tile you're on (the Favorites row)."""
+        from . import layout
+
+        app = self.home.selected
+        if app is None or not layout.can_favorite(app.id) or self.rebuild is None:
+            return
+        on = layout.toggle_favorite(app.id)
+        events.record("home_favorite", tile=app.id, on=on)
+        self.reload(self.rebuild(), app.id, keep_row=True)
+        self.message = f"{app.name}: added to Favorites" if on else f"{app.name}: removed from Favorites"
 
     def open_options(self) -> None:
-        from . import library, settings
+        from . import layout, library, settings
 
         app = self.home.selected
         if app is None:
             return
         row = self.home.config.rows[self.home.row].title
         key = library.key_of(app.id)
-        prefs = settings.load()
         choices: list[tuple[str, Callable[[], None]]] = []
         if app.command[0] == "hearth:resume":
             from . import hub
 
             choices.append((f"Close {app.name}", lambda: hub.close_paused(app.command[1])))
-        elif key:
-            if key in prefs.get("pins", []):
-                choices.append(("Unpin from home", lambda: settings.toggle_in("pins", key, False)))
-            else:
-                choices.append(("Pin to home", lambda: settings.toggle_in("pins", key, True)))
-            if row == "Continue":
+        else:
+            if self.rebuild is not None:
+                if app.id in self.favorites:
+                    choices.append(("Remove from Favorites", lambda: layout.set_favorite(app.id, False)))
+                else:
+                    choices.append(("Add to Favorites", lambda: layout.set_favorite(app.id, True)))
+                # The Library sorts its platform rows itself; only its Favorites row moves.
+                movable = layout.can_move(row) and (not self.back_exits or row == layout.FAVORITES)
+                if movable and len(self.home.config.rows[self.home.row].apps) > 1:
+                    choices.append(("Move", self.start_move))
+            if key and row == "Continue":
                 choices.append(("Remove from Continue", lambda: settings.toggle_in("hide_recent", key, True)))
-        elif app.id not in ("settings", "library"):
-            choices.append(("Hide this tile", lambda: settings.set_hidden(app.id, True)))
-            choices.append(("Bring hidden tiles back: Settings → Home screen", lambda: None))
+            if not key and row != layout.FAVORITES and app.id not in ("settings", "library"):
+                choices.append(("Hide this tile", lambda: settings.set_hidden(app.id, True)))
+                choices.append(("Bring hidden tiles back: Settings → Home screen", lambda: None))
         if not choices:
             return
         choices.append(("Cancel", lambda: None))
@@ -342,22 +411,74 @@ class HomeScreen:
             self.options = None
             act()
             events.record("home_option", tile=app.id, choice=label)
-            if self.rebuild is not None:
-                self.reload(self.rebuild(), app.id)
+            if self.rebuild is not None and self.moving is None:
+                self.reload(self.rebuild(), app.id, keep_row=True)
         elif nav in (Nav.BACK, Nav.OPTIONS, Nav.MENU):
             self.options = None
 
-    def reload(self, config, keep_id: str | None = None) -> None:
-        """New contents (after pinning, say), keeping the place as best it can."""
+    def reload(self, config, keep_id: str | None = None, keep_row: bool = False) -> None:
+        """New contents (after a favourite, say), keeping the place as best it
+        can: the same tile in the same row if it's still there."""
         row_title = self.home.config.rows[self.home.row].title if self.home.config.rows else None
         home = Home(config)
         titles = [r.title for r in config.rows]
-        if keep_id and home.select_id(keep_id):
+        if keep_row and keep_id and row_title in titles:
+            r = titles.index(row_title)
+            ids = [a.id for a in config.rows[r].apps]
+            home.row = r
+            if keep_id in ids:
+                home.cols[r] = ids.index(keep_id)
+            else:  # it left this row (e.g. unstarred in Favorites): stay near where it was
+                home.cols[r] = min(self.home.col, len(ids) - 1)
+        elif keep_id and home.select_id(keep_id):
             pass
         elif row_title in titles:
             home.row = titles.index(row_title)
+        home.clamp()
         self.home = home
         self._tiles.clear()
+        self.favorites = self._load_favorites()
+
+    # -- moving a tile (Options → Move) ------------------------------------------
+
+    def start_move(self) -> None:
+        app = self.home.selected
+        if app is None:
+            return
+        ids = [a.id for a in self.home.config.rows[self.home.row].apps]
+        self.moving = (self.home.row, app.id, ids)
+
+    def _move_handle(self, nav: Nav) -> None:
+        from dataclasses import replace
+
+        from . import layout
+
+        r, tile_id, before = self.moving
+        rows = list(self.home.config.rows)
+        apps = list(rows[r].apps)
+        c = self.home.cols[r]
+        if nav in (Nav.LEFT, Nav.RIGHT):
+            to = c + (1 if nav is Nav.RIGHT else -1)
+            if 0 <= to < len(apps):
+                apps[c], apps[to] = apps[to], apps[c]
+                rows[r] = replace(rows[r], apps=tuple(apps))
+                self.home.config = replace(self.home.config, rows=tuple(rows))
+                self.home.cols[r] = to
+            return
+        if nav in (Nav.SELECT, Nav.OPTIONS, Nav.BACK, Nav.MENU):
+            self.moving = None
+            if nav is Nav.BACK:  # put it back
+                rank = {k: i for i, k in enumerate(before)}
+                apps.sort(key=lambda a: rank.get(a.id, len(rank)))
+                rows[r] = replace(rows[r], apps=tuple(apps))
+                self.home.config = replace(self.home.config, rows=tuple(rows))
+                self.home.cols[r] = [a.id for a in apps].index(tile_id)
+                return
+            ids = [a.id for a in apps]
+            layout.save_order(rows[r].title, ids)
+            events.record("home_move", row=rows[r].title, tile=tile_id, at=ids.index(tile_id))
+            if self.rebuild is not None:
+                self.reload(self.rebuild(), tile_id, keep_row=True)
 
     # -- input -------------------------------------------------------------------
 
@@ -368,8 +489,15 @@ class HomeScreen:
         if self.options is not None:
             self._options_handle(nav)
             return None
+        if self.moving is not None:
+            self._move_handle(nav)
+            return None
         if nav is Nav.OPTIONS:
             self.open_options()
+            return None
+        if nav is Nav.FAVORITE:
+            if self.confirming is None:
+                self.toggle_favorite()
             return None
         if nav is Nav.BACK and self.back_exits and self.confirming is None:
             self.exit = True
@@ -478,7 +606,7 @@ class HomeScreen:
         now = time.monotonic()
         self._dt, self._last = min(0.1, now - self._last), now
         th, s = self.theme, self.surface
-        s.blit(self.background, (0, 0))
+        self._draw_backdrop(now)
 
         # Scroll just enough to keep the focused row fully on screen.
         area = pygame.Rect(0, th.header_h, th.width, th.height - th.header_h - th.footer_h)
@@ -504,6 +632,9 @@ class HomeScreen:
                     indicator = rect
         if indicator is not None:
             self._draw_indicator(indicator)
+        if self.moving is not None and self._moving_rect is not None:
+            self._draw_moving(self._moving_rect)
+        self._moving_rect = None
         s.set_clip(None)
         # Rows melt into the background at the edges instead of being cut off.
         s.blit(self._fade_bottom, (0, area.bottom - self._fade_bottom.get_height() + th.gap // 2))
@@ -520,6 +651,96 @@ class HomeScreen:
         if self.options is not None:
             self._draw_options()
         self._draw_pointer()
+
+    # -- the backdrop: the focused tile's art or colour, softly ------------------
+
+    def _make_backdrop(self, app: App) -> pygame.Surface:
+        th, lv = self.theme, self.theme.lv
+        w, h = th.width, th.height
+        out = self.background.copy()
+        art = load_art(app.art)
+        if art is not None:
+            # Blurred right out (down to a few dozen pixels, then up in steps
+            # so there are no edges), so it's light and colour, not a picture.
+            small = cover(art, (32, 18))
+            mid = pygame.transform.smoothscale(small, (w // 10, h // 10))
+            blur = pygame.transform.smoothscale(pygame.transform.smoothscale(mid, (w // 3, h // 3)), (w, h))
+            blur.set_alpha(95)
+            out.blit(blur, (0, 0))
+        else:
+            out.blit(_soft_glow((w, h), style.parse_color(app.color), (1.0, 0.0), 0.95, 95), (0, 0))
+        # Keep the rows readable: darken towards the bottom and the left.
+        out.blit(style.gradient((w, h), (*lv.ink, 30), (*lv.ink, 190), vertical=True), (0, 0))
+        out.blit(style.gradient((w, h), (*lv.ink, 120), (*lv.ink, 0), vertical=False), (0, 0))
+        return out.convert() if pygame.display.get_surface() else out
+
+    def _draw_backdrop(self, now: float) -> None:
+        s = self.surface
+        app = self.home.selected
+        rested = now - self._focus_since >= BACKDROP_DELAY
+        if app is not None and rested and (self._backdrop is None or self._backdrop[0] != app.id):
+            if app.id not in self._backdrops:
+                if len(self._backdrops) > 12:
+                    self._backdrops.pop(next(iter(self._backdrops)))
+                self._backdrops[app.id] = self._make_backdrop(app)
+            self._backdrop_prev = self._backdrop[1] if self._backdrop else self.background
+            self._backdrop = (app.id, self._backdrops[app.id])
+            self._backdrop_t0 = now
+        if self._backdrop is None:
+            s.blit(self.background, (0, 0))
+            return
+        p = 1.0 if self.reduced else min(1.0, (now - self._backdrop_t0) / BACKDROP_FADE)
+        img = self._backdrop[1]
+        if p >= 1.0 or self._backdrop_prev is None:
+            s.blit(img, (0, 0))
+            return
+        s.blit(self._backdrop_prev, (0, 0))
+        img.set_alpha(int(255 * ease_in_out(p)))
+        s.blit(img, (0, 0))
+        img.set_alpha(None)
+
+    def _draw_moving(self, rect: pygame.Rect) -> None:
+        """The tile being moved: outlined, with arrows either side."""
+        th, s = self.theme, self.surface
+        pygame.draw.rect(s, th.lv.accent, rect.inflate(int(8 * th.u), int(8 * th.u)),
+                         width=max(2, int(4 * th.u)), border_radius=th.radius + int(4 * th.u))
+        for side in (-1, 1):
+            cx = rect.centerx + side * (rect.w // 2 + int(24 * th.u))
+            tip, back = cx + side * int(12 * th.u), cx - side * int(8 * th.u)
+            pts = [(tip, rect.centery), (back, rect.centery - int(18 * th.u)), (back, rect.centery + int(18 * th.u))]
+            style.circle(s, (0, 0, 0), (cx, rect.centery), 26 * th.u)
+            pygame.draw.polygon(s, th.lv.accent, pts)
+
+    # -- the status bar: controller batteries -----------------------------------
+
+    def _draw_batteries(self, layer: pygame.Surface, right: int, cy: int) -> int:
+        """Batteries of connected controllers, right to left from `right`.
+        Returns the x where they end."""
+        from . import battery
+
+        th, lv = self.theme, self.theme.lv
+        now = time.monotonic()
+        if now - self._batteries_at > BATTERY_SECONDS:
+            self._batteries_at = now
+            self._batteries = battery.controllers()
+        x = right
+        f = th.font_date
+        for b in reversed(self._batteries):
+            color = lv.accent if b.low else lv.dim
+            label = style.tracked(f, "CHARGING" if b.charging and b.percent is None else
+                                  f"{b.percent}%" if b.percent is not None else "", color, 0.14)
+            x -= label.get_width()
+            layer.blit(label, (x, cy - label.get_height() // 2))
+            bw, bh = int(34 * th.u), int(16 * th.u)
+            body = pygame.Rect(x - bw - int(10 * th.u), cy - bh // 2, bw, bh)
+            pygame.draw.rect(layer, color, body, width=max(1, int(2 * th.u)), border_radius=max(1, int(3 * th.u)))
+            layer.fill(color, (body.right, body.centery - bh // 4, max(2, int(3 * th.u)), bh // 2))
+            inner = body.inflate(-int(6 * th.u), -int(6 * th.u))
+            fill = (b.percent or 0) / 100
+            if fill > 0:
+                layer.fill(color, (inner.x, inner.y, max(1, int(inner.w * fill)), inner.h))
+            x = body.x - int(26 * th.u)
+        return x
 
     def _draw_header(self) -> None:
         th, s, lv = self.theme, self.surface, self.theme.lv
@@ -540,10 +761,11 @@ class HomeScreen:
         date = style.tracked(th.font_date, time.strftime("%a %d %b").upper(), lv.dim, 0.22)
         date_rect = date.get_rect(bottomright=(clock_rect.x - int(22 * th.u), clock_rect.bottom - int(12 * th.u)))
         layer.blit(date, date_rect)
+        status_right = self._draw_batteries(layer, date_rect.x - int(28 * th.u), date_rect.centery)
         if self.badge:
             text = style.tracked(th.font_date, self.badge.upper(), lv.accent, 0.14)
             chip = text.get_rect().inflate(int(30 * th.u), int(14 * th.u))
-            chip.midright = (date_rect.x - int(28 * th.u), date_rect.centery)
+            chip.midright = (status_right, date_rect.centery)
             pygame.draw.rect(layer, lv.accent, chip, width=max(1, int(2 * th.u)), border_radius=chip.h // 2)
             layer.blit(text, text.get_rect(center=chip.center))
 
@@ -590,14 +812,16 @@ class HomeScreen:
                 continue
             appear = self._appear(0.06 * r + 0.045 * c, 0.42)
             if appear > 0:
-                self._draw_tile(app, pygame.Rect(x, ty, th.tile_w, th.tile_h), f, focused, appear)
+                self._draw_tile(app, pygame.Rect(x, ty, th.tile_w, th.tile_h), f, focused, appear,
+                                in_favorites=row.title == "Favorites")
                 visible = pygame.Rect(x, ty, th.tile_w, th.tile_h).clip(
                     pygame.Rect(0, th.header_h, th.width, th.height - th.header_h - th.footer_h))
                 if visible.w > th.tile_w // 3 and visible.h > th.tile_h // 3:
                     self._hits.append((visible, r, c))
         return focus_rect
 
-    def _draw_tile(self, app: App, rest: pygame.Rect, f: float, focused: bool, appear: float) -> None:
+    def _draw_tile(self, app: App, rest: pygame.Rect, f: float, focused: bool, appear: float,
+                   in_favorites: bool = False) -> None:
         th, s = self.theme, self.surface
         scale = 1 + (th.focus_scale - 1) * f
         rect = pygame.Rect(0, 0, round(rest.w * scale), round(rest.h * scale))
@@ -639,6 +863,12 @@ class HomeScreen:
             if glint is not None:
                 s.blit(style.rounded(glint, th.radius), rect.topleft)
 
+        if app.id in self.favorites and not in_favorites:  # starred (not needed in Favorites itself)
+            star_c = (rect.x + int(24 * th.u), rect.y + int(24 * th.u))
+            style.circle(s, (0, 0, 0), star_c, 14 * th.u)
+            _star(s, th.lv.accent, star_c, 10 * th.u)
+        if self.moving is not None and focused:
+            self._moving_rect = rect  # drawn over the row once it's all there (_draw_moving)
         if app.id in self.running:
             dot = (rect.right - int(26 * th.u), rect.y + int(26 * th.u))
             style.circle(s, (0, 0, 0), dot, 10 * th.u)
@@ -672,6 +902,11 @@ class HomeScreen:
     def _draw_hints(self) -> None:
         th, s, lv = self.theme, self.surface, self.theme.lv
         cy = th.height - th.footer_h // 2
+        if self.moving is not None:
+            x = th.margin
+            for button, label in (("D-PAD", "Move"), ("A", "Done"), ("B", "Cancel")):
+                x = style.button_hint(s, x, cy, button, label, th.type, lv)
+            return
         if self.message:
             text = th.font_hint.render(self.message, True, lv.text)
             x = th.margin

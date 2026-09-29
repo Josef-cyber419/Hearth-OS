@@ -1,6 +1,6 @@
 """Your games, wherever they live: Steam and the emulated consoles (ES-DE).
 
-Used for the home screen's "Continue" (recently played) and "Pinned" rows
+Used for the home screen's "Continue" (recently played) and "Favorites" rows
 and the Library. Everything is read from local files, nothing from the
 internet:
 
@@ -469,14 +469,6 @@ def recent(games: list[Game], limit: int = RECENT, hidden: set[str] | None = Non
     return [g for g in games if g.last_played > 0 and g.key not in hidden][:limit]
 
 
-def pinned(games: list[Game], pins: list[str]) -> list[Game]:
-    """Your pins in your order, then ES-DE favourites you haven't pinned."""
-    by_key = {g.key: g for g in games}
-    out = [by_key[k] for k in pins if k in by_key]
-    out += [g for g in games if g.favorite and g.key not in pins]
-    return out
-
-
 # -- as home screen tiles ------------------------------------------------------
 
 COLORS = {"steam": "#1b2838", "pc": "#3a4a5c", "psx": "#3b3f8c", "ps2": "#1f3d8a", "ps3": "#26262e", "psp": "#2d2d38",
@@ -501,41 +493,48 @@ def key_of(app_id: str) -> str | None:
 
 
 def with_game_rows(config, games: list[Game] | None = None):
-    """The home screen with "Continue" (recently played) and "Pinned" rows on top."""
+    """The home screen: Favorites (any tile you starred, in your order),
+    Continue (recently played) and PC games on top, then the rows from
+    apps.toml with the tiles in the order you arranged them."""
     from dataclasses import replace
 
-    from . import settings
+    from . import layout, settings
     from .config import Row
 
     games = all_games() if games is None else games
     prefs = settings.load()
     rows = []
+    if config.home_pins:
+        tiles = {a.id: a for row in config.rows for a in row.apps}
+        tiles.update({f"game:{g.key}": as_app(g) for g in games})
+        starred = tuple(as_app(g) for g in games if g.favorite)  # ES-DE's favourites
+        fav = layout.favorites_row(tiles, layout.favorites(prefs), starred)
+        if fav is not None:
+            rows.append(fav)
     if config.home_recent:
         apps = tuple(as_app(g) for g in recent(games, hidden=set(prefs.get("hide_recent", []))))
         if apps:
             rows.append(Row("Continue", apps))
-    if config.home_pins:
-        apps = tuple(as_app(g) for g in pinned(games, prefs.get("pins", [])))
-        if apps:
-            rows.append(Row("Pinned", apps))
     # Your own PC games (~/Games) get a row of their own: nothing else lists them.
     apps = tuple(as_app(g) for g in sorted(games, key=lambda g: g.title.lower()) if g.system == "pc")
     if apps:
         rows.append(Row("PC games", apps))
-    return replace(config, rows=tuple(rows) + config.rows)
+    config = layout.apply_order(replace(config, rows=tuple(rows) + config.rows), prefs)
+    return config
 
 
 def library_config(games: list[Game] | None = None):
-    """The Library: pinned, recently played, then one row per platform."""
-    from . import settings
+    """The Library: favourite games, recently played, then one row per platform."""
+    from . import layout, settings
     from .config import Config, Row
 
     games = all_games() if games is None else games
     prefs = settings.load()
     rows = []
-    pins = tuple(as_app(g) for g in pinned(games, prefs.get("pins", [])))
-    if pins:
-        rows.append(Row("Pinned", pins))
+    tiles = {f"game:{g.key}": as_app(g) for g in games}
+    fav = layout.favorites_row(tiles, layout.favorites(prefs), tuple(as_app(g) for g in games if g.favorite))
+    if fav is not None:
+        rows.append(fav)
     played_recently = tuple(as_app(g) for g in recent(games, limit=20))
     if played_recently:
         rows.append(Row("Recently played", played_recently))

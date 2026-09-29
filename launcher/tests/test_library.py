@@ -106,17 +106,18 @@ def test_pins_recent_and_home_rows(home, monkeypatch, shipped_config):
     assert games[0].key == "rom:snes:Zelda.sfc"  # played through Hearth just now
     assert [g.title for g in library.recent(games)] == ["Zelda", "Portal 2", "The Legend of Zelda: The Wind Waker",
                                                       "ELDEN RING"]
-    settings.toggle_in("pins", "steam:1245620", True)
-    assert [g.key for g in library.pinned(games, settings.load()["pins"])] == [
-        "steam:1245620", "rom:gc:Wind Waker.rvz"]  # your pin, then ES-DE's favourite
+    settings.toggle_in("pins", "steam:1245620", True)  # pinned before Favorites existed: carries over
     config = library.with_game_rows(cfg.load(shipped_config), games)
-    assert [r.title for r in config.rows[:3]] == ["Continue", "Pinned", "Play"]
-    steam_game = config.rows[1].apps[0]
+    assert [r.title for r in config.rows[:3]] == ["Favorites", "Continue", "Play"]
+    assert [a.id for a in config.rows[0].apps] == [
+        "game:steam:1245620", "game:rom:gc:Wind Waker.rvz"]  # your favourite, then ES-DE's star
+    steam_game = config.rows[0].apps[0]
     assert steam_game.id == "game:steam:1245620" and not steam_game.tag_windows and not steam_game.home_button
     settings.put("home", "recent", False)
-    assert [r.title for r in library.with_game_rows(cfg.load(shipped_config), games).rows[:2]] == ["Pinned", "Play"]
+    assert [r.title for r in library.with_game_rows(cfg.load(shipped_config), games).rows[:2]] == [
+        "Favorites", "Play"]
     rows = [r.title for r in library.library_config(games).rows]
-    assert rows[:3] == ["Pinned", "Recently played", "Steam"] and "GameCube" in rows
+    assert rows[:3] == ["Favorites", "Recently played", "Steam"] and "GameCube" in rows
 
 
 def test_options_pin_from_home(home, monkeypatch, shipped_config):
@@ -133,11 +134,12 @@ def test_options_pin_from_home(home, monkeypatch, shipped_config):
         screen.rebuild = build
         assert screen.home.config.rows[0].title == "Continue"
         screen.handle(Nav.OPTIONS)
-        assert [c[0] for c in screen.options[1]] == ["Pin to home", "Remove from Continue", "Cancel"]
+        assert [c[0] for c in screen.options[1]] == ["Add to Favorites", "Remove from Continue", "Cancel"]
         screen.draw()
         screen.handle(Nav.SELECT)
-        assert settings.load()["pins"] == ["steam:620"]
-        assert [r.title for r in screen.home.config.rows[:2]] == ["Continue", "Pinned"]
+        assert settings.load()["favorites"] == ["game:steam:620"]
+        assert [r.title for r in screen.home.config.rows[:2]] == ["Favorites", "Continue"]
+        assert screen.home.config.rows[screen.home.row].title == "Continue"  # stays where you were
         screen.handle(Nav.OPTIONS)
         screen.handle(Nav.DOWN)
         screen.handle(Nav.SELECT)  # Remove from Continue

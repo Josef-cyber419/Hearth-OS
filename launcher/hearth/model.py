@@ -18,7 +18,8 @@ class Nav(Enum):
     MENU = auto()
     TAB_PREV = auto()
     TAB_NEXT = auto()
-    OPTIONS = auto()  # Y / the Menu-style "more" button: pin, hide, ...
+    OPTIONS = auto()  # Y / the Menu-style "more" button: favourite, move, hide, ...
+    FAVORITE = auto()  # X: star / unstar the tile (the Favorites row)
 
 
 @dataclass
