@@ -41,6 +41,7 @@ HOUSEKEEPING_SECONDS = 0.5
 UPDATE_CHECK_SECONDS = 30 * 60
 # Without real transparency, the whole overlay is drawn at this opacity.
 FALLBACK_OPACITY = 0.93
+NOTICE_CHECK_SECONDS = 20.0  # batteries, new installs, updates
 MOUSE_POINTER_SECONDS = 3.0  # the drawn pointer fades after the mouse rests this long
 
 
@@ -117,6 +118,12 @@ class Actions:
         self.o.refresh(force=True)
         return None  # stay open to show progress
 
+    def media(self, bus: str, action: str):
+        """Play/pause/skip what's playing; the menu stays open to show it."""
+        self.o.media.control(bus, action)  # on the media thread; the menu updates when it's done
+        events.record("media", action=action)
+        return None
+
     def set_wii_mouse(self, on: bool):
         """Remembered per app, across restarts."""
         key = focus_key(session.read())
@@ -173,6 +180,18 @@ class Overlay:
         self.mapper = InputMapper()
         self.mapper.open_devices()
         self.pointer = Pointer(make_uinput())
+        from .toasts import Notices
+
+        self.notices = Notices()
+        self._toast_showing = False
+        self._noticed = -1e9
+        from .perf import Monitor
+
+        self.perf = Monitor()
+        from .media import Watcher
+
+        self.media = Watcher()
+        self._perf_reading = None
         self._mouse_at: tuple[int, int] | None = None
         self._mouse_moved = -1e9
         # Hearth draws its own pointer over the menu (see mouse()).
@@ -276,9 +295,15 @@ class Overlay:
         discord = self.config.app("discord")
         wii = {"mouse": self.wii_mouse(), "app": self.title()} if self.wii and self.wii.active else None
         game = session.frontend_game(self.state.get("foreground"))
+        if self.open and self.menu.current.key == "performance" or self._perf_reading is None:
+            try:
+                self._perf_reading = self.perf.read()
+            except Exception:  # a sensor that misbehaves mustn't break the menu
+                log.exception("performance reading")
         ctx = Context(self.audio, snapshot, self.state, self.actions,
                       discord_available=bool(discord and discord.available()), wii=wii,
-                      frontend=game[0] if game else None)
+                      frontend=game[0] if game else None, perf=self._perf_reading,
+                      media=self.media.poll())
         self.menu.set_tabs(build_tabs(ctx))
 
     # -- updates ---------------------------------------------------------------
@@ -359,6 +384,7 @@ class Overlay:
                       **(self.frames.summary() or {}))
         if self.gs and self.xwin:
             self.gs.set_overlay_visible(self.xwin, False)
+        self._toast_showing = False  # a notice still up is shown again (see show_notice)
         self.thaw()
         session.update(lambda s: s.update(overlay_open=False, paused=False))
 
@@ -621,9 +647,9 @@ class Overlay:
         return bool(app and app.pointer)
 
     def draw(self) -> None:
-        r = self.renderer
         if self.open:
-            self.refresh()
+            fresh, self.media.fresh = self.media.fresh, False
+            self.refresh(force=fresh)  # right away when what's playing changed
         paused = bool(self.paused_unit)
         if not self.transparent:
             # No per-pixel alpha: the whole window is semi-opaque instead.
@@ -631,6 +657,12 @@ class Overlay:
         moved = time.monotonic() - self._mouse_moved < MOUSE_POINTER_SECONDS
         self.view.draw(self.surface, self.menu, self.title(), paused, self.t,
                        pointer=self._mouse_at if moved else None)
+        self.present()
+        self.frames.tick()
+
+    def present(self) -> None:
+        """Put self.surface on screen."""
+        r = self.renderer
         try:
             frame = self.surface.premul_alpha()
         except AttributeError:  # older pygame
@@ -643,7 +675,6 @@ class Overlay:
         r.clear()
         tex.draw(dstrect=(0, 0, *self.size))
         r.present()
-        self.frames.tick()
 
     def run(self) -> None:
         clock = self.pg.time.Clock()
@@ -661,9 +692,51 @@ class Overlay:
                     raise
                 time.sleep(0.5)
 
+    def watch_for_notices(self) -> None:
+        """Every so often: controller batteries, newly installed apps, an update."""
+        from . import battery
+
+        now = time.monotonic()
+        if now - self._noticed < NOTICE_CHECK_SECONDS:
+            return
+        self._noticed = now
+        try:
+            self.notices.batteries(battery.controllers())
+            # Tiles you hid count too, so bringing one back isn't "just installed".
+            fresh = cfg.load(self.config_path, hide=False)
+            self.notices.tiles({a.id: a.name for row in fresh.rows for a in row.apps if a.available()})
+            update = self.state.get("update") or {}
+            if update.get("status") == "ready":
+                self.notices.update_ready(update.get("version") or "ready")
+        except Exception:  # a notice is never worth breaking the menu over
+            log.exception("notices")
+
+    def show_notice(self) -> bool:
+        """Draw the current notice over the app (without taking its input).
+        Returns True while one is up."""
+        toast = self.notices.current(time.monotonic()) if self.transparent and self.gs else None
+        if toast is None:
+            if self._toast_showing:
+                self._toast_showing = False
+                if not self.open:
+                    self.gs.set_overlay_visible(self.xwin, False)
+            return False
+        if not self._toast_showing:
+            self._toast_showing = True
+            events.record("notice", title=toast.title)
+            self.gs.set_overlay_visible(self.xwin, True, 1.0, focus=False)
+        self.surface.fill((0, 0, 0, 0))
+        self.view.draw_toast(self.surface, toast, time.monotonic())
+        self.present()
+        return True
+
     def step(self, clock) -> None:
         self.handle_events()
         self.housekeeping()
+        self.watch_for_notices()
+        if not self.open and self.t == 0.0 and self.show_notice():
+            clock.tick(30)
+            return
         target = 1.0 if self.open else 0.0
         if self.t != target or self.open:
             step = clock.get_time() / 1000 / ANIM_SECONDS

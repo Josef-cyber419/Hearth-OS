@@ -272,14 +272,15 @@ def roundel(surf: pygame.Surface, center, radius: float, text: str, font: pygame
 _prompts = {"style": "auto", "swap": False, "last": "xbox"}
 _POSITION = {"A": "south", "B": "east", "X": "west", "Y": "north"}  # the Xbox names, by position
 _LABELS = {
-    "xbox": {"south": "A", "east": "B", "west": "X", "north": "Y", "START": "MENU", "GUIDE": "GUIDE"},
+    "xbox": {"south": "A", "east": "B", "west": "X", "north": "Y", "START": "MENU", "GUIDE": "GUIDE",
+             "VIEW": "VIEW"},
     "playstation": {"south": "cross", "east": "circle", "west": "square", "north": "triangle",
-                    "START": "OPTIONS", "GUIDE": "PS"},
-    "nintendo": {"south": "B", "east": "A", "west": "Y", "north": "X", "START": "+", "GUIDE": "HOME"},
+                    "START": "OPTIONS", "GUIDE": "PS", "VIEW": "CREATE"},
+    "nintendo": {"south": "B", "east": "A", "west": "Y", "north": "X", "START": "+", "GUIDE": "HOME", "VIEW": "−"},
     # The keys that do the same (input.KEYS), and a Wii Remote's buttons
     # (wiiinput.KEYS: A, B, − for options, + for the menu).
     "keyboard": {"south": "ENTER", "east": "ESC", "west": "F", "north": "F2", "START": "TAB", "GUIDE": "WIN",
-                 "LB": "Q", "RB": "E"},
+                 "LB": "Q", "RB": "E", "VIEW": "/"},
     "wii": {"south": "A", "east": "B", "west": "1", "north": "−", "START": "+", "GUIDE": "HOME"},
 }
 # Controller names (as SDL reports them) that aren't Xbox-style.

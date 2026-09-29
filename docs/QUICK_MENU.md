@@ -31,7 +31,9 @@ Steam ever hangs).
 
 ## Tabs
 
-- **Audio**: volume of the current output, which **output** to use (TV
+- **Audio**: first, **what's playing** in any media app (VacuumTube, Twitch,
+  Spotify, Kodi, a browser…): A plays/pauses, Left/Right skip. Then the
+  volume of the current output, which **output** to use (TV
   speakers, soundbar, headset…), which **microphone**, mic level, mute mic.
   Switching output also moves everything already playing to it.
 - **Mixer**: a volume slider for each app playing sound, e.g. game,
@@ -42,6 +44,10 @@ Steam ever hangs).
   Discord hidden. Mute and deafen last for the current call. (PipeWire
   remembers app volumes between sessions, but Hearth clears a remembered
   Discord mute, so a new call never starts silently muted.)
+- **Stats**: how hard the PC is working, live: processor and graphics load
+  and temperature (plus the GPU's hotspot, clock and power), memory and video
+  memory. The top line says in plain words whether it's cool, warm, or hot
+  enough to be slowing down (throttling), and why.
 - **System**: resume, **Quit game, back to ES-DE** (while a game runs from
   ES-DE: closes just the emulator, ES-DE stays on your list), **Home, keep
   <game> paused** (Quick Resume: it waits
@@ -50,6 +56,10 @@ Steam ever hangs).
   problem, sleep, restart, power off. With a Wii Remote connected, also
   *Wii Remote pointer as mouse* for the app in front. Anything that ends what
   you're doing asks you to press A again.
+
+**Notices** appear top right over whatever's playing, for a few seconds, and
+never take the game's input: a controller running low on battery, an app
+that just finished installing, an update ready to finish on restart.
 
 A Wii Remote on a DolphinBar opens the Quick Menu with a tap of **Home**; see
 [HARDWARE.md](HARDWARE.md#wii-mayflash-dolphinbar-30-yes-its-worth-it).

@@ -24,7 +24,7 @@ import pygame
 
 from . import config as cfg
 from . import input as input_
-from . import desktopguide, events, homebutton, library, logs, session, style, ui, updates
+from . import desktopguide, events, homebutton, library, logs, session, sounds, style, ui, updates
 from .gamescope import HOME_APPID, Gamescope
 from .model import Home
 
@@ -87,6 +87,7 @@ def run_foreground(info: dict, gs: Gamescope | None, hold_seconds: float, config
         gs.show_app(session.focus_order(state))
     proc = PROCS.get(info["id"])
     started = time.monotonic() - max(0.0, time.time() - info.get("started", time.time()))
+    in_front_since = time.monotonic()  # play time counts only while it's on screen
     outcome = {"sent_home": False}
     keep_paused = info.get("resumable") and (config is None or config.guide_hold_action == "resume")
 
@@ -142,6 +143,9 @@ def run_foreground(info: dict, gs: Gamescope | None, hold_seconds: float, config
     finally:
         watcher.stop()
         session.update(lambda s: s.update(foreground=None, focus="home", paused=False, suspend_request=False))
+        key = library.key_of(info["id"])
+        if key and not key.startswith("steam:"):  # Steam counts its own games' time
+            library.add_playtime(key, time.monotonic() - in_front_since)
     if suspended:
         return None
     PROCS.pop(info["id"], None)
@@ -452,6 +456,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     """One round of: show the home screen, then run what was picked."""
     config = home_config(args, state)
     style.set_prompts(config.prompts, config.confirm)
+    sounds.enable(config.sounds)
     input_.set_deadzone(config.stick_deadzone)
     if overlay:
         overlay.ensure()
@@ -472,7 +477,8 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     view, offset = style.inset(state["surface"], config.safe_area)
     common = dict(input_blocked=lambda: session.read()["overlay_open"], livery=config.livery, motion=config.motion,
                   clock=config.clock, swap_confirm=config.confirm == "east", offset=offset,
-                  saver_after=config.screensaver_minutes * 60, ask=lambda a: eviction_question(a, config))
+                  saver_after=config.screensaver_minutes * 60, saver_style=config.screensaver,
+                  ask=lambda a: eviction_question(a, config))
     app = ui.run(view, home, config.title, message=state["message"], allow_quit=dev_mode, stats=stats,
                  badge="Update ready: restart to finish" if ready else None,
                  running=set(current["background"]), intro=state["intro"],

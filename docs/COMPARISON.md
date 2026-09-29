@@ -16,14 +16,15 @@ Steam's Big Picture / Game Mode.
 | **Pick up where you left off**, instantly | Xbox (Quick Resume), PS5 (cards), Google TV (Continue watching) | **Yes**: Quick Resume row (up to 3 paused games), Continue row of recently played games. |
 | **A panel over whatever's playing** | PS5 Control Center, Xbox Guide, Switch Quick Settings, Steam QAM | **Yes**: Quick Menu (audio, per-app volume, Discord, power, updates, quit game), with mouse and tab-row navigation. |
 | **One remote for everything** | Apple TV and Roku (HDMI-CEC), consoles (controller) | **Yes**: controller, TV remote over CEC, Wii Remote, keyboard. On-screen hints follow what you use. |
-| **Looks after the TV** | Apple TV (aerial screen saver), LG (OLED care), all (sleep timers) | **Partly**: dark drifting-clock screen saver, sleep when idle. Next: an ambient mode with your games' art. |
-| **Universal search** across apps and games | Google TV, Apple TV, Roku, PS5 | **Not yet**. Hearth has the pieces (on-screen keyboard, the game library): a Search tile over games and apps is a good next step. |
+| **Looks after the TV** | Apple TV (aerial screen saver), LG (OLED care), all (sleep timers) | **Now**: an ambient screen saver of your games' art, slowly drifting and dimmed, with the time (or just the time), and sleep when idle. |
+| **Universal search** across apps and games | Google TV, Apple TV, Roku, PS5 | **Now**: the View button (Share / −, or "/"), or the Search tile: type with the controller or a keyboard; every tile and every game, matched by words, initials or platform. |
 | **Profiles**: each person's favourites, recents, avatar | Every console and TV | **Not yet**. Next: per-person favourites and Continue, chosen at start-up or from the Quick Menu. |
-| **Game details page**: playtime, last played, actions | PS5 game hub, Xbox game page, Steam | **Not yet**. Next: Y → *Details* with playtime, last played, "Remove from Continue", "Open in ES-DE". |
+| **Game details page**: playtime, last played, actions | PS5 game hub, Xbox game page, Steam | **Now**: Y on a game shows its art, platform, last played, play time (Steam's own count, Hearth's for the rest) and times started, with Play, Favorite, Move and Remove from Continue. |
 | **Groups/folders** of tiles | Xbox (Groups), Apple TV (folders) | **Not yet**. Rows play this part today; custom rows can be added in `apps.toml`. Next: make a row from the home screen. |
-| **Sounds**: a soft click as you move, a chime on launch | PS5, Switch, Xbox | **Not yet**. Next: optional UI sounds (off by default, one switch in Settings). |
-| **Notifications**: toast for "download done", "controller low" | Every console | **Partly**: update-ready badge. Next: a small toast for low controller battery and finished installs. |
-| **Now playing** controls for music and video | Apple TV, Google TV | **Partly**: per-app volume in the Quick Menu. Next: play/pause/skip for what's playing (MPRIS). |
+| **Sounds**: a soft click as you move, a chime on launch | PS5, Switch, Xbox | **Now**: optional (Settings → Home screen → Sounds): a soft tick as focus moves, chimes to open and go back. |
+| **Notifications**: toast for "download done", "controller low" | Every console | **Now**: small notices over whatever's playing (without taking its input): controller battery low / very low, an app that just finished installing, an update ready. |
+| **Now playing** controls for music and video | Apple TV, Google TV | **Now**: the Quick Menu's Audio tab leads with what's playing (any MPRIS app: VacuumTube, Twitch, Spotify, Kodi…): A plays/pauses, Left/Right skip. |
+| **System monitor**: load, temperatures, throttling | Steam Deck (performance overlay), Xbox/PS5 (warnings only) | **Now**: Quick Menu → Stats: CPU and GPU load, temperatures (GPU hotspot too), clocks, power, memory and video memory, with a plain warning when a chip is at its limit or slowing down to cool off. |
 | **Premium streaming at full quality** | TVs and sticks (certified DRM) | **Can't** on any home-built PC (see STREAMING.md). YouTube (VacuumTube) and Twitch (VacuumStream) have TV-style apps; for Netflix and similar, a stick on another input. |
 
 ## Where Hearth is already ahead
@@ -40,14 +41,8 @@ Steam's Big Picture / Game Mode.
 - **Rolls back**: every update can be undone, and problem reports are one
   button.
 
-## Next, in order of what you'd notice most
+## Next
 
-1. **Search**: one tile, type or pick letters with the controller, results
-   from games and apps.
-2. **Game details** (Y on a game): playtime, last played, quick actions.
-3. **Low-battery and "install finished" toasts.**
-4. **Optional UI sounds.**
-5. **Ambient screen saver** with slowly panning game art.
-6. **Profiles.**
-7. **Make a row from the home screen** (a folder of favourites).
-8. **Now-playing controls** in the Quick Menu.
+Done from the list above: search, game details, notices, UI sounds, the
+ambient screen saver, now-playing controls, and a system monitor. Still to
+come, when wanted: **profiles** and **groups/folders** of tiles.

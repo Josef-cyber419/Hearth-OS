@@ -144,8 +144,10 @@ class Config:
     prompts: str = "auto"
     safe_area: int = 0  # percent kept clear at the screen's edges, for TVs that crop (overscan)
     home_recent: bool = True  # the "Continue" row of recently played games
-    home_pins: bool = True  # the "Pinned" row
+    home_pins: bool = True  # the Favorites row
+    sounds: bool = False  # soft UI sounds on the home screen (sounds.py)
     screensaver_minutes: int = 10  # 0 = never; protects OLED TVs from a still home screen
+    screensaver: str = "ambient"  # "ambient" (your games' art, slowly panning) or "clock" (dark, just the time)
     sleep_minutes: int = 0  # 0 = never; sleep after this long idle on the home screen
     emulation_resolution: str = "auto"  # target for emulator upscaling: auto, 1080p, 1440p, 4k
     # Quick Resume: how many games stay paused in the background (0 = off),
@@ -259,7 +261,9 @@ def parse(data: dict) -> Config:
         safe_area=int(_number(theme, "theme", "safe_area", 0, 0, 10)),
         home_recent=bool(home_table.get("recent", True)),
         home_pins=bool(home_table.get("pins", True)),
+        sounds=bool(home_table.get("sounds", False)),
         screensaver_minutes=int(_number(home_table, "home", "screensaver_minutes", 10, 0, 240)),
+        screensaver=_choice(home_table, "home", "screensaver", ("ambient", "clock")),
         sleep_minutes=int(_number(home_table, "home", "sleep_minutes", 0, 0, 1440)),
         emulation_resolution=_choice(data.get("emulation", {}), "emulation", "resolution",
                                      ("auto", "1080p", "1440p", "4k")),
