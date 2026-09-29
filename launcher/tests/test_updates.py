@@ -79,3 +79,29 @@ def test_requests_queue():
     ctl.main(["menu"])
     ctl.main(["home"])
     assert session.read()["requests"] == ["menu", "home"]
+
+
+def test_channels():
+    from hearth import updates
+
+    live = "docker://ghcr.io/you/hearth-os:latest"
+    assert updates.channel_of(live) == "live"
+    assert updates.channel_of("ghcr.io/you/hearth-os:staging") == "staging"
+    assert updates.channel_of("ghcr.io/you/hearth-os:abc123") == "abc123"
+    assert updates.channel_of("localhost:5000/hearth-os") == "live"  # no tag means latest
+    assert updates.channel_of(None) is None
+    assert updates.channel_image(live, "staging") == "ghcr.io/you/hearth-os:staging"
+    assert updates.channel_image("ghcr.io/you/hearth-os:staging", "live") == "ghcr.io/you/hearth-os:latest"
+
+
+def test_channel_command(monkeypatch, capsys):
+    from hearth import ctl, updates
+
+    monkeypatch.setattr(updates, "os_status", lambda: updates.OsStatus(image="docker://ghcr.io/you/hearth-os:latest"))
+    calls = []
+    assert ctl.cmd_channel(None) == 0
+    assert "Update channel: live" in capsys.readouterr().out
+    assert ctl.cmd_channel("live", run=calls.append) == 0 and calls == []  # already there
+    assert ctl.cmd_channel("staging", run=lambda cmd: calls.append(cmd) or 0) == 0
+    assert calls == [["sudo", "bootc", "switch", "ghcr.io/you/hearth-os:staging"]]
+    assert ctl.cmd_channel("staging", run=lambda cmd: 1) == 1  # the switch failed

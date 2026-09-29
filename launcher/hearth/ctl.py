@@ -7,6 +7,7 @@ or over SSH from another computer).
   hearthctl events [-n N]   timeline: launches, exits, crashes, frame rates
   hearthctl report          save everything needed to fix a problem, in one file
   hearthctl update          install OS + app updates now (restart to finish)
+  hearthctl channel [live|staging]  which build this PC follows; switch between them
   hearthctl rollback        go back to the previous OS version
   hearthctl menu | home     open the Quick Menu / close the app and go home
   hearthctl pause           go home, keep the game paused (Quick Resume)
@@ -335,6 +336,31 @@ def cmd_update() -> int:
     return 0
 
 
+def cmd_channel(channel: str | None, run=subprocess.call) -> int:
+    """Show, or switch, which build this PC follows: live (main) or staging."""
+    image = updates.os_status().image
+    current = updates.channel_of(image)
+    if channel is None:
+        print(f"Update channel: {current or 'unknown (not running a Hearth image?)'}")
+        print("  live     the main branch: what's released")
+        print("  staging  the staging branch: new work, to try before it goes live")
+        print("Switch with: hearthctl channel live|staging")
+        return 0 if current else 1
+    if not image:
+        print("Can't tell which image this PC runs (rpm-ostree status failed).")
+        return 1
+    if current == channel:
+        print(f"Already on {channel}.")
+        return 0
+    target = updates.channel_image(image, channel)
+    print(f"Switching to {channel} ({target}). This downloads it now; restart to finish.")
+    if run(["sudo", "bootc", "switch", target]) != 0:
+        print("Switch failed. Details above.")
+        return 1
+    print(f"Done: restart to run {channel}. Back again: hearthctl channel {current or 'live'}")
+    return 0
+
+
 def cmd_rollback(yes: bool) -> int:
     status = updates.os_status()
     if not status.rollback:
@@ -539,6 +565,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--screenshot", action="store_true", help="include a screenshot (only works in Game Mode)")
     p.add_argument("-o", "--out", help="folder to save to (default: ~/hearth-reports)")
     sub.add_parser("update")
+    p = sub.add_parser("channel", help="show or switch update channel: live or staging")
+    p.add_argument("name", nargs="?", choices=sorted(updates.CHANNELS))
     p = sub.add_parser("rollback")
     p.add_argument("-y", "--yes", action="store_true")
     sub.add_parser("menu")
@@ -570,6 +598,8 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_report(args.screenshot, args.out)
     if args.cmd == "update":
         return cmd_update()
+    if args.cmd == "channel":
+        return cmd_channel(args.name)
     if args.cmd == "rollback":
         return cmd_rollback(args.yes)
     if args.cmd in ("menu", "home", "pause"):
