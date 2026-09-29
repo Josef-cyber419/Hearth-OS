@@ -172,9 +172,9 @@ def harness(tmp_path):
     except Exception:
         raise
     finally:
-        log = tmp_path / "state/hearth/hearth.log"
-        if log.exists():
-            print(log.read_text()[-4000:])
+        for log in (tmp_path / "state/hearth/hearth.log", tmp_path / "hub.out"):
+            if log.exists():
+                print(f"--- {log.name} ---\n{log.read_text()[-4000:]}")
         h.close()
 
 
@@ -183,7 +183,8 @@ def test_full_session(harness):
 
     h = harness
     # 1. Boot: the home screen is tagged and in front, the overlay is ready.
-    home = wait_for("home screen window, tagged", lambda: h.tagged("Hearth", HOME_APPID))
+    # The first start on a fresh CI runner is slow (pygame and fonts load cold).
+    home = wait_for("home screen window, tagged", lambda: h.tagged("Hearth", HOME_APPID), timeout=30.0)
     wait_for("home in front", lambda: h.front_appid() == HOME_APPID)
     menu_win = wait_for("overlay window", lambda: h.window("Hearth Quick Menu"))
     assert h.gs.get_cardinal(menu_win, "STEAM_OVERLAY") == 1
