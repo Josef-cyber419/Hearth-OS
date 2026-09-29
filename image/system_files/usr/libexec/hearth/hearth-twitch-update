@@ -1,0 +1,39 @@
+#!/usr/bin/bash
+# Install or update VacuumStream, a controller-first Twitch app, for the
+# current user. It isn't on Flathub; each GitHub release carries an AppImage
+# and a SHA256SUMS file. Runs from hearth-twitch-update.timer.
+set -euo pipefail
+
+repo=${HEARTH_TWITCH_REPO:-eliottness/VacuumStream}
+api=${HEARTH_GITHUB_API:-https://api.github.com}
+dest="$HOME/Applications/VacuumStream.AppImage"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/hearth/twitch-version"
+
+release=$(curl -fsSL --retry 3 -H "Accept: application/vnd.github+json" "$api/repos/$repo/releases/latest") || {
+    echo "No VacuumStream release found (yet); will try again later" >&2
+    exit 0
+}
+read -r version name url sums < <(python3 -c '
+import json, re, sys
+r = json.load(sys.stdin)
+assets = {a["name"]: a["browser_download_url"] for a in r.get("assets", [])}
+image = next((n for n in assets if re.fullmatch(r"VacuumStream-.*-x86_64\.AppImage", n)), None)
+if not image or "SHA256SUMS" not in assets:
+    sys.exit("the latest release has no x86_64 AppImage and SHA256SUMS")
+print(r["tag_name"], image, assets[image], assets["SHA256SUMS"])' <<<"$release")
+
+if [[ -x $dest && -f $state && $(<"$state") == "$version" ]]; then
+    exit 0
+fi
+
+mkdir -p "$(dirname "$dest")" "$(dirname "$state")"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+curl -fsSL --retry 3 -o "$work/$name" "$url"
+curl -fsSL --retry 3 -o "$work/SHA256SUMS" "$sums"
+# Only a download matching the release's checksum is installed.
+(cd "$work" && grep -E "[[:space:]]\*?$name\$" SHA256SUMS | sha256sum --check --quiet -)
+chmod 755 "$work/$name"
+mv "$work/$name" "$dest"
+echo "$version" > "$state"
+echo "Installed VacuumStream $version"

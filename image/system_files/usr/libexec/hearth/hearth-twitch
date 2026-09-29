@@ -1,0 +1,8 @@
+#!/usr/bin/bash
+# The Twitch tile: VacuumStream (see hearth-twitch-update), as an X11 window
+# so Hearth can show it (Electron would otherwise pick Wayland when it can).
+app="$HOME/Applications/VacuumStream.AppImage"
+if ! command -v fusermount >/dev/null && ! command -v fusermount3 >/dev/null; then
+    export APPIMAGE_EXTRACT_AND_RUN=1
+fi
+exec "$app" --ozone-platform=x11 "$@"

@@ -12,7 +12,7 @@ like a smart TV or console. No keyboard, no mouse, no browser.
 | Jellyfin | Jellyfin Desktop in `--tv` mode | Yes. Needs a Jellyfin server (your NAS or another PC). |
 | Plex | Plex HTPC, Plex's TV app | Yes. |
 | Moonlight | Stream games from another PC | Yes. |
-| Twitch, Netflix, Prime Video, Paramount+, Peacock | The service's website, full screen in Google Chrome (`hearth-web`), each with its own Chrome profile so you sign in once | Controller as a mouse: left stick moves, A clicks, right stick scrolls, B is Escape. See below for the quality you get. |
+| Twitch | [VacuumStream](https://github.com/eliottness/VacuumStream): a controller-first Twitch app (live channels, follows, categories, past broadcasts) with Twitch's own player, in the spirit of VacuumTube. Not on Flathub: Hearth installs it into `~/Applications` and checks for updates weekly (`hearth-twitch-update`), verifying each download's checksum | Yes. Watch as a guest, or sign in with a code on your phone for your follows. Early-stage software, so expect rough edges. |
 | Emulation | ES-DE + emulators, see [EMULATION.md](EMULATION.md) | Yes. |
 | Android | Android apps in a container (Waydroid) | Partly. See below. |
 
@@ -30,14 +30,6 @@ A home-built Linux PC isn't certified, whatever you install on it:
 | Native Linux app | Doesn't exist | | |
 
 The DRM is the limit here, not the software. No setup of this PC fixes it.
-
-**What the website tiles give you:** Twitch isn't DRM-protected, so it plays
-at full quality (up to 1080p60). Netflix, Prime Video, Paramount+ and Peacock
-play in Chrome at 720p–1080p, stereo, no HDR. Fine for a quick episode; for
-the real thing, use a stick (below). The tiles appear once Google Chrome is
-installed, which happens by itself on first boot after the update (or
-`flatpak install flathub com.google.Chrome`). Hold Guide to close one, or
-keep it paused with Quick Resume like a game.
 
 ## Recommended: a streaming stick on another HDMI input
 

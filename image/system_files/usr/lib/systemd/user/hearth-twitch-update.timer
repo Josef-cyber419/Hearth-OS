@@ -1,0 +1,10 @@
+[Unit]
+Description=Install VacuumStream (Twitch) shortly after login, then check for updates weekly
+
+[Timer]
+OnStartupSec=30s
+OnUnitActiveSec=1w
+Persistent=true
+
+[Install]
+WantedBy=timers.target

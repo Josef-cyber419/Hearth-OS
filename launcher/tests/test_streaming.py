@@ -1,42 +1,86 @@
-"""Streaming websites as TV apps (hearth-web)."""
+"""Twitch: VacuumStream, installed and kept up to date like ES-DE."""
 
+import hashlib
+import json
 import os
 import subprocess
+
+import pytest
 
 from conftest import REPO
 from hearth import config as cfg
 from hearth.overlay import pointer_app_in_front
 
-HEARTH_WEB = REPO / "image/system_files/usr/libexec/hearth/hearth-web"
+LIBEXEC = REPO / "image/system_files/usr/libexec/hearth"
 
 
-def test_opens_the_site_full_screen_in_its_own_chrome(tmp_path):
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    log = tmp_path / "args"
-    (bin_dir / "flatpak").write_text(f'#!/usr/bin/bash\nprintf "%s\\n" "$@" > {log}\n')
-    (bin_dir / "flatpak").chmod(0o755)
-    env = {**os.environ, "PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(tmp_path)}
-    subprocess.run(["bash", str(HEARTH_WEB), "netflix", "https://www.netflix.com"], env=env, check=True)
-    args = log.read_text().split("\n")
-    profile = tmp_path / ".var/app/com.google.Chrome/hearth/netflix"
-    assert args[:2] == ["run", "com.google.Chrome"]
-    assert f"--user-data-dir={profile}" in args and profile.is_dir()
-    assert "--kiosk" in args and "--ozone-platform=x11" in args
-    assert args[-2] == "https://www.netflix.com"
+@pytest.fixture
+def github(tmp_path):
+    """A fake GitHub: curl serves files from tmp_path/served by URL."""
+    served, bin_dir, home = tmp_path / "served", tmp_path / "bin", tmp_path / "home"
+    for d in (served, bin_dir, home):
+        d.mkdir()
+    (bin_dir / "curl").write_text(
+        '#!/usr/bin/bash\nout=; url=\nwhile (($#)); do case $1 in -o) out=$2; shift;; -H) shift;; -*) ;; '
+        '*) url=$1;; esac; shift; done\n'
+        f'f={served}/$(echo "$url" | tr "/:" "__")\n[[ -f $f ]] || exit 22\n'
+        '[[ -n $out ]] && cp "$f" "$out" || cat "$f"\n')
+    (bin_dir / "curl").chmod(0o755)
+
+    def serve(url, data):
+        (served / url.replace("/", "_").replace(":", "_")).write_bytes(data)
+
+    def release(tag, image=b"\x7fELF twitch", sums=None):
+        base = f"https://github.com/eliottness/VacuumStream/releases/download/{tag}"
+        name = f"VacuumStream-{tag.lstrip('v')}-x86_64.AppImage"
+        serve(f"{base}/{name}", image)
+        digest = hashlib.sha256(image).hexdigest() if sums is None else sums
+        serve(f"{base}/SHA256SUMS", f"{digest}  {name}\n".encode())
+        serve("https://api.github.com/repos/eliottness/VacuumStream/releases/latest", json.dumps(
+            {"tag_name": tag, "assets": [{"name": n, "browser_download_url": f"{base}/{n}"}
+                                         for n in (name, "SHA256SUMS", "VacuumStream.flatpak")]}).encode())
+
+    def run():
+        return subprocess.run(["bash", str(LIBEXEC / "hearth-twitch-update")], capture_output=True, text=True,
+                              env={**os.environ, "PATH": f"{bin_dir}:/usr/bin:/bin", "HOME": str(home),
+                                   "XDG_STATE_HOME": str(home / ".state")})
+
+    return {"home": home, "release": release, "run": run}
 
 
-def test_tiles_need_chrome(shipped_config, monkeypatch):
-    config = cfg.load(shipped_config, hide=False)
-    tiles = {a.id: a for row in config.rows for a in row.apps}
-    for key in ("twitch", "netflix", "prime-video", "paramount-plus", "peacock"):
-        assert tiles[key].pointer and tiles[key].command[0].endswith("hearth-web")
-        assert tiles[key].missing()  # hidden until Chrome is installed (first boot installs it)
-    assert "com.google.Chrome" in (REPO / "image/system_files/usr/share/hearth/flatpaks.list").read_text()
+def test_installs_and_updates(github):
+    app = github["home"] / "Applications/VacuumStream.AppImage"
+    github["release"]("v0.2.1")
+    assert github["run"]().returncode == 0
+    assert app.read_bytes() == b"\x7fELF twitch" and os.access(app, os.X_OK)
+    assert "Installed" not in github["run"]().stdout  # already current
+    github["release"]("v0.3.0", image=b"\x7fELF newer")
+    github["run"]()
+    assert app.read_bytes() == b"\x7fELF newer"
 
 
-def test_controller_is_a_mouse_in_a_streaming_site():
-    state = {"focus": "foreground", "foreground": {"id": "netflix", "pointer": True}, "background": {}}
+def test_rejects_a_download_that_fails_its_checksum(github):
+    github["release"]("v0.2.1", sums="0" * 64)
+    assert github["run"]().returncode != 0
+    assert not (github["home"] / "Applications/VacuumStream.AppImage").exists()
+
+
+def test_no_release_yet_is_not_an_error(github):
+    assert github["run"]().returncode == 0
+
+
+def test_twitch_tile_waits_for_the_app(shipped_config, tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    twitch = cfg.load(shipped_config, hide=False).app("twitch")
+    assert twitch.command == ("/usr/libexec/hearth/hearth-twitch",) and twitch.missing()
+    (tmp_path / "Applications").mkdir()
+    (tmp_path / "Applications/VacuumStream.AppImage").write_bytes(b"")
+    assert twitch.available()
+    assert "hearth-twitch-update.timer" in (REPO / "image/build.sh").read_text()
+
+
+def test_controller_is_a_mouse_for_pointer_apps_in_front():
+    state = {"focus": "foreground", "foreground": {"id": "browser", "pointer": True}, "background": {}}
     assert pointer_app_in_front(state)
     state["foreground"] = {"id": "kodi"}
     assert not pointer_app_in_front(state)
