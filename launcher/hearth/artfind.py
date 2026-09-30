@@ -149,7 +149,12 @@ def index(system: str, kind: str, fetch=_get) -> list[str]:
             return saved["names"]
     except (OSError, ValueError, KeyError, TypeError):
         pass
-    page = fetch(_url(system, kind)).decode("utf-8", "replace")
+    try:
+        page = fetch(_url(system, kind)).decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise
+        page = ""  # no pictures of this kind for this system: remember that too
     names = sorted({html.unescape(urllib.parse.unquote(m))[:-4]
                     for m in re.findall(r'href="([^"?/]+\.png)"', page)})
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -91,3 +91,17 @@ def test_offline_stops_quietly():
 def test_urls_are_quoted():
     assert artfind._url("n64", "Named_Titles", "Mario Kart 64 (USA)") == \
         "https://thumbnails.libretro.com/Nintendo%20-%20Nintendo%2064/Named_Titles/Mario%20Kart%2064%20%28USA%29.png"
+
+
+def test_a_missing_listing_is_remembered_not_refetched():
+    import urllib.error
+
+    asked = []
+
+    def fetch(url):
+        asked.append(url)
+        raise urllib.error.HTTPError(url, 404, "nope", {}, None)
+
+    assert artfind.index("saturn", "Named_Titles", fetch) == []
+    assert artfind.index("saturn", "Named_Titles", fetch) == []
+    assert len(asked) == 1
