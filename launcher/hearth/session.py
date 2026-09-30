@@ -51,12 +51,14 @@ def runtime_dir() -> Path:
 #   "wii_raw": bool,  (the Settings app is calibrating: the overlay writes wii-aim.json)
 #   "suspended": [{like foreground, + "paused_at"}, ...],  (Quick Resume: games kept paused, oldest first)
 #   "suspend_request": bool   (the Quick Menu or a held Guide asks the hub to pause the game and go home)
+#   "screen": "settings" | null,  (a screen of the hub's own in front of the home screen)
+#   "close_screen": bool  (Home was asked for: the hub closes that screen)
 # }
 
 DEFAULT_STATE = {"foreground": None, "background": {}, "focus": "home", "overlay_open": False,
                  "paused": False, "requests": [], "update": None, "report": None,
                  "wii_mouse": {}, "wii": None, "wii_raw": False,
-                 "suspended": [], "suspend_request": False}
+                 "suspended": [], "suspend_request": False, "screen": None, "close_screen": False}
 
 
 def _state_path() -> Path:

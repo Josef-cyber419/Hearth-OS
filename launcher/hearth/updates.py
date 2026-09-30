@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -118,18 +119,42 @@ def apply(log_file: Path | None = None, show: bool = False) -> str:
     return "ok" if code == 0 else "busy" if code == BUSY else "failed"
 
 
+ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
+
+
+def tidy(output: str, lines: int = 20) -> list[str]:
+    """The last `lines` lines of the updater's output, without its progress
+    bar's escapes and redraws."""
+    out = []
+    for line in output.replace("\r", "\n").splitlines():
+        line = ANSI.sub("", line).strip()
+        if line and not (out and out[-1] == line):
+            out.append(line)
+    return out[-lines:]
+
+
 def run_helper(action: str, log_file: Path | None = None, show: bool = False, code: bool = False):
-    """Run `hearth-update apply|rollback` as root. True on success. Its output
-    goes to `log_file`, or to the terminal with `show` (hearthctl), so a
-    failure always says why."""
-    out = open(log_file, "a") if log_file else None if show else subprocess.DEVNULL
+    """Run `hearth-update apply|rollback` as root. True on success. With
+    `show` (hearthctl) its output goes to the terminal. Otherwise it goes to
+    update.log beside `log_file` (overwritten each time: its progress bar
+    redraws five times a second, field report #47), and on a failure its last
+    lines are added to `log_file`, so a failure always says why."""
+    full = log_file.with_name("update.log") if log_file else None
+    out = open(full, "w") if full else None if show else subprocess.DEVNULL
     try:
         rc = subprocess.run(["sudo", "-n", HELPER, action], stdout=out, stderr=subprocess.STDOUT).returncode
     except OSError:
         rc = 1
     finally:
-        if log_file:
+        if full:
             out.close()
+    if full and rc != 0:
+        try:
+            tail = tidy(full.read_text(errors="replace"))
+            with open(log_file, "a") as f:
+                f.write("".join(f"hearth-update {action}: {line}\n" for line in tail))
+        except OSError:
+            pass
     return rc if code else rc == 0
 
 

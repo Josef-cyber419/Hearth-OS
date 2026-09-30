@@ -610,3 +610,31 @@ def test_test_sound(monkeypatch, tmp_path):
     assert played == [b"RIFF"]  # a real WAV file
     monkeypatch.setattr(settings_app.shutil, "which", lambda name: None)
     assert "no player" in settings_app.play_test_sound()
+
+
+def test_home_closes_settings_and_status_names_it(shipped_config, offline):
+    # Field report #37: Settings was invisible to hearthctl status and to Home.
+    from hearth import overlay
+
+    pygame.display.init()
+    pygame.font.init()
+    try:
+        surface = pygame.display.set_mode((1280, 720))
+        seen = []
+        real_read = session.read
+
+        def read():
+            state = real_read()
+            seen.append(state.get("screen"))
+            if len(seen) == 2:  # while it's open: Home from the Quick Menu
+                overlay.Actions.go_home(type("A", (), {"o": None, "show": lambda s, f: None})())
+            return state
+
+        import unittest.mock as mock
+
+        with mock.patch.object(session, "read", read):
+            assert settings_app.run(surface, shipped_config, max_frames=200, input_blocked=lambda: False) is None
+        assert "settings" in seen and len(seen) < 6  # closed at once, not after 200 frames
+        assert session.read()["screen"] is None and not session.read()["close_screen"]
+    finally:
+        pygame.quit()

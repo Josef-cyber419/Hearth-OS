@@ -1837,6 +1837,8 @@ def run(surface: pygame.Surface, config_path: Path | None = None, max_frames: in
     if input_blocked is None:
         def input_blocked() -> bool:
             return bool(session.read()["overlay_open"])
+    # Known to hearthctl status and to Home (field report #37).
+    session.update(lambda s: s.update(screen="settings", close_screen=False))
     try:
         while max_frames is None or frames < max_frames:
             frames += 1
@@ -1844,6 +1846,8 @@ def run(surface: pygame.Surface, config_path: Path | None = None, max_frames: in
                 was, blocked = blocked, input_blocked()
                 if blocked and not was:
                     mapper.reset()
+                if session.read().get("close_screen"):  # Home, from the Quick Menu or hearthctl
+                    return None
             now = pygame.time.get_ticks()
             navs: list[Nav] = []
             for event in pygame.event.get():
@@ -1878,4 +1882,5 @@ def run(surface: pygame.Surface, config_path: Path | None = None, max_frames: in
             clock.tick(60)
         return None
     finally:
+        session.update(lambda s: s.update(screen=None, close_screen=False))
         app.close()

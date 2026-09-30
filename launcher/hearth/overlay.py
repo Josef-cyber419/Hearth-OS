@@ -62,6 +62,8 @@ class Actions:
             session.stop_entry(state["foreground"])
         elif state["focus"] != "home":  # e.g. Discord in front of the home screen
             self.show("home")
+        elif state.get("screen"):  # Settings: the hub closes it
+            session.update(lambda s: s.__setitem__("close_screen", True))
         return "close"
 
     def quit_game(self):

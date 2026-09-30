@@ -280,7 +280,7 @@ def cmd_status() -> int:
         print(f"Update {os_status.staged} downloaded: restart to finish")
     front = state["focus"]
     front_name = (state["background"].get(front, {}).get("name") if front in state["background"]
-                  else (fg or {}).get("name") or "Home screen")
+                  else (fg or {}).get("name") or (state.get("screen") or "Home screen").capitalize())
     print(f"In front: {front_name}" + (" (paused)" if state["paused"] else ""))
     if fg:
         print(f"Running: {fg['name']}" + (f" [{fg['unit']}]" if fg.get("unit") else f" [pid {fg.get('pid')}]"))
