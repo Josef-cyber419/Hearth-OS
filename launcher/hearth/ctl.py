@@ -342,7 +342,7 @@ def cmd_request(kind: str) -> int:
 
 def cmd_update() -> int:
     print("Updating the OS and apps (this can take a while)…")
-    ok = updates.run_helper("apply")
+    ok = updates.run_helper("apply", show=True)
     updates.update_esde()
     status = updates.os_status()
     if not ok:
@@ -384,7 +384,7 @@ def cmd_rollback(yes: bool) -> int:
         return 1
     if not yes and input(f"Go back to {status.rollback} on next restart? [y/N] ").lower() != "y":
         return 1
-    ok = updates.run_helper("rollback")
+    ok = updates.run_helper("rollback", show=True)
     print("Done: restart to use the previous version." if ok else "Rollback failed.")
     return 0 if ok else 1
 

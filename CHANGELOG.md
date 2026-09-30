@@ -6,6 +6,12 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
+## 0.22.1 (2026-09-30)
+
+- **A failed update says why**: `hearthctl update` shows the updater's output
+  as it runs, and Settings → System → Check for updates writes it to
+  `hearthctl logs`, instead of throwing it away.
+
 ## 0.22.0 (2026-09-29)
 
 - **Watch next**: films and episodes you're partway through on Jellyfin, Plex

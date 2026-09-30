@@ -1,6 +1,6 @@
 # Progress reports
 
-One report per version: numbers, what's working, what's new, open issues. Latest: **[0.22.0](0.22.0/report.md)**.
+One report per version: numbers, what's working, what's new, open issues. Latest: **[0.22.1](0.22.1/report.md)**.
 
 ## History
 
@@ -8,7 +8,7 @@ Every version, counted from the code as it was released. Lines of code don't cou
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.22.0](0.22.0/report.md) | 2026-09-29 | 15,005 | 369 | 1,555 | 13 | 23 |
+| [0.22.1](0.22.1/report.md) | 2026-09-30 | 15,008 | 370 | 1,559 | 13 | 23 |
 | [0.21.0](0.21.0/report.md) | 2026-09-29 | 13,506 | 334 | 1,371 | 11 | 23 |
 | 0.20.0 | 2026-09-29 | 12,533 | 312 | 1,260 | 10 | 20 |
 | 0.19.0 | 2026-09-29 | 11,984 | 291 | 1,120 | 9 | 19 |
