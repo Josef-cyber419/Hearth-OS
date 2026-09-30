@@ -8,6 +8,20 @@ def test_state_update_and_defaults_isolated():
     assert session.DEFAULT_STATE["background"] == {}
 
 
+def test_real_ids_come_back_from_the_cgroup():
+    # Field report #39: PC ports' windows were tagged with the tidied id, so
+    # gamescope never showed them.
+    app_id = "game:pc:Dusklight v2.0.2-linux.AppImage"
+    unit = session.unit_name("app", app_id)
+    cgroup = f"0::/user.slice/user@1000.service/app.slice/{unit}"
+    state = {"foreground": {"id": app_id, "unit": unit}, "background": {}, "suspended": []}
+    assert session.app_for_cgroup(cgroup, state) == ("app", app_id)
+    moved = {"foreground": {"id": app_id, "unit": "other.scope"}, "background": {}, "suspended": []}
+    assert session.app_for_cgroup(cgroup, moved) == ("app", app_id)  # by the tidied id
+    paused = {"foreground": None, "background": {}, "suspended": [{"id": app_id, "unit": unit}]}
+    assert session.app_for_cgroup(cgroup, paused) == ("app", app_id)
+
+
 def test_unit_names_round_trip_through_cgroup():
     unit = session.unit_name("app", "hdmi-in_2")
     cgroup = f"0::/user.slice/user-1000.slice/user@1000.service/app.slice/{unit}\n"

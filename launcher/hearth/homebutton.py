@@ -26,7 +26,10 @@ BTN_MODE = 0x13C  # Guide / Xbox / PS button
 KEY_HOMEPAGE = 172  # "Home" key on media remotes and FLIRC
 KEY_MENU = 139  # "Menu" key on media remotes and FLIRC
 KEY_LEFTMETA, KEY_RIGHTMETA = 125, 126  # the keyboard's Windows / Super keys
-HOLD_KEYS = {BTN_MODE}
+# KEY_MENU too: some pads (a GuliKit in its DInput/Switch modes, field report
+# #30) send their Home button as KEY_MENU and have no BTN_MODE at all, and
+# holding it must still get you home from a game (and out of Steam).
+HOLD_KEYS = {BTN_MODE, KEY_MENU}
 TAP_KEYS = {KEY_HOMEPAGE}
 # A Guide press shorter than this is a tap.
 TAP_MAX_SECONDS = 0.4

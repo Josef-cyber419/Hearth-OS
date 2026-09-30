@@ -540,7 +540,7 @@ class Overlay:
     def owner_appid(self, win) -> int | None:
         state = self.state
         pid = self.gs.client_pid(win)
-        owner = session.app_for_pid(pid) if pid else None
+        owner = session.app_for_pid(pid, state) if pid else None  # the real id: it's hashed for STEAM_GAME
         fg = state["foreground"]
         if owner:
             kind, app_id = owner

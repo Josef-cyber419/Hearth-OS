@@ -113,8 +113,7 @@ def scopes_available() -> bool:
 
 
 def unit_name(kind: str, app_id: str) -> str:
-    safe = re.sub(r"[^A-Za-z0-9_-]", "-", app_id)
-    return f"hearth-{kind}-{safe}_{time.monotonic_ns() % 10**9}.scope"
+    return f"hearth-{kind}-{safe_id(app_id)}_{time.monotonic_ns() % 10**9}.scope"
 
 
 def scoped(unit: str, command: tuple[str, ...]) -> list[str]:
@@ -224,21 +223,50 @@ def close_suspended(info: dict) -> None:
             pass
 
 
-def app_for_pid(pid: int) -> tuple[str, str] | None:
+def app_for_pid(pid: int, state: dict | None = None) -> tuple[str, str] | None:
     """("app" | "bg", app id) for a process Hearth started, from its cgroup."""
     try:
         cgroup = Path(f"/proc/{pid}/cgroup").read_text()
     except OSError:
         return None
-    return app_for_cgroup(cgroup)
+    return app_for_cgroup(cgroup, state)
 
 
-def app_for_cgroup(cgroup: str) -> tuple[str, str] | None:
+def _entries(state: dict) -> Iterator[tuple[str, dict]]:
+    """(app id, entry) for everything Hearth has running."""
+    fg = state.get("foreground")
+    if fg:
+        yield fg.get("id", ""), fg
+    for app_id, info in (state.get("background") or {}).items():
+        yield app_id, info
+    for entry in state.get("suspended") or []:
+        yield entry.get("id", ""), entry
+
+
+def app_for_cgroup(cgroup: str, state: dict | None = None) -> tuple[str, str] | None:
+    """The app a cgroup belongs to. The unit name only carries a tidied-up id
+    ("game:pc:Dusk.AppImage" becomes "game-pc-Dusk-AppImage"), so with the
+    session state the real id is looked up by the unit (then the tidied id)."""
     for part in reversed(cgroup.strip().split("/")):
         m = UNIT_RE.fullmatch(part)
-        if m:
-            return m.group(1), m.group(2)
+        if not m:
+            continue
+        kind, safe = m.group(1), m.group(2)
+        if state is not None:
+            entries = list(_entries(state))
+            for app_id, info in entries:
+                if info.get("unit") == part:
+                    return kind, app_id
+            for app_id, _info in entries:
+                if safe_id(app_id) == safe:
+                    return kind, app_id
+        return kind, safe
     return None
+
+
+def safe_id(app_id: str) -> str:
+    """An app id as it can appear in a unit name."""
+    return re.sub(r"[^A-Za-z0-9_-]", "-", app_id)
 
 
 # -- running apps --------------------------------------------------------------

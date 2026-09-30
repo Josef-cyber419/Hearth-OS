@@ -171,3 +171,50 @@ def test_desktop_tile_clears_the_marker(env):
     (env["tmp"] / "desktop").write_text(script)
     subprocess.run(["bash", str(env["tmp"] / "desktop")], env=env["env"], check=True)
     assert not marker(env).exists()
+
+
+def start_game(env, appid="814380") -> subprocess.Popen:
+    return subprocess.Popen(["bash", str(LIBEXEC / "hearth-steam"), f"steam://rungameid/{appid}"], env=env["env"],
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+
+@pytest.fixture
+def game(env):
+    """A fake pgrep: the game runs while game.running exists."""
+    running = env["tmp"] / "game.running"
+    pgrep = env["tmp"] / "bin" / "pgrep"
+    pgrep.write_text(f'#!/usr/bin/bash\n[[ $* == *"SteamLaunch AppId=814380"* && -e {running} ]]\n')
+    pgrep.chmod(0o755)
+    return running
+
+
+def test_steam_closes_when_its_game_ends(env, game):
+    # Field report #29: the game ended, Steam stayed, and there was no way home.
+    proc = start_game(env)
+    time.sleep(0.6)
+    game.touch()  # the game starts
+    time.sleep(1.2)
+    assert proc.poll() is None
+    game.unlink()  # and ends
+    proc.wait(timeout=10)
+    assert "steam -shutdown" in env["log"].read_text()
+    assert "game 814380 ended" in proc.stderr.read()
+
+
+def test_steam_waits_while_the_game_is_starting(env, game):
+    proc = start_game(env)
+    time.sleep(4)  # Steam still updating or compiling shaders: no game process yet
+    assert proc.poll() is None and "steam -shutdown" not in env["log"].read_text()
+    (env["tmp"] / "quit").touch()
+    proc.wait(timeout=10)
+
+
+def test_the_steam_tile_leaves_steam_alone(env, game):
+    proc = start(env)  # no game: Steam is what's wanted
+    game.touch()
+    time.sleep(1)
+    game.unlink()
+    time.sleep(4)
+    assert proc.poll() is None
+    (env["tmp"] / "quit").touch()
+    proc.wait(timeout=10)
