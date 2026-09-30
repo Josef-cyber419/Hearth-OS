@@ -99,6 +99,13 @@ class Gamescope:
             return None
         return int(prop.value[0]) if prop and len(prop.value) else None
 
+    def get_cardinals(self, win, name: str) -> list[int]:
+        try:
+            prop = win.get_full_property(self.atom(name), X.AnyPropertyType)
+        except XError:
+            return []
+        return [int(v) for v in prop.value] if prop else []
+
     # -- windows ---------------------------------------------------------------
 
     def argb_visual(self) -> int | None:

@@ -77,3 +77,60 @@ def test_over_ssh_the_display_comes_from_the_home_screen(tmp_path, monkeypatch):
 def test_press_names_the_buttons_it_knows():
     problems = drive.press(["up", "jump"])
     assert problems and "unknown button 'jump'" in problems[0] and "guide" in problems[0]
+
+
+def test_check_leaves_out_the_false_alarms(monkeypatch):
+    # Field report #46: ended SSH logins, coredump module lists, old versions.
+    def run(cmd, timeout=15):
+        if cmd[:2] == ["systemctl", "--failed"]:
+            return 0, "session-10.scope loaded failed failed Session 10 of User joseph"
+        if cmd[:3] == ["systemctl", "--user", "--failed"]:
+            return 0, ""
+        if cmd[0] == "journalctl":
+            return 0, ("2026-09-30T01:10:15 bazzite systemd-coredump[1]: Process 36330 (dusklight) dumped core.\n"
+                       "2026-09-30T01:10:15 bazzite systemd-coredump[1]: Module libc.so.6 without build-id.\n"
+                       "2026-09-30T01:10:15 bazzite systemd-coredump[1]: #0  0x7f _Unwind_Find_FDE\n"
+                       "2026-09-30T01:10:15 bazzite systemd-coredump[1]: Stack trace of thread 36330:\n")
+        return 0, ""
+
+    monkeypatch.setattr(fieldcheck, "_run", run)
+    assert all(r.status == "ok" for r in fieldcheck.failed_units())
+    errors = fieldcheck.journal_errors()[0]
+    assert errors.evidence == ["2026-09-30T01:10:15 bazzite systemd-coredump[1]: Process 36330 (dusklight) dumped core."]
+
+
+def test_never_showed_a_window_only_counts_this_version(monkeypatch):
+    from hearth import updates
+
+    monkeypatch.setattr(updates, "hearth_version", lambda: "0.23.0")
+    events.record("session_start", version="0.22.4")
+    events.record("app_start", id="old")
+    events.record("app_exit", id="old", code=0)
+    events.record("session_start", version="0.23.0")
+    events.record("app_start", id="new")
+    events.record("app_exit", id="new", code=0)
+    results = {r.name: r for r in fieldcheck.app_history()}
+    assert len(results["Apps that never showed a window"].evidence) == 1
+    assert "new" in results["Apps that never showed a window"].evidence[0]
+
+
+def test_press_finds_a_steam_game_in_front():
+    # Field report #43: only the first base-layer id was compared.
+    import types
+
+    from Xlib import X
+
+    from hearth import drive
+
+    def win(wid, game, overlay=0):
+        w = types.SimpleNamespace(id=wid, tags={"STEAM_GAME": game, "STEAM_OVERLAY": overlay})
+        w.get_attributes = lambda: types.SimpleNamespace(map_state=X.IsViewable)
+        return w
+
+    hearth_win, game_win = win(1, 413091), win(2, 814380)
+    gs = types.SimpleNamespace(root="root", top_level_windows=lambda: [hearth_win, game_win],
+                               get_cardinals=lambda w, n: [413091, 769, 814380],
+                               get_cardinal=lambda w, n: w.tags.get(n))
+    assert drive.target(gs, {"overlay_open": False}) is hearth_win  # first in gamescope's list
+    gs.top_level_windows = lambda: [game_win]
+    assert drive.target(gs, {"overlay_open": False}) is game_win

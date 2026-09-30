@@ -528,6 +528,25 @@ class Overlay:
             self._time_first_window(appid)
         self._seen &= present
         self._tries = {k: v for k, v in self._tries.items() if k in present}
+        self._time_steam_window()
+
+    STEAM_APPID = 769  # what gamescope calls Steam's own interface
+
+    def _time_steam_window(self) -> None:
+        """Steam and its games tag their own windows, so the time to the first
+        window is when gamescope lists the game (or Steam) as one it can show
+        (field report #45; a game that never gets there is #40)."""
+        fg = self.state["foreground"]
+        if not fg or fg.get("tag_windows", True) or not fg.get("started"):
+            return
+        key = (fg["id"], fg["started"])
+        if key in self._first_window:
+            return
+        game = fg["id"].split(":")[-1] if fg["id"].startswith("game:steam:") else None
+        want = int(game) if game and game.isdigit() else self.STEAM_APPID
+        if want in self.gs.get_cardinals(self.gs.root, "GAMESCOPE_FOCUSABLE_APPS"):
+            self._first_window.add(key)
+            events.record("app_window", id=fg["id"], seconds=round(time.time() - fg["started"], 1))
 
     def _time_first_window(self, appid: int) -> None:
         """How long the app in front took to show its first window."""
@@ -816,8 +835,8 @@ class Overlay:
         elif self.pointer_active:
             self.pointer.tick(clock.get_time() / 1000)
             clock.tick(120)
-        elif self.wii and self.wii.active:
-            clock.tick(100)  # the pointer follows the remote smoothly
+        elif self.wii and self.wii.in_use():
+            clock.tick(100)  # the pointer follows the remote smoothly (20 Hz while it lies still)
         else:
             clock.tick(20)
 

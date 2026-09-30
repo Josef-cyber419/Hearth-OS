@@ -1698,6 +1698,7 @@ class HomeScreen:
             if key in self._slide_cache:
                 return self._slide_cache[key]
             art = load_art(self._slides[key][2])
+            _art.pop(self._slides[key][2], None)  # keep only the scaled slide (#49: a 4K capture is 33 MB)
             if art is None:
                 del self._slides[key]
                 self._slide_cache.clear()  # keyed by position, which just moved
@@ -1713,6 +1714,20 @@ class HomeScreen:
             self._slide_cache[key] = img
             return img
         return None
+
+    def saver_fps(self) -> int:
+        """How often the screen saver redraws: a slow drift needs few frames
+        (field report #49: 24 fps cost 7% of a core all idle day); the
+        cross-fade and nothing else gets 24."""
+        slides = getattr(self, "_slides", [])
+        if not slides:
+            return 2  # just the time, drifting
+        into = (time.monotonic() - self._saver_t0) % SLIDE_SECONDS
+        return 24 if into < SLIDE_FADE + 0.2 and time.monotonic() - self._saver_t0 > SLIDE_SECONDS else 6
+
+    def stop_saver(self) -> None:
+        self.saver = False
+        self._slide_cache = {}  # the slides are full-screen surfaces: let them go
 
     def _draw_slide(self, i: int, age: float, alpha: int) -> None:
         th = self.theme
@@ -1927,7 +1942,7 @@ def run(
                                                                      pygame.CONTROLLERAXISMOTION else 1)):
                     idle_since = time.monotonic()
                     if screen.saver:  # waking up: this input only wakes the screen
-                        screen.saver = False
+                        screen.stop_saver()
                         from . import tv
 
                         tv.switch_here(tries=5)  # and the TV, if it drifted off to another input
@@ -1990,14 +2005,18 @@ def run(
             screen.start_saver()
             events.record("screen_saver", style=screen.saver_style, slides=len(screen._slides))
         if screen.saver:
+            if stats is not None:
+                stats.pause()
             screen.draw_saver()
             pygame.display.flip()
-            clock.tick(24 if screen._slides else 10)
+            clock.tick(screen.saver_fps())
             continue
         mono = time.monotonic()
         screen.settled = (screen.intro is None and mono - idle_since > SETTLE_SECONDS
                           and mono > screen.busy_until)
         if screen.settled:
+            if stats is not None:
+                stats.pause()  # a still screen isn't one long frame (field report #35)
             due = mono - last_draw >= SETTLED_REDRAW
             if not due and mono - last_look >= 1 / SETTLED_FPS:
                 last_look = mono

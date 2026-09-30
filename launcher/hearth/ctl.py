@@ -32,11 +32,16 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import config as cfg
 from . import events, logs, session, updates
+
+# pygame, imported later when needed, prints a setuptools deprecation
+# warning on every run (field report #46); it's noise here.
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 SESSION_OVERRIDES = Path("/etc/gamescope-session-plus/sessions.d")
 LISTS = [Path("/usr/share/hearth/flatpaks.list"), Path("/usr/share/hearth/emulators.list")]

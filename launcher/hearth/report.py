@@ -200,11 +200,12 @@ def gamescope_state() -> str:
     return "\n".join(lines) + "\n"
 
 
-def screenshot(timeout: float = 4.0) -> tuple[bytes, str] | None:
+def screenshot(timeout: float = 10.0) -> tuple[bytes, str] | None:
     """What's on screen, as PNG bytes and how it was taken.
 
     gamescope's own screenshot (the one Steam uses) captures exactly what's
-    shown. If it doesn't arrive, grab the focused window, plus the Quick Menu
+    shown; at 4K it takes about 5 s to arrive (field report #43). If it
+    doesn't, grab the focused window, plus the Quick Menu
     if it's open, straight from X instead."""
     if not os.environ.get("DISPLAY"):
         return None

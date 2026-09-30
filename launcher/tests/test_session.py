@@ -74,3 +74,21 @@ def test_an_app_that_ignores_sigterm_gets_its_scope_stopped(monkeypatch):
     monkeypatch.setattr(session.os, "killpg", lambda pid, sig: None)
     monkeypatch.setattr(session, "_pid_alive", lambda pid: True)
     assert session.ask_to_exit(42, wait=0.3, sleep=lambda s: None) is False
+
+
+def test_steam_games_get_a_window_time_when_gamescope_can_show_them():
+    # Field report #45: Steam and its games were always "never showed a window".
+    import types
+
+    from hearth.overlay import Overlay
+
+    shown = []
+    gs = types.SimpleNamespace(root="root", get_cardinals=lambda win, name: shown)
+    fake = types.SimpleNamespace(
+        gs=gs, _first_window=set(), STEAM_APPID=769,
+        state={"foreground": {"id": "game:steam:814380", "tag_windows": False, "started": 1.0}})
+    Overlay._time_steam_window(fake)
+    assert fake._first_window == set()  # not showable yet (#40's case)
+    shown.append(814380)
+    Overlay._time_steam_window(fake)
+    assert fake._first_window == {("game:steam:814380", 1.0)}

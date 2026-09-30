@@ -177,6 +177,19 @@ def test_screen_saver_and_waking(shipped_config):
         assert ui.run(surface, Home(config), "Hearth", max_frames=5, saver_after=0.01) is None
         screen = ui.HomeScreen(surface, Home(config), "Hearth")
         screen.draw_saver()
+        # Field report #49: slow drift at 6 fps, 24 only for the cross-fade.
+        import time as _time
+
+        screen._slides = [("A", None, "a.png"), ("B", None, "b.png")]
+        screen._saver_t0 = _time.monotonic() - 5
+        assert screen.saver_fps() == 6
+        screen._saver_t0 = _time.monotonic() - ui.SLIDE_SECONDS - 1
+        assert screen.saver_fps() == 24
+        screen._slides = []
+        assert screen.saver_fps() == 2
+        screen._slide_cache = {0: surface}
+        screen.stop_saver()
+        assert screen._slide_cache == {} and not screen.saver
     finally:
         pygame.quit()
 
