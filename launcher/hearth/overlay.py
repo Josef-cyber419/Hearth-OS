@@ -318,10 +318,21 @@ class Overlay:
 
     def run_update(self) -> None:
         log.info("update: starting")
-        ok = updates.run_helper("apply", logs.log_path())
+        result = updates.apply(logs.log_path())
+        if result == "busy":
+            # One is already downloading (Bazzite's automatic update, or an
+            # earlier press): wait for it rather than calling it a failure.
+            log.info("update: already running; waiting for it")
+            self.wait_for_update()
         updates.update_esde()
-        self.check_staged(failed=not ok)
-        events.record("update", ok=ok, result=(session.read().get("update") or {}).get("status"))
+        self.check_staged(failed=result == "failed")
+        events.record("update", ok=result != "failed", result=(session.read().get("update") or {}).get("status"))
+
+    def wait_for_update(self, every: float = 15.0, limit: float = 3 * 3600, sleep=time.sleep) -> None:
+        waited = 0.0
+        while updates.in_progress() and waited < limit:
+            sleep(every)
+            waited += every
 
     def take_screenshot(self, title: str) -> None:
         """Wait for the menu to finish hiding, then capture the screen."""
@@ -361,6 +372,10 @@ class Overlay:
         status = updates.os_status()
         if status.update_ready:
             result = {"status": "ready", "version": status.staged}
+        elif updates.in_progress():
+            result = {"status": "running"}  # still downloading: not "up to date" yet
+            if (session.read().get("update") or {}).get("status") != "running":
+                threading.Thread(target=self.run_update, daemon=True).start()  # follows it to the end
         elif failed:
             result = {"status": "failed"}
         else:

@@ -94,18 +94,43 @@ def os_status() -> OsStatus:
         return OsStatus()
 
 
-def run_helper(action: str, log_file: Path | None = None, show: bool = False) -> bool:
+BUSY = 75  # hearth-update's exit code when an update is already running
+
+
+def in_progress(run=subprocess.run) -> bool:
+    """Is an OS update running right now (ours, or Bazzite's automatic one)?"""
+    for pattern in (["-x", "uupd"], ["-f", "^(/usr/bin/)?bootc (upgrade|switch)"],
+                    ["-f", "^(/usr/bin/)?rpm-ostree (upgrade|rebase)"]):
+        try:
+            if run(["pgrep", *pattern], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0:
+                return True
+        except OSError:
+            return False
+    return False
+
+
+def apply(log_file: Path | None = None, show: bool = False) -> str:
+    """Download and stage the latest update: "ok", "busy" (one is already
+    running; it finishes by itself) or "failed"."""
+    if in_progress():
+        return "busy"
+    code = run_helper("apply", log_file, show, code=True)
+    return "ok" if code == 0 else "busy" if code == BUSY else "failed"
+
+
+def run_helper(action: str, log_file: Path | None = None, show: bool = False, code: bool = False):
     """Run `hearth-update apply|rollback` as root. True on success. Its output
     goes to `log_file`, or to the terminal with `show` (hearthctl), so a
     failure always says why."""
     out = open(log_file, "a") if log_file else None if show else subprocess.DEVNULL
     try:
-        return subprocess.run(["sudo", "-n", HELPER, action], stdout=out, stderr=subprocess.STDOUT).returncode == 0
+        rc = subprocess.run(["sudo", "-n", HELPER, action], stdout=out, stderr=subprocess.STDOUT).returncode
     except OSError:
-        return False
+        rc = 1
     finally:
         if log_file:
             out.close()
+    return rc if code else rc == 0
 
 
 def update_esde() -> bool:

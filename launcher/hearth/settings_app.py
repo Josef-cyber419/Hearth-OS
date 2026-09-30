@@ -1311,9 +1311,11 @@ class SettingsApp:
     def _update(self) -> str:
         from . import logs
 
-        ok = updates.run_helper("apply", logs.log_path())
+        result = updates.apply(logs.log_path())
+        if result == "busy":
+            return "An update is already downloading; it finishes by itself"
         status = updates.os_status()
-        if not ok:
+        if result == "failed":
             return "Update failed: the reason is in hearthctl logs"
         return f"Version {status.staged} is ready: restart to finish" if status.update_ready else "Up to date"
 

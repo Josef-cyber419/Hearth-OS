@@ -119,3 +119,81 @@ def test_update_output_is_never_thrown_away(monkeypatch, tmp_path):
     log = tmp_path / "hearth.log"
     updates.run_helper("apply", log)
     assert seen[-1].name == str(log)
+
+
+def test_an_update_already_running_is_busy_not_failed(monkeypatch):
+    import subprocess
+
+    running = lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0 if "uupd" in cmd else 1)  # noqa: E731
+    assert updates.in_progress(run=running)
+    assert not updates.in_progress(run=lambda cmd, **kw: subprocess.CompletedProcess(cmd, 1))
+    monkeypatch.setattr(updates, "in_progress", lambda: True)
+    assert updates.apply() == "busy"  # never starts a second one
+    monkeypatch.setattr(updates, "in_progress", lambda: False)
+    for code, result in ((0, "ok"), (updates.BUSY, "busy"), (1, "failed")):
+        monkeypatch.setattr(updates, "run_helper", lambda *a, c=code, **k: c)
+        assert updates.apply() == result
+
+
+def test_check_staged_says_running_while_it_downloads(monkeypatch):
+    import time
+    import types
+
+    from hearth import overlay
+
+    monkeypatch.setattr(updates, "os_status", lambda: updates.OsStatus())
+    monkeypatch.setattr(updates, "in_progress", lambda: True)
+    followed = []
+    fake = types.SimpleNamespace(run_update=lambda: followed.append(1))
+    overlay.Overlay.check_staged(fake)
+    assert session.read()["update"] == {"status": "running"}  # not "current"
+    for _ in range(50):
+        if followed:
+            break
+        time.sleep(0.01)
+    assert followed  # and it follows the download to the end
+
+
+def fake_bin(tmp_path, pgrep_rc: int):
+    import os
+
+    bin_ = tmp_path / "bin"
+    bin_.mkdir(exist_ok=True)
+    for name, body in (("pgrep", f"exit {pgrep_rc}"), ("uupd", "echo uupd ran"), ("bootc", "echo bootc $*"),
+                       ("flatpak", "echo flatpak $*")):
+        (bin_ / name).write_text(f"#!/usr/bin/bash\n{body}\n")
+        os.chmod(bin_ / name, 0o755)
+    return {"PATH": f"{bin_}:/usr/bin:/bin"}
+
+
+def test_update_script_refuses_a_second_run(tmp_path):
+    import subprocess
+
+    from conftest import REPO
+
+    script = str(REPO / "image/system_files/usr/libexec/hearth/hearth-update")
+    busy = subprocess.run([script, "apply"], env=fake_bin(tmp_path, 0), capture_output=True, text=True)
+    assert busy.returncode == updates.BUSY and "already running" in busy.stderr
+    ok = subprocess.run([script, "apply"], env=fake_bin(tmp_path, 1), capture_output=True, text=True)
+    assert ok.returncode == 0 and "uupd ran" in ok.stdout
+
+
+def test_esde_update_keeps_the_installed_one_when_offline(tmp_path):
+    import os
+    import subprocess
+
+    from conftest import REPO
+
+    bin_ = tmp_path / "bin"
+    bin_.mkdir()
+    (bin_ / "curl").write_text("#!/usr/bin/bash\nexit 6\n")  # can't resolve host
+    os.chmod(bin_ / "curl", 0o755)
+    env = {"PATH": f"{bin_}:/usr/bin:/bin", "HOME": str(tmp_path), "XDG_STATE_HOME": str(tmp_path / "state")}
+    script = str(REPO / "image/system_files/usr/libexec/hearth/hearth-esde-update")
+    assert subprocess.run([script], env=env, capture_output=True).returncode == 1  # nothing installed yet
+    app = tmp_path / "Applications/ES-DE.AppImage"
+    app.parent.mkdir()
+    app.write_text("")
+    app.chmod(0o755)
+    r = subprocess.run([script], env=env, capture_output=True, text=True)
+    assert r.returncode == 0 and "keeping the installed one" in r.stderr
