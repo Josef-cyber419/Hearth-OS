@@ -8,8 +8,12 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
 ## 0.23.0 (2026-09-30)
 
-- **GitHub's `gh` command is built in**, so Claude Code on the PC can file
-  field reports without installing anything.
+- **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a
+  lap of a circuit, Power Off an engine start button, and so on. Apps from
+  Flathub show their own icon.
+- **GitHub's `gh` command and `tmux` are built in**, so Claude Code on the
+  PC can file field reports, and keeps working if the SSH connection drops
+  (`tmux new -A -s claude`).
 
 ## 0.22.4 (2026-09-30)
 

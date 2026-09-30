@@ -48,6 +48,24 @@ def flatpak_dirs() -> list[Path]:
     ]
 
 
+ICON_SIZES = ("512x512", "256x256", "128x128", "scalable")
+
+
+def flatpak_icon(app: "App") -> str | None:
+    """The icon a Flatpak app installs for itself, for tiles that just run it
+    (not tiles that only need it, like the Lutris stores)."""
+    if not app.flatpak or app.command[:3] != ("flatpak", "run", app.flatpak):
+        return None
+    for apps_dir in flatpak_dirs():
+        icons = apps_dir.parent / "exports/share/icons/hicolor"
+        for size in ICON_SIZES:
+            for ext in ("png", "svg"):
+                path = icons / size / "apps" / f"{app.flatpak}.{ext}"
+                if path.is_file():
+                    return str(path)
+    return None
+
+
 class ConfigError(ValueError):
     pass
 
@@ -59,6 +77,8 @@ class App:
     command: tuple[str, ...]
     color: str = "#3a3f58"
     icon: str | None = None
+    # A drawing for tiles without an icon (emblems.py), e.g. "gears".
+    emblem: str | None = None
     requires: tuple[str, ...] = ()
     requires_files: tuple[str, ...] = ()
     flatpak: str | None = None
@@ -204,6 +224,7 @@ def _parse_app(raw: dict, where: str) -> App:
         command=_parse_command(raw, where),
         color=raw.get("color", App.color),
         icon=raw.get("icon"),
+        emblem=raw.get("emblem"),
         requires=tuple(requires),
         requires_files=tuple(requires_files),
         flatpak=raw.get("flatpak"),

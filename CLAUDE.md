@@ -43,6 +43,10 @@ the update.
 
 ## Rules for the field session (on the PC)
 
+Run Claude Code inside tmux (`tmux new -A -s claude`, then `claude
+--continue`), so a dropped SSH connection doesn't stop it mid-test: SSH back
+in and run the same tmux command to pick it up.
+
 This PC is the family TV. Treat it gently:
 
 - **Ask before anything that changes the system**: sudo commands, installing

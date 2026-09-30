@@ -18,8 +18,8 @@ from typing import Callable
 
 import pygame
 
-from . import events, style
-from .config import App
+from . import emblems, events, style
+from .config import App, flatpak_icon
 from .input import InputMapper
 from .model import Home, Nav
 from .style import Livery, Smooth, Type, ease_in_out, ease_out, enamel, mix, parse_color
@@ -271,6 +271,9 @@ def paint_tile(size: tuple[int, int], app: App, th: Theme, lit: bool, icon: pyga
     if details:
         center = (int(w * 0.225), int(h * 0.42))
         radius = h * 0.235
+        if icon is None and (icon := emblems.for_app(app, int(h * 0.56), lv)) is not None and not lit:
+            icon = icon.copy()
+            icon.set_alpha(215)  # a touch dimmer, like the name, until focused
         if icon is not None:
             surf.blit(icon, icon.get_rect(center=center))
         else:
@@ -318,6 +321,9 @@ def paint_loading(size: tuple[int, int], app: App, livery: str = "gulf") -> pyga
             plat = style.tracked(th.font_date, app.platform.upper(), lv.dim, 0.3)
             surf.blit(plat, plat.get_rect(midtop=(w // 2, y)))
             y += plat.get_height() + th.gap // 3
+    elif (emblem := emblems.for_app(app, int(radius * 2.4), lv)) is not None:
+        surf.blit(emblem, emblem.get_rect(center=(w // 2, cy)))
+        y = int(cy + radius * 1.2 + th.gap * 1.2)
     else:
         style.circle(surf, (0, 0, 0, 60), (w // 2, cy + int(radius * 0.12)), radius * 1.04)
         style.roundel(surf, (w // 2, cy), radius, app.name[:1].upper(),
@@ -357,6 +363,7 @@ class HomeScreen:
         self.badge: str | None = None
         self.running: set[str] = set()  # background apps, marked on their tiles
         self._icons: dict[str, pygame.Surface | None] = {}
+        self._icon_paths: dict[str, str | None] = {}
         self._tiles: dict[tuple, pygame.Surface] = {}
         self._shadow: pygame.Surface | None = None
         self._scroll_y = 0.0
@@ -438,16 +445,23 @@ class HomeScreen:
         return strip
 
     def _icon(self, app: App, size: tuple[int, int]) -> pygame.Surface | None:
-        if not app.icon:
+        if app.id not in self._icon_paths:  # looked up once: it's a few file checks
+            self._icon_paths[app.id] = app.icon or flatpak_icon(app)
+        path = self._icon_paths[app.id]
+        if not path:
             return None
-        key = f"{app.icon}@{size}"
+        key = f"{path}@{size}"
         if key not in self._icons:
             try:
-                img = pygame.image.load(str(Path(app.icon).expanduser())).convert_alpha()
+                path = str(Path(path).expanduser())
+                if path.endswith(".svg") and hasattr(pygame.image, "load_sized_svg"):
+                    img = pygame.image.load_sized_svg(path, size).convert_alpha()
+                else:
+                    img = pygame.image.load(path).convert_alpha()
                 scale = min(size[0] / img.get_width(), size[1] / img.get_height())
                 new = (int(img.get_width() * scale), int(img.get_height() * scale))
                 self._icons[key] = pygame.transform.smoothscale(img, new)
-            except (pygame.error, FileNotFoundError, ZeroDivisionError):
+            except (pygame.error, OSError, ZeroDivisionError):
                 self._icons[key] = None
         return self._icons[key]
 

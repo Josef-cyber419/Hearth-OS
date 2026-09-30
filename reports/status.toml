@@ -21,7 +21,7 @@ reference_pc = "Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox
 
 [[area]]
 name = "Home screen"
-what = "TV-style rows, liveries, a backdrop from the focused game, controller batteries and network by the clock"
+what = "TV-style rows, liveries, a drawing or icon on every tile, a backdrop from the focused game, controller batteries and network by the clock"
 status = "confirmed"
 
 [[area]]
@@ -144,6 +144,7 @@ needs = "Update, then try the checklist in the release notes"
 
 # Captions for screenshots in reports/<version>/screens/.
 [screens]
+"emblems.png" = "The System tiles, each with its own drawing."
 "watch-next.png" = "Watch next: in progress on Jellyfin, Plex and Kodi, with how much is left."
 "family.png" = "Settings → Family: game time, bedtime, locked tiles."
 "pin.png" = "The PIN, entered like a combination lock."

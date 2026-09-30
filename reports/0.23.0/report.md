@@ -10,9 +10,9 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.23.0 | Change since 0.22.4 |
 |---|--:|--:|
-| Lines of code | 15,486 | +1 |
-| Automated tests | 381 | – |
-| Lines of docs | 1,800 | +27 |
+| Lines of code | 15,758 | +273 |
+| Automated tests | 387 | +6 |
+| Lines of docs | 1,807 | +34 |
 | Guides in docs/ | 14 | – |
 | Pull requests merged | 26 | |
 | Versions released | 26 | |
@@ -21,20 +21,21 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 12,941 |
-| System image (scripts, services, config) | 1,163 |
+| Home screen, Quick Menu and settings (Python) | 13,210 |
+| System image (scripts, services, config) | 1,166 |
 | Build and tools | 1,382 |
-| Tests | 5,368 |
+| Tests | 5,419 |
 
 ## What's new in 0.23.0
 
-- **GitHub's `gh` command is built in**, so Claude Code on the PC can file field reports without installing anything.
+- **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a lap of a circuit, Power Off an engine start button, and so on. Apps from Flathub show their own icon.
+- **GitHub's `gh` command and `tmux` are built in**, so Claude Code on the PC can file field reports, and keeps working if the SSH connection drops (`tmux new -A -s claude`).
 
 ## What's working
 
 | Area | What it does | Status |
 |---|---|---|
-| Home screen | TV-style rows, liveries, a backdrop from the focused game, controller batteries and network by the clock | ✅ Confirmed on the PC |
+| Home screen | TV-style rows, liveries, a drawing or icon on every tile, a backdrop from the focused game, controller batteries and network by the clock | ✅ Confirmed on the PC |
 | Emulation | ES-DE with a tile per console; emulators tuned for the GPU and TV | ✅ Confirmed on the PC (Dolphin working) |
 | Wii Remote | DolphinBar pointer on the home screen and as a mouse; handed to Dolphin for Wii games | ✅ Confirmed on the PC (pointer working) |
 | Quick Resume | Hold Guide to pause a game and pick it up later (up to 3) | 🟡 Shipped |
@@ -58,6 +59,11 @@ Lines of code by part (blank lines not counted):
 
 **Confirmed** means reported working on the real PC; **Shipped** means built, tested and released, but not yet reported on.
 
+## Screenshots
+
+![The System tiles, each with its own drawing.](screens/emblems.png)
+_The System tiles, each with its own drawing._
+
 ## Open issues
 
 | Issue | Where it stands | What's needed |
@@ -75,7 +81,7 @@ Lines of code by part (blank lines not counted):
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| 0.23.0 | 2026-09-30 | 15,486 | 381 | 1,800 | 14 | 26 |
+| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 15,758 | 387 | 1,807 | 14 | 26 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 26 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
 | [0.22.1](../0.22.1/report.md) | 2026-09-30 | 15,008 | 370 | 1,548 | 13 | 25 |

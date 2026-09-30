@@ -8,7 +8,7 @@ Every version, counted from the code as it was released. Lines of code don't cou
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.23.0](0.23.0/report.md) | 2026-09-30 | 15,486 | 381 | 1,800 | 14 | 26 |
+| [0.23.0](0.23.0/report.md) | 2026-09-30 | 15,758 | 387 | 1,807 | 14 | 26 |
 | [0.22.4](0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 26 |
 | [0.22.2](0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
 | [0.22.1](0.22.1/report.md) | 2026-09-30 | 15,008 | 370 | 1,548 | 13 | 25 |
