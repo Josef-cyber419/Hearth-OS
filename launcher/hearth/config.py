@@ -167,6 +167,7 @@ class Config:
     safe_area: int = 0  # percent kept clear at the screen's edges, for TVs that crop (overscan)
     home_recent: bool = True  # the "Continue" row of recently played games
     home_watch: bool = True  # the "Watch next" row: shows in progress on Jellyfin, Plex, Kodi
+    game_art: bool = True  # find pictures online for emulated games without one (artfind.py)
     home_pins: bool = True  # the Favorites row
     sounds: bool = False  # soft UI sounds on the home screen (sounds.py)
     screensaver_minutes: int = 10  # 0 = never; protects OLED TVs from a still home screen
@@ -285,6 +286,7 @@ def parse(data: dict) -> Config:
         safe_area=int(_number(theme, "theme", "safe_area", 0, 0, 10)),
         home_recent=bool(home_table.get("recent", True)),
         home_watch=bool(home_table.get("watch", True)),
+        game_art=bool(home_table.get("art", True)),
         home_pins=bool(home_table.get("pins", True)),
         sounds=bool(home_table.get("sounds", False)),
         screensaver_minutes=int(_number(home_table, "home", "screensaver_minutes", 10, 0, 240)),

@@ -315,7 +315,9 @@ def rom_art(system: str, rom: Path) -> str | None:
             path = media / kind / f"{rom.stem}.{ext}"
             if path.exists():
                 return str(path)
-    return None
+    from . import artfind
+
+    return artfind.found(system, rom.stem)  # found online by Hearth (artfind.py)
 
 
 def pretty(stem: str) -> str:
@@ -691,6 +693,10 @@ def with_game_rows(config, games: list[Game] | None = None):
     from .config import Row
 
     games = all_games() if games is None else games
+    if config.game_art:
+        from . import artfind
+
+        artfind.find_soon(games)  # pictures for emulated games without one, in the background
     prefs = settings.load()
     rows = []
     if config.home_pins:

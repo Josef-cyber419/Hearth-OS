@@ -11,6 +11,9 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a
   lap of a circuit, Power Off an engine start button, and so on. Apps from
   Flathub show their own icon.
+- **Game art finds itself**: emulated games without a picture get one from
+  libretro's free thumbnail library, in the background. `hearthctl art`
+  fetches them now; off in Settings → Home screen.
 - **GitHub's `gh` command and `tmux` are built in**, so Claude Code on the
   PC can file field reports, and keeps working if the SSH connection drops
   (`tmux new -A -s claude`).

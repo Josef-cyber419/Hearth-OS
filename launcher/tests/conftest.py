@@ -23,5 +23,14 @@ def runtime_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state"))
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "config"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
     (tmp_path / "run").mkdir()
     return tmp_path / "run"
+
+
+@pytest.fixture(autouse=True)
+def no_art_downloads(monkeypatch):
+    """Tests never go online for game art (test_artfind.py tests it offline)."""
+    from hearth import artfind
+
+    monkeypatch.setattr(artfind, "find_soon", lambda games: None)

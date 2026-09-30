@@ -26,7 +26,7 @@ status = "confirmed"
 
 [[area]]
 name = "Emulation"
-what = "ES-DE with a tile per console; emulators tuned for the GPU and TV"
+what = "ES-DE with a tile per console; emulators tuned for the GPU and TV; game art found automatically"
 status = "confirmed"
 note = "Dolphin working"
 

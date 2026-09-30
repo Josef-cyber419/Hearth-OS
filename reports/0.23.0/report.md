@@ -10,9 +10,9 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.23.0 | Change since 0.22.4 |
 |---|--:|--:|
-| Lines of code | 15,758 | +273 |
-| Automated tests | 387 | +6 |
-| Lines of docs | 1,807 | +34 |
+| Lines of code | 15,985 | +500 |
+| Automated tests | 395 | +14 |
+| Lines of docs | 1,817 | +44 |
 | Guides in docs/ | 14 | – |
 | Pull requests merged | 26 | |
 | Versions released | 26 | |
@@ -21,14 +21,15 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 13,210 |
+| Home screen, Quick Menu and settings (Python) | 13,437 |
 | System image (scripts, services, config) | 1,166 |
 | Build and tools | 1,382 |
-| Tests | 5,419 |
+| Tests | 5,491 |
 
 ## What's new in 0.23.0
 
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a lap of a circuit, Power Off an engine start button, and so on. Apps from Flathub show their own icon.
+- **Game art finds itself**: emulated games without a picture get one from libretro's free thumbnail library, in the background. `hearthctl art` fetches them now; off in Settings → Home screen.
 - **GitHub's `gh` command and `tmux` are built in**, so Claude Code on the PC can file field reports, and keeps working if the SSH connection drops (`tmux new -A -s claude`).
 
 ## What's working
@@ -36,7 +37,7 @@ Lines of code by part (blank lines not counted):
 | Area | What it does | Status |
 |---|---|---|
 | Home screen | TV-style rows, liveries, a drawing or icon on every tile, a backdrop from the focused game, controller batteries and network by the clock | ✅ Confirmed on the PC |
-| Emulation | ES-DE with a tile per console; emulators tuned for the GPU and TV | ✅ Confirmed on the PC (Dolphin working) |
+| Emulation | ES-DE with a tile per console; emulators tuned for the GPU and TV; game art found automatically | ✅ Confirmed on the PC (Dolphin working) |
 | Wii Remote | DolphinBar pointer on the home screen and as a mouse; handed to Dolphin for Wii games | ✅ Confirmed on the PC (pointer working) |
 | Quick Resume | Hold Guide to pause a game and pick it up later (up to 3) | 🟡 Shipped |
 | Quick Menu | Guide button panel: audio, per-app volume, Discord, stats, power, updates, screenshots | 🟡 Shipped |
@@ -81,7 +82,7 @@ _The System tiles, each with its own drawing._
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 15,758 | 387 | 1,807 | 14 | 26 |
+| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 15,985 | 395 | 1,817 | 14 | 26 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 26 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
 | [0.22.1](../0.22.1/report.md) | 2026-09-30 | 15,008 | 370 | 1,548 | 13 | 25 |

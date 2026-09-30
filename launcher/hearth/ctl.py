@@ -592,6 +592,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("update")
     sub.add_parser("screenshot")
     sub.add_parser("footprint")
+    p = sub.add_parser("art", help="find pictures online for emulated games without one, now")
+    p.add_argument("-n", "--limit", type=int, default=500)
     sub.add_parser("check")
     p = sub.add_parser("press", help="send buttons to the TV: up down left right a b x y view menu lb rb guide home")
     p.add_argument("buttons", nargs="+")
@@ -643,6 +645,13 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(problem)
         return 1 if problems else 0
+    if args.cmd == "art":
+        from . import artfind, library
+
+        todo = artfind.wanted(library.all_games())
+        print(f"{len(todo)} emulated games without a picture; looking (up to {args.limit})...")
+        print(f"Found {artfind.run(library.all_games(), limit=args.limit)}; they show on the home screen shortly.")
+        return 0
     if args.cmd == "footprint":
         from . import footprint
 
