@@ -1363,6 +1363,10 @@ class SettingsApp:
         from . import profiles
 
         try:
+            if pid == profiles.current_id():  # their Steam and Discord close first
+                from . import hub
+
+                hub.switch_person(profiles.OWNER)
             profiles.remove(pid)
         except ValueError as e:
             self.jobs.messages["people-add"] = str(e).capitalize()

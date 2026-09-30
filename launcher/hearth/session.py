@@ -381,23 +381,36 @@ def quit_game(pids: list[int], wait: float = 3.0, kill=os.kill, alive=None, slee
 GRACE_SECONDS = 2.0  # how long an app gets to exit by itself before its scope is stopped
 
 
-def ask_to_exit(pid: int | None, wait: float = GRACE_SECONDS, sleep=time.sleep) -> bool:
-    """SIGTERM the app's process group and give it a moment to exit by
-    itself. An AppImage runs from a FUSE mount held by a helper in the same
-    scope; stopping the scope kills both at once and the game dies of SIGBUS
-    (field report #41). True if it's gone."""
+def holds_fuse(pid: int, proc: Path = Path("/proc")) -> bool:
+    """A FUSE server: an AppImage's runtime keeps one to serve the game's own
+    files. Signalling it unmounts them under the running game (SIGBUS)."""
+    try:
+        return any(os.readlink(str(f)) == "/dev/fuse" for f in (proc / str(pid) / "fd").iterdir())
+    except OSError:
+        return False
+
+
+def ask_to_exit(pid: int | None, wait: float = GRACE_SECONDS, sleep=time.sleep,
+                proc: Path = Path("/proc")) -> bool:
+    """SIGTERM the app's processes (not its FUSE helper, see holds_fuse) and
+    give them a moment to exit by themselves; stopping the scope at once
+    killed an AppImage's mount with the game and it died of SIGBUS (field
+    report #41). True if they're all gone."""
     if not pid:
         return False
-    try:
-        os.killpg(pid, 15)
-    except OSError:
-        return not _pid_alive(pid)
+    procs = _processes(proc)
+    targets = [p for p in [pid, *_descendants(pid, procs)] if not holds_fuse(p, proc)]
+    if not targets:
+        return False
+    for p in targets:
+        try:
+            os.kill(p, signal.SIGTERM)
+        except OSError:
+            pass
     deadline = time.monotonic() + wait
-    while time.monotonic() < deadline:
-        if not _pid_alive(pid):
-            return True
+    while time.monotonic() < deadline and any(_pid_alive(p) for p in targets):
         sleep(0.1)
-    return not _pid_alive(pid)
+    return not any(_pid_alive(p) for p in targets)
 
 
 def stop_entry(info: dict) -> None:

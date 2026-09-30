@@ -659,9 +659,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "art":
         from . import artfind, library
 
-        todo = artfind.wanted(library.all_games())
+        games = library.all_games()
+        todo = artfind.wanted(games)
         print(f"{len(todo)} emulated games without a picture; looking (up to {args.limit})...")
-        print(f"Found {artfind.run(library.all_games(), limit=args.limit)}; they show on the home screen shortly.")
+        print(f"Found {artfind.run(games, limit=args.limit)}; they show on the home screen shortly.")
         return 0
     if args.cmd == "footprint":
         from . import footprint

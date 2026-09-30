@@ -58,22 +58,38 @@ def test_focus_order_falls_back_to_home():
 
 def test_closing_asks_the_app_to_exit_before_stopping_its_scope(monkeypatch):
     # Field report #41: stopping the scope at once killed an AppImage's FUSE
-    # helper with it, and the game died of SIGBUS.
+    # helper with it, and the game died of SIGBUS. The helper is left alone.
     calls = []
-    alive = {"pid": True}
-    monkeypatch.setattr(session.os, "killpg", lambda pid, sig: (calls.append(("kill", pid, sig)), alive.update(pid=False)))
-    monkeypatch.setattr(session, "_pid_alive", lambda pid: alive["pid"])
+    alive = {42: True, 43: True, 44: True}
+    monkeypatch.setattr(session, "_processes", lambda proc: {42: (1, "AppRun"), 43: (42, "fusefs"), 44: (42, "dusk")})
+    monkeypatch.setattr(session, "_descendants", lambda pid, procs: [43, 44])
+    monkeypatch.setattr(session, "holds_fuse", lambda pid, proc: pid == 43)
+    monkeypatch.setattr(session.os, "kill", lambda pid, sig: (calls.append(("kill", pid, sig)), alive.update({pid: False})))
+    monkeypatch.setattr(session, "_pid_alive", lambda pid: alive[pid])
     monkeypatch.setattr(session, "_units", lambda info: [info["unit"]])
     monkeypatch.setattr(session, "thaw", lambda u: calls.append(("thaw", u)))
     monkeypatch.setattr(session, "stop", lambda u: calls.append(("stop", u)) or True)
     session.stop_entry({"pid": 42, "unit": "hearth-app-x_1.scope"})
-    assert calls == [("thaw", "hearth-app-x_1.scope"), ("kill", 42, 15), ("stop", "hearth-app-x_1.scope")]
+    assert calls == [("thaw", "hearth-app-x_1.scope"), ("kill", 42, 15), ("kill", 44, 15), ("stop", "hearth-app-x_1.scope")]
 
 
 def test_an_app_that_ignores_sigterm_gets_its_scope_stopped(monkeypatch):
-    monkeypatch.setattr(session.os, "killpg", lambda pid, sig: None)
+    monkeypatch.setattr(session, "_processes", lambda proc: {42: (1, "x")})
+    monkeypatch.setattr(session, "_descendants", lambda pid, procs: [])
+    monkeypatch.setattr(session, "holds_fuse", lambda pid, proc: False)
+    monkeypatch.setattr(session.os, "kill", lambda pid, sig: None)
     monkeypatch.setattr(session, "_pid_alive", lambda pid: True)
     assert session.ask_to_exit(42, wait=0.3, sleep=lambda s: None) is False
+
+
+def test_holds_fuse_reads_the_open_files(tmp_path):
+    fd = tmp_path / "7" / "fd"
+    fd.mkdir(parents=True)
+    (fd / "3").symlink_to("/dev/null")
+    assert not session.holds_fuse(7, tmp_path)
+    (fd / "4").symlink_to("/dev/fuse")
+    assert session.holds_fuse(7, tmp_path)
+    assert not session.holds_fuse(8, tmp_path)
 
 
 def test_steam_games_get_a_window_time_when_gamescope_can_show_them():

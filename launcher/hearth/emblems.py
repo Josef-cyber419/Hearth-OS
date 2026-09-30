@@ -33,6 +33,14 @@ class Pen:
         self.second: RGB = lv.second
         self.shade: RGB = mix(lv.text, lv.ink, 0.45)
 
+    def layer(self) -> "Pen":
+        """A fresh transparent canvas the same size, in the same colours, to
+        draw a shape whose cut-outs mustn't cut what's already drawn."""
+        other = Pen.__new__(Pen)
+        other.__dict__.update(self.__dict__)
+        other.surf = pygame.Surface(self.surf.get_size(), pygame.SRCALPHA)
+        return other
+
     def p(self, x: float, y: float) -> tuple[int, int]:
         return round(x * self.n), round(y * self.n)
 
@@ -262,9 +270,7 @@ def plug(pen: Pen) -> None:
 def _helmet(pen: Pen, c: Pt, r: float, shell, stripe) -> None:
     """A classic open-face racing helmet, facing right, with a stripe over
     the top. Drawn on its own layer so its cut-outs don't cut what's behind."""
-    layer = Pen.__new__(Pen)
-    layer.__dict__.update(pen.__dict__)
-    layer.surf = pygame.Surface(pen.surf.get_size(), pygame.SRCALPHA)
+    layer = pen.layer()
     layer.disc(c, r, shell)
     layer.rect(c[0] - r, c[1] + r * 0.62, r * 2, r, CLEAR)  # a flat base
     layer.rect(c[0] + r * 0.22, c[1] - r * 0.18, r, r * 0.55, CLEAR, radius=r * 0.14)  # the face opening

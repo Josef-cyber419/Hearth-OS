@@ -105,3 +105,14 @@ def test_a_missing_listing_is_remembered_not_refetched():
     assert artfind.index("saturn", "Named_Titles", fetch) == []
     assert artfind.index("saturn", "Named_Titles", fetch) == []
     assert len(asked) == 1
+
+
+def test_rate_limiting_stops_the_run_without_blaming_the_games():
+    import urllib.error
+
+    def fetch(url):
+        raise urllib.error.HTTPError(url, 429, "slow down", {}, None)
+
+    games = [_rom("n64", "Super Mario 64 (USA).z64"), _rom("n64", "Mario Kart 64 (USA).z64")]
+    assert artfind.run(games, fetch=fetch, sleep=lambda s: None) == 0
+    assert artfind._misses() == {}

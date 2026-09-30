@@ -299,3 +299,47 @@ def test_hub_switch_closes_whats_personal_first(home, monkeypatch):
     hub.switch_person("sam")
     assert profiles.current_id() == "sam"
     assert closed == ["game:rom:n64:x", "Discord"] and session.read()["background"] == {}
+
+
+def test_removing_a_person_forgets_their_files(home):
+    from hearth import library
+
+    sam = two_people()
+    profiles.switch(sam.id, home)
+    settings.toggle_in("favorites", "kodi", True)
+    library.record_play("rom:n64:Mario.z64")
+    profiles.switch(profiles.OWNER, home)
+    profiles.add("Mia")  # so removing Sam doesn't end people mode
+    profiles.remove(sam.id)
+    assert "sam" not in (settings._raw().get("people") or {})
+    assert not profiles.state_dir(library.state_dir(), "sam").exists()
+    again = profiles.add("Sam")
+    profiles.switch(again.id, home)
+    assert again.id == "sam" and "favorites" not in settings.load() and library.played() == {}
+
+
+def test_a_stale_discord_copy_is_kept_aside_not_a_reason_to_skip(home):
+    sam = two_people()
+    stale = home / ".var/app-people/owner/com.discordapp.Discord"
+    stale.mkdir(parents=True)
+    (stale / "old.txt").write_text("x")
+    live = home / ".var/app/com.discordapp.Discord"
+    live.mkdir(parents=True)
+    (live / "joseph.txt").write_text("j")
+    problems = profiles.switch(sam.id, home)
+    assert len(problems) == 1 and "kept as" in problems[0]
+    assert not live.exists()  # Sam doesn't get Joseph's Discord
+    kept = list((home / ".var/app-people/owner").iterdir())
+    assert sorted(p.name.split(".old-")[0] for p in kept) == ["com.discordapp.Discord"] * 2
+    assert (home / ".var/app-people/owner/com.discordapp.Discord/joseph.txt").exists()
+
+
+def test_people_file_is_cached_by_mtime(home, monkeypatch):
+    two_people()
+    reads = []
+    real = profiles.Path.read_text
+    monkeypatch.setattr(profiles.Path, "read_text", lambda self, *a, **k: (reads.append(self.name), real(self, *a, **k))[1])
+    for _ in range(5):
+        profiles.current_id()
+        profiles.people()
+    assert reads.count("people.json") <= 1

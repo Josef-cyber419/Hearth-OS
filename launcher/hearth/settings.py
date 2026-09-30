@@ -54,6 +54,16 @@ def load() -> dict:
     return view
 
 
+def save_raw(data: dict) -> None:
+    """Write the whole file as it is (everyone's keys), see save()."""
+    p = path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".settings-")
+    with os.fdopen(fd, "w") as f:
+        json.dump(data, f, indent=2, sort_keys=True)
+    os.replace(tmp, p)
+
+
 def save(data: dict) -> None:
     from .profiles import OWNER, PERSONAL
 
@@ -66,12 +76,7 @@ def save(data: dict) -> None:
         people[pid] = {k: data[k] for k in PERSONAL if k in data}
         out["people"] = people
         data = out
-    p = path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".settings-")
-    with os.fdopen(fd, "w") as f:
-        json.dump(data, f, indent=2, sort_keys=True)
-    os.replace(tmp, p)
+    save_raw(data)
 
 
 def put(table: str, key: str, value: Any) -> dict:

@@ -223,7 +223,10 @@ def run(games, limit: int = PER_RUN, fetch=_get, sleep=time.sleep) -> int:
                 misses.pop(miss_key, None)
             else:
                 misses[miss_key] = now
-        except urllib.error.HTTPError:
+        except urllib.error.HTTPError as e:
+            if e.code != 404:  # rate-limited or down: not the game's fault, try next run
+                log.info("game art: stopped at %s (HTTP %s)", miss_key, e.code)
+                break
             misses[miss_key] = now  # listed but not there: skip it for now
         except (urllib.error.URLError, OSError, ValueError) as e:
             log.info("game art: stopped at %s (%s)", miss_key, e)

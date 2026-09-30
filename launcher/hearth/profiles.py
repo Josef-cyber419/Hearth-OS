@@ -21,6 +21,7 @@ Kept in ~/.config/hearth/people.json (PINs only as salted hashes).
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import hmac
 import json
@@ -30,6 +31,7 @@ import re
 import secrets
 import shutil
 import tempfile
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -70,12 +72,25 @@ def path() -> Path:
     return Path(base) / "hearth" / "people.json"
 
 
+_cache: tuple[Path, int, dict] | None = None  # (path, mtime_ns, data): it's read on hot paths
+
+
 def _read() -> dict:
+    global _cache
+    p = path()
     try:
-        data = json.loads(path().read_text())
-        return data if isinstance(data, dict) else {}
+        stamp = p.stat().st_mtime_ns
+    except OSError:
+        return {}
+    if _cache and _cache[0] == p and _cache[1] == stamp:
+        return copy.deepcopy(_cache[2])
+    try:
+        data = json.loads(p.read_text())
+        data = data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
+    _cache = (p, stamp, copy.deepcopy(data))
+    return data
 
 
 def _write(data: dict) -> None:
@@ -253,13 +268,28 @@ def remove(pid: str) -> None:
     if not any(p.admin for p in ps):
         raise ValueError("someone has to be an admin")
     if current_id() == pid:
-        switch(OWNER)
+        switch(OWNER)  # the Settings app closes their apps first (hub.switch_person)
     _save_people(ps)
-    shutil.rmtree(_app_data("", Path.home())[1] / pid, ignore_errors=True)  # their Discord and the like
+    forget(pid)
     if len(ps) == 1:  # back to one person: no picker, no PINs
         data = _read()
         data.update(people=[], current=OWNER)
         _write(data)
+
+
+def forget(pid: str, home: Path | None = None) -> None:
+    """A removed person's own files: their app data, favorites and play
+    times, so a person added later with the same name starts fresh."""
+    from . import library, settings
+
+    home = home or Path.home()
+    shutil.rmtree(_app_data("", home)[1] / pid, ignore_errors=True)
+    if pid != OWNER:
+        shutil.rmtree(state_dir(library.state_dir(), pid), ignore_errors=True)
+    raw = settings._raw()
+    if isinstance(raw.get("people"), dict) and pid in raw["people"]:
+        del raw["people"][pid]
+        settings.save_raw(raw)
 
 
 # -- whose files ---------------------------------------------------------------------
@@ -287,9 +317,10 @@ def swap_app_data(old: str, new: str, home: Path | None = None) -> list[str]:
         live, keep = _app_data(app_id, home)
         mine, theirs = keep / old / app_id, keep / new / app_id
         try:
-            if mine.exists():
-                problems.append(f"{app_id}: {mine} is in the way; left as it is")
-                continue
+            if mine.exists():  # left by a switch that didn't finish: keep it, out of the way
+                aside = mine.with_name(f"{mine.name}.old-{int(time.time())}")
+                mine.rename(aside)
+                problems.append(f"{app_id}: an older copy for {old} was in the way; kept as {aside.name}")
             if live.exists():
                 mine.parent.mkdir(parents=True, exist_ok=True)
                 live.rename(mine)
