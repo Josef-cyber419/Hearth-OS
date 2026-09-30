@@ -10,10 +10,10 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.23.0 | Change since 0.22.4 |
 |---|--:|--:|
-| Lines of code | 16,004 | +519 |
-| Automated tests | 399 | +18 |
-| Lines of docs | 1,821 | +48 |
-| Guides in docs/ | 14 | – |
+| Lines of code | 16,678 | +1,193 |
+| Automated tests | 416 | +35 |
+| Lines of docs | 1,875 | +102 |
+| Guides in docs/ | 15 | +1 |
 | Pull requests merged | 26 | |
 | Versions released | 26 | |
 
@@ -21,14 +21,15 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 13,455 |
-| System image (scripts, services, config) | 1,167 |
+| Home screen, Quick Menu and settings (Python) | 14,122 |
+| System image (scripts, services, config) | 1,174 |
 | Build and tools | 1,382 |
-| Tests | 5,530 |
+| Tests | 5,765 |
 
 ## What's new in 0.23.0
 
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a lap of a circuit, Power Off an engine start button, and so on. Apps from Flathub show their own icon.
+- **People**: add everyone in the household (Settings → People). Hearth then starts on "Who's playing?", with an optional 4-digit PIN each. Each person has their own favorites, Continue row, play times, Steam account and Discord; ROMs, apps and installed games are shared. An admin sets each person's game time, bedtime and locked tiles, and only an admin opens Settings and Desktop Mode. With one person, nothing changes.
 - **Erasing a drive asks for your password** (Settings → Storage), the one Desktop Mode and `sudo` use. Using a drive as it is doesn't.
 - **Game art finds itself**: emulated games without a picture get one from libretro's free thumbnail library, in the background. `hearthctl art` fetches them now; off in Settings → Home screen.
 - **GitHub's `gh` command and `tmux` are built in**, so Claude Code on the PC can file field reports, and keeps working if the SSH connection drops (`tmux new -A -s claude`).
@@ -49,19 +50,23 @@ Lines of code by part (blank lines not counted):
 | Settings | Wi-Fi, static IP and DNS, Bluetooth, audio devices, storage (format and use a new drive) | 🟡 Shipped |
 | Captures | Screenshots from the Quick Menu, a gallery tile, in the screen saver | 🟡 Shipped |
 | Watch next | Shows and films in progress from Jellyfin, Plex and Kodi; resumes and reports back | 🟡 Shipped |
-| Family | Daily game-time limit, bedtime and locked tiles behind a PIN | 🟡 Shipped |
+| Family | Daily game-time limit, bedtime and locked tiles behind a PIN, per person | 🟡 Shipped |
 | Privacy | No ads or tracking; a guide to turn off the TV's own tracking, by make | 🟡 Shipped |
 | TV control (CEC) | TV on and to the right input on wake and on Guide; standby with the PC | 🟡 Shipped |
 | Performance | Hearth idles under 2% of one core and about 300 MB; hearthctl footprint | 🟡 Shipped |
 | Updates | Automatic, versioned, with releases on GitHub, a what's-new card and rollback | 🟡 Shipped |
 | Phone as a remote | A web page with a d-pad and keyboard, paired with a code on the TV | ⚪ Not started |
-| Profiles, folders | Per-person favorites; groups of tiles | ⚪ Not started (deferred for now) |
+| People **new** | Who's playing? with optional PINs; own favorites, Continue, Steam and Discord; limits set by an admin | 🟡 Shipped |
+| Folders | Groups of tiles | ⚪ Not started (deferred for now) |
 | NVIDIA graphics | A separate image with NVIDIA's driver | ⚪ Not started (deferred: AMD and Intel first) |
 | Netflix and similar | DRM limits these to low quality on any home-built PC | ⛔ Not possible |
 
 **Confirmed** means reported working on the real PC; **Shipped** means built, tested and released, but not yet reported on.
 
 ## Screenshots
+
+![Who's playing?: one tile per person, each with an optional PIN.](screens/picker.png)
+_Who's playing?: one tile per person, each with an optional PIN._
 
 ![The System tiles, each with its own drawing.](screens/emblems.png)
 _The System tiles, each with its own drawing._
@@ -77,13 +82,13 @@ _The System tiles, each with its own drawing._
 
 - Your phone as a remote, with a keyboard for search and Wi-Fi passwords.
 - Fix what turns up on the real PC.
-- When wanted: profiles and groups of tiles; NVIDIA support.
+- When wanted: groups of tiles; NVIDIA support.
 
 ## Every version
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 16,004 | 399 | 1,821 | 14 | 26 |
+| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 16,678 | 416 | 1,875 | 15 | 26 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 26 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
 | [0.22.1](../0.22.1/report.md) | 2026-09-30 | 15,008 | 370 | 1,548 | 13 | 25 |

@@ -703,6 +703,16 @@ class HomeScreen:
         say so; "are you sure?"); the Search tile opens here."""
         if app is None:
             return None
+        if not pin_ok and app.command[:1] == ("hearth:person",):  # "Who's playing?": their own PIN, if any
+            from . import family, profiles
+
+            person = profiles.get(app.command[1])
+            if person is not None and person.pin:
+                self.pin = family.PinEntry(f"{person.name}'s PIN", app,
+                                           checker=lambda pin, pid=person.id: profiles.check_pin(pid, pin))
+                self._confirm_t0 = time.monotonic()
+                return None
+            pin_ok = True
         if not pin_ok:
             from . import family
 
@@ -799,7 +809,7 @@ class HomeScreen:
         from . import family
 
         entry, self.pin = self.pin, None
-        if entry.reason != "This one is locked":
+        if entry.reason in family.TIME_REASONS:
             family.grant_extra()
         events.record("pin_ok", tile=entry.target.id if entry.target else None)
         return self._open(entry.target, pin_ok=True)

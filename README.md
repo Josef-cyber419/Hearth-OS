@@ -47,7 +47,8 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   ([STREAMING.md](docs/STREAMING.md#watch-next-carry-on-where-you-stopped)).
 - **Family**: a daily game-time limit, a bedtime and locked tiles, behind a
   PIN, for the whole household; films and TV apps don't count against it
-  ([FAMILY.md](docs/FAMILY.md)).
+  ([FAMILY.md](docs/FAMILY.md)); everyone in the household can have their own
+  home screen, Steam and Discord, picked on "Who's playing?" ([PEOPLE.md](docs/PEOPLE.md)).
 - **Private, and light**: no ads, no sponsored tiles, nothing sent about what
   you watch or play. Settings → Privacy shows how to turn off your **TV's own
   tracking**, for its make. Hearth itself idles at under 2% of one processor

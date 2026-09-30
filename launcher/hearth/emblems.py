@@ -259,15 +259,37 @@ def plug(pen: Pen) -> None:
     pen.line((0.50, 0.70), (0.50, 0.86), 0.07, pen.fg)
 
 
+def _helmet(pen: Pen, c: Pt, r: float, shell, stripe) -> None:
+    """A classic open-face racing helmet, facing right, with a stripe over
+    the top. Drawn on its own layer so its cut-outs don't cut what's behind."""
+    layer = Pen.__new__(Pen)
+    layer.__dict__.update(pen.__dict__)
+    layer.surf = pygame.Surface(pen.surf.get_size(), pygame.SRCALPHA)
+    layer.disc(c, r, shell)
+    layer.rect(c[0] - r, c[1] + r * 0.62, r * 2, r, CLEAR)  # a flat base
+    layer.rect(c[0] + r * 0.22, c[1] - r * 0.18, r, r * 0.55, CLEAR, radius=r * 0.14)  # the face opening
+    layer.rect(c[0] + r * 0.15, c[1] - r * 0.34, r * 0.95, r * 0.14, stripe, radius=r * 0.07)  # the peak
+    # A stripe over the crown, front to back.
+    layer.arc(c, r * 0.80, r * 0.18, 200, 300, stripe)
+    pen.surf.blit(layer.surf, (0, 0))
+
+
+def helmets(pen: Pen) -> None:
+    """Switch person: two drivers' helmets."""
+    _helmet(pen, (0.36, 0.46), 0.25, pen.fg, pen.accent)
+    _helmet(pen, (0.62, 0.58), 0.25, pen.accent, pen.fg)
+
+
 EMBLEMS: dict[str, Callable[[Pen], None]] = {
     "gears": gears, "camera": camera, "moon": moon, "circuit": circuit, "power": power, "garage": garage,
-    "shelf": shelf, "lens": lens, "pad": pad, "plug": plug,
+    "shelf": shelf, "lens": lens, "pad": pad, "plug": plug, "helmets": helmets,
 }
 
 # The built-in tiles' emblems, so a customised apps.toml gets them too.
 BY_ID = {
     "settings": "gears", "captures": "camera", "sleep": "moon", "restart": "circuit", "poweroff": "power",
     "desktop": "garage", "library": "shelf", "search": "lens", "emulation": "pad", "hdmi-in": "plug",
+    "people": "helmets",
 }
 
 _cache: dict[tuple, pygame.Surface] = {}

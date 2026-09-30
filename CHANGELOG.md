@@ -11,6 +11,12 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a
   lap of a circuit, Power Off an engine start button, and so on. Apps from
   Flathub show their own icon.
+- **People**: add everyone in the household (Settings → People). Hearth
+  then starts on "Who's playing?", with an optional 4-digit PIN each. Each
+  person has their own favorites, Continue row, play times, Steam account
+  and Discord; ROMs, apps and installed games are shared. An admin sets each
+  person's game time, bedtime and locked tiles, and only an admin opens
+  Settings and Desktop Mode. With one person, nothing changes.
 - **Erasing a drive asks for your password** (Settings → Storage), the
   one Desktop Mode and `sudo` use. Using a drive as it is doesn't.
 - **Game art finds itself**: emulated games without a picture get one from

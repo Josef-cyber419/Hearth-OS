@@ -46,6 +46,7 @@ CATEGORIES = [
     ("bluetooth", "Bluetooth", "Pair controllers and headsets."),
     ("network", "Network", "Wired and Wi-Fi connections."),
     ("storage", "Storage", "Drives added after install: set them up for Steam games and ROMs."),
+    ("people", "People", "Everyone who uses this PC: their own home screen, Steam and Discord, and the admin."),
     ("family", "Family", "A daily play-time limit, a bedtime, and tiles locked with a PIN."),
     ("privacy", "Privacy", "No ads or tracking in Hearth, and how to turn off your TV's tracking."),
     ("system", "System", "Versions, updates and help."),
@@ -339,6 +340,7 @@ class SettingsApp:
         self.dns_choice: int | None = None
         self._refreshed = 0.0
         self.family_unlocked = False  # the PIN was entered this time in Settings
+        self.person_edit: str | None = None  # whose settings People and Family show
         self.reload()
         self.menu = QuickMenu([])
         self.refresh()
@@ -433,7 +435,8 @@ class SettingsApp:
         pages = {"appearance": self._appearance, "home": self._home, "audio": self._audio,
                  "controllers": self._controllers,
                  "wii": self._wii, "emulation": self._emulation, "bluetooth": self._bluetooth,
-                 "network": self._network, "storage": self._storage, "family": self._family,
+                 "network": self._network, "storage": self._storage, "people": self._people,
+                 "family": self._family,
                  "privacy": self._privacy,
                  "system": self._system}
         tabs = []
@@ -1175,8 +1178,10 @@ class SettingsApp:
     # -- Family: household limits behind a PIN ----------------------------------------
 
     def _family(self) -> list[Item]:
-        from . import family
+        from . import family, profiles
 
+        if profiles.active():
+            return self._family_people()
         r = family.rules()
         if not r.active:
             return [
@@ -1191,33 +1196,7 @@ class SettingsApp:
             return [Item("family-unlock", "Enter the PIN to change these", "action",
                          detail=self.note("family-unlock", "Household limits are on"),
                          on_select=self._unlock_family)]
-        played = family.played_today()
-        daily = list(family.DAILY_CHOICES)
-        bed = list(family.BEDTIMES)
-        items = [
-            Item("family-daily", "Game time each day", "choice",
-                 value=daily.index(r.daily_minutes) if r.daily_minutes in daily else 0,
-                 options=tuple("No limit" if m == 0 else family.minutes_text(m * 60) for m in daily),
-                 detail=f"Played today: {family.minutes_text(played)}. Films and TV apps don't count",
-                 on_change=lambda i: self.put("family", "daily_minutes", daily[i])),
-            Item("family-bedtime", "Bedtime", "choice", value=bed.index(r.bedtime) if r.bedtime in bed else 0,
-                 options=tuple("None" if not b else b.replace("-", " to ") for b in bed),
-                 detail="Games need the PIN in these hours",
-                 on_change=lambda i: self.put("family", "bedtime", bed[i])),
-            Item("family-when", "When time's up", "choice", value=1 if r.when_up == "close" else 0,
-                 options=("Remind", "Close the game"),
-                 detail="Closing warns a minute first, to save. The PIN gives "
-                        f"{family.EXTRA_MINUTES} minutes more",
-                 on_change=lambda i: self.put("family", "when_up", ("remind", "close")[i])),
-        ]
-        items.append(Item("family-locks", "Locked tiles", "info",
-                          detail="These always need the PIN, whatever the time"))
-        for row in self.config.rows:
-            for app in row.apps:
-                if app.builtin:
-                    continue
-                items.append(Item(f"lock-{app.id}", app.name, "toggle", value=app.id in r.locked,
-                                  on_change=lambda on, a=app.id: self._set_locked(a, on)))
+        items = self._limit_items(r, family.played_today(), lambda k, v: self.put("family", k, v))
         items += [
             Item("family-change", "Change the PIN", "action", detail=self.note("family-pin", ""),
                  on_select=self._set_pin),
@@ -1226,12 +1205,213 @@ class SettingsApp:
         ]
         return items
 
-    def _set_locked(self, app_id: str, on: bool) -> None:
+    def _family_people(self) -> list[Item]:
+        """With people: limits for each one who isn't an admin (admins have
+        none, and their PIN lets the others past)."""
+        from . import family, profiles
+
+        kids = [p for p in profiles.people() if not p.admin]
+        if not kids:
+            return [Item("family-about", "Limits", "info",
+                         detail="Everyone here is an admin. Limits are for people who aren't: add one in People")]
+        ids = [p.id for p in kids]
+        pid = self.person_edit if self.person_edit in ids else ids[0]
+        person = kids[ids.index(pid)]
+        r = family._rules({**person.rules, "pin": "admin"})
+        items = [Item("family-who", "Limits for", "choice", value=ids.index(pid),
+                      options=tuple(p.name for p in kids), detail="An admin's PIN lets them past a limit",
+                      on_change=lambda i: self._edit_person(ids[i]))]
+
+        def put(key, value):
+            profiles.set_rule(pid, key, value)
+            events.record("setting", name=f"people.{pid}.{key}", value=value)
+            self.reload()
+
+        return items + self._limit_items(r, family.played_today(pid=pid), put)
+
+    # -- People -------------------------------------------------------------------
+
+    COLOR_NAMES = ("Orange", "Blue", "Green", "Red", "Purple", "Gold", "Teal", "Pink")
+
+    def _people(self) -> list[Item]:
+        from . import profiles, steamlogin
+
+        ps = profiles.people()
+        if not ps:
+            return [
+                Item("people-about", "Just one person so far", "info",
+                     detail="Each person gets their own favorites, Continue row, Steam, Discord and limits. "
+                            "ROMs and apps are shared"),
+                Item("people-start", "Add a person", "action",
+                     detail=self.note("people-start", "You'll be the admin, with a PIN"),
+                     on_select=self._people_start),
+            ]
+        ids = [p.id for p in ps]
+        pid = self.person_edit if self.person_edit in ids else profiles.current_id()
+        pid = pid if pid in ids else ids[0]
+        p = ps[ids.index(pid)]
+        colors = list(profiles.COLORS)
+        accounts = steamlogin.accounts()
+        steam_names = [a for a, _ in accounts]
+        if p.steam and p.steam not in steam_names:
+            steam_names.append(p.steam)
+            accounts.append((p.steam, p.steam))
+        steam_options = ("Choose on Steam", *(f"{shown} ({name})" if shown != name else name
+                                              for name, shown in accounts))
+
+        def change(**kw):
+            try:
+                profiles.update(pid, **kw)
+                self.jobs.messages.pop("person-admin", None)
+            except ValueError as e:
+                self.jobs.messages["person-admin"] = str(e).capitalize()
+            events.record("person_changed", person=pid, what=sorted(kw))
+            self.refresh()
+
+        items = [
+            Item("people-who", "Person", "choice", value=ids.index(pid),
+                 options=tuple(q.name + (" (admin)" if q.admin else "") for q in ps),
+                 detail=f"{len(ps)} people. Hearth starts on \"Who's playing?\"",
+                 on_change=lambda i: self._edit_person(ids[i])),
+            Item("person-name", "Name", "action", detail=f"{p.name}: A to change",
+                 on_select=lambda: self.open_keyboard("Name", lambda t: t.strip() and change(name=t.strip()),
+                                                      text=p.name)),
+            Item("person-color", "Colour", "choice", value=colors.index(p.color) if p.color in colors else 0,
+                 options=self.COLOR_NAMES[:len(colors)], on_change=lambda i: change(color=colors[i])),
+            Item("person-pin", "PIN", "action",
+                 detail=self.note("person-pin", "Set: A to change" if p.pin else "None: A to set one"),
+                 on_select=lambda: self._person_pin(pid)),
+        ]
+        if p.pin and not p.admin:
+            items.append(Item("person-pin-off", "Remove the PIN", "action", confirm=True,
+                              detail="Anyone can then pick them on \"Who's playing?\"",
+                              on_select=lambda: change(pin=None)))
+        items += [
+            Item("person-admin", "Admin", "toggle", value=p.admin,
+                 detail=self.note("person-admin", "Opens Settings and Desktop Mode; their PIN lets others past "
+                                                  "limits. Admins need a PIN"),
+                 on_change=lambda on: change(admin=bool(on))),
+            Item("person-steam", "Steam account", "choice",
+                 value=(steam_names.index(p.steam) + 1) if p.steam in steam_names else 0, options=steam_options,
+                 detail="Steam signs in to it for them. Games are shared. New account: pick Choose on Steam, "
+                        "then sign in there",
+                 on_change=lambda i: change(steam=steam_names[i - 1] if i else None)),
+        ]
+        if pid != profiles.OWNER:
+            items.append(Item("person-remove", f"Remove {p.name}", "action", confirm=True,
+                              detail="Their favorites, play times and Discord go; games stay",
+                              on_select=lambda: self._person_remove(pid)))
+        items.append(Item("people-add", "Add a person", "action", detail=self.note("people-add", ""),
+                          on_select=self._person_add))
+        return items
+
+    def _people_start(self) -> None:
+        """The first extra person: you (the admin, with a PIN), then them."""
+        from . import family, profiles
+
+        def their_name(owner: str, pin: str, name: str) -> None:
+            if not name.strip():
+                return
+            legacy = settings.load().get("family") or {}
+            profiles.start(owner, pin, family_rules=legacy)
+            data = settings.load()
+            data.pop("family", None)  # the household PIN: admins' PINs do its job now
+            settings.save(data)
+            new = profiles.add(name)
+            self.person_edit = new.id
+            events.record("people_on")
+            self.reload()
+            self.refresh()
+
+        def pin_chosen(owner: str, pin: str) -> None:
+            if not family.valid_pin(pin):
+                self.jobs.messages["people-start"] = f"A PIN is {family.PIN_LENGTH} digits: try again"
+                self.refresh()
+                return
+            self.open_keyboard("Their name", lambda n: their_name(owner, pin, n))
+
+        self.open_keyboard("Your name (you'll be the admin)",
+                           lambda owner: owner.strip() and self.open_keyboard(
+                               f"Your PIN ({family.PIN_LENGTH} digits)", lambda pin: pin_chosen(owner.strip(), pin),
+                               secret=True))
+
+    def _person_add(self) -> None:
+        from . import profiles
+
+        def named(name: str) -> None:
+            if name.strip():
+                self.person_edit = profiles.add(name).id
+                events.record("person_added")
+                self.refresh()
+
+        self.open_keyboard("Name", named)
+
+    def _person_pin(self, pid: str) -> None:
+        from . import family, profiles
+
+        def chosen(pin: str) -> None:
+            if not family.valid_pin(pin):
+                self.jobs.messages["person-pin"] = f"A PIN is {family.PIN_LENGTH} digits: try again"
+            else:
+                profiles.set_pin(pid, pin)
+                self.jobs.messages["person-pin"] = "PIN set"
+            self.refresh()
+
+        self.open_keyboard(f"New PIN ({family.PIN_LENGTH} digits)", chosen, secret=True)
+
+    def _person_remove(self, pid: str) -> None:
+        from . import profiles
+
+        try:
+            profiles.remove(pid)
+        except ValueError as e:
+            self.jobs.messages["people-add"] = str(e).capitalize()
+        self.person_edit = None
+        events.record("person_removed")
+        self.reload()
+        self.refresh()
+
+    def _edit_person(self, pid: str) -> None:
+        self.person_edit = pid
+        self.refresh()
+
+    def _limit_items(self, r, played: float, put: Callable[[str, object], None]) -> list[Item]:
         from . import family
 
-        locked = family.rules().locked
+        daily = list(family.DAILY_CHOICES)
+        bed = list(family.BEDTIMES)
+        items = [
+            Item("family-daily", "Game time each day", "choice",
+                 value=daily.index(r.daily_minutes) if r.daily_minutes in daily else 0,
+                 options=tuple("No limit" if m == 0 else family.minutes_text(m * 60) for m in daily),
+                 detail=f"Played today: {family.minutes_text(played)}. Films and TV apps don't count",
+                 on_change=lambda i: put("daily_minutes", daily[i])),
+            Item("family-bedtime", "Bedtime", "choice", value=bed.index(r.bedtime) if r.bedtime in bed else 0,
+                 options=tuple("None" if not b else b.replace("-", " to ") for b in bed),
+                 detail="Games need the PIN in these hours",
+                 on_change=lambda i: put("bedtime", bed[i])),
+            Item("family-when", "When time's up", "choice", value=1 if r.when_up == "close" else 0,
+                 options=("Remind", "Close the game"),
+                 detail="Closing warns a minute first, to save. The PIN gives "
+                        f"{family.EXTRA_MINUTES} minutes more",
+                 on_change=lambda i: put("when_up", ("remind", "close")[i])),
+        ]
+        items.append(Item("family-locks", "Locked tiles", "info",
+                          detail="These always need the PIN, whatever the time"))
+        for row in self.config.rows:
+            for app in row.apps:
+                if app.builtin:
+                    continue
+                items.append(Item(f"lock-{app.id}", app.name, "toggle", value=app.id in r.locked,
+                                  on_change=lambda on, a=app.id: self._set_locked(r, a, on, put)))
+        return items
+
+    @staticmethod
+    def _set_locked(r, app_id: str, on: bool, put) -> None:
+        locked = set(r.locked)
         (locked.add if on else locked.discard)(app_id)
-        self.put("family", "locked", sorted(locked))
+        r.locked = locked
+        put("locked", sorted(locked))
 
     def _set_pin(self) -> None:
         from . import family
@@ -1363,10 +1543,10 @@ class SettingsApp:
         """Returns "exit" to leave the Settings app."""
         if self.keyboard is not None:
             result = self.keyboard.handle(nav)
-            if result == "done" and self._keyboard_done:
-                self._keyboard_done(self.keyboard.text)
             if result in ("done", "cancel"):
-                self.keyboard = None
+                kb, done, self.keyboard = self.keyboard, self._keyboard_done, None
+                if result == "done" and done:
+                    done(kb.text)  # may open the next keyboard (People asks name, PIN, name)
             return None
         if self.calibrating is not None:
             if nav is Nav.BACK:

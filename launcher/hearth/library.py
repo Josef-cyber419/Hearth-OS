@@ -137,10 +137,20 @@ def _lower_keys(d: dict) -> dict:
 NOT_GAMES = re.compile(r"^(Proton|Steam Linux Runtime|Steamworks Common|Steam Audio|SteamVR)", re.I)
 
 
+def _steam_user() -> str:
+    """The current person's Steam account folder, or every account's."""
+    from . import profiles
+
+    try:
+        return profiles.steam_account_id() or "*"
+    except Exception:  # never lose the library over it
+        return "*"
+
+
 def steam_playtime(root: Path) -> dict[str, float]:
     """Minutes played, per app, as Steam counts them."""
     minutes: dict[str, float] = {}
-    for cfg in glob.glob(str(root / "userdata/*/config/localconfig.vdf")):
+    for cfg in glob.glob(str(root / f"userdata/{_steam_user()}/config/localconfig.vdf")):
         data = _lower_keys(_vdf_file(Path(cfg)))
         apps = (data.get("userlocalconfigstore", {}).get("software", {}).get("valve", {})
                 .get("steam", {}).get("apps", {}))
@@ -155,7 +165,7 @@ def steam_playtime(root: Path) -> dict[str, float]:
 
 def steam_last_played(root: Path) -> dict[str, float]:
     played: dict[str, float] = {}
-    for cfg in glob.glob(str(root / "userdata/*/config/localconfig.vdf")):
+    for cfg in glob.glob(str(root / f"userdata/{_steam_user()}/config/localconfig.vdf")):
         data = _lower_keys(_vdf_file(Path(cfg)))
         apps = (data.get("userlocalconfigstore", {}).get("software", {}).get("valve", {})
                 .get("steam", {}).get("apps", {}))
@@ -560,7 +570,9 @@ def lutris_games() -> list[Game]:
 
 
 def _played_path() -> Path:
-    return state_dir() / "played.json"
+    from . import profiles
+
+    return profiles.state_dir(state_dir()) / "played.json"  # each person's own
 
 
 def played() -> dict[str, float]:
@@ -620,7 +632,9 @@ def all_games() -> list[Game]:
 
 
 def _playtime_path() -> Path:
-    return state_dir() / "playtime.json"
+    from . import profiles
+
+    return profiles.state_dir(state_dir()) / "playtime.json"  # each person's own
 
 
 def playtimes() -> dict[str, float]:

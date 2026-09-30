@@ -1,5 +1,7 @@
 """Household limits: a daily play-time allowance, a bedtime, and tiles locked
-behind a PIN. They apply to everyone on this PC (there are no profiles).
+behind a PIN. With one person on this PC they apply to everyone, under the
+household PIN; once there are people (profiles.py) each has their own,
+set by an admin, and an admin's PIN lets them past (admins have none).
 
 Only time in games counts (your library's games and the store and emulation
 tiles), only while one is in front: a game paused for Quick Resume, films and
@@ -47,7 +49,17 @@ class Rules:
 
 
 def rules(prefs: dict | None = None) -> Rules:
-    f = (settings.load() if prefs is None else prefs).get("family") or {}
+    from . import profiles
+
+    if profiles.active():
+        person = profiles.current()
+        if person is None or person.admin:
+            return Rules()
+        return _rules({**person.rules, "pin": "admin"})  # an admin's PIN (check_pin)
+    return _rules((settings.load() if prefs is None else prefs).get("family") or {})
+
+
+def _rules(f: dict) -> Rules:
     try:
         daily = int(f.get("daily_minutes") or 0)
     except (TypeError, ValueError):
@@ -86,6 +98,10 @@ def set_pin(pin: str | None) -> None:
 
 
 def check_pin(pin: str, r: Rules | None = None) -> bool:
+    from . import profiles
+
+    if profiles.active():
+        return profiles.check_admin_pin(pin)
     r = rules() if r is None else r
     if not r.pin or "$" not in r.pin:
         return False
@@ -96,18 +112,20 @@ def check_pin(pin: str, r: Rules | None = None) -> bool:
 # -- today's play time -----------------------------------------------------------
 
 
-def _state_path() -> Path:
+def _state_path(pid: str | None = None) -> Path:
+    from . import profiles
+
     base = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local/state")
-    return Path(base) / "hearth" / "family.json"
+    return profiles.state_dir(Path(base) / "hearth", pid) / "family.json"  # each person's own
 
 
 def _today(now: float) -> str:
     return datetime.fromtimestamp(now).strftime("%Y-%m-%d")
 
 
-def _load(now: float) -> dict:
+def _load(now: float, pid: str | None = None) -> dict:
     try:
-        data = json.loads(_state_path().read_text())
+        data = json.loads(_state_path(pid).read_text())
     except (OSError, ValueError):
         data = {}
     if not isinstance(data, dict) or data.get("day") != _today(now):
@@ -124,8 +142,9 @@ def _save(data: dict) -> None:
     os.replace(tmp, path)
 
 
-def played_today(now: float | None = None) -> float:
-    return float(_load(time.time() if now is None else now).get("seconds", 0.0))
+def played_today(now: float | None = None, pid: str | None = None) -> float:
+    """Seconds of games today (the person using Hearth's, or `pid`'s)."""
+    return float(_load(time.time() if now is None else now, pid).get("seconds", 0.0))
 
 
 def add_played(seconds: float, now: float | None = None) -> float:
@@ -174,7 +193,11 @@ def left_today(r: Rules, now: float) -> float | None:
 
 def needs_pin(app_id: str, now: float | None = None, r: Rules | None = None) -> str | None:
     """Why starting this tile asks for the PIN, or None if it can just start."""
+    from . import profiles
+
     now = time.time() if now is None else now
+    if app_id in profiles.ADMIN_TILES and not profiles.is_admin():
+        return "Needs an admin's PIN"
     r = rules() if r is None else r
     if not r.active:
         return None
@@ -183,11 +206,16 @@ def needs_pin(app_id: str, now: float | None = None, r: Rules | None = None) -> 
     if not counts(app_id) or extra(now):
         return None
     if in_bedtime(r, now):
-        return "It's bedtime"
+        return BEDTIME
     left = left_today(r, now)
     if left is not None and left <= 0:
-        return "That's all the play time for today"
+        return TIME_UP
     return None
+
+
+BEDTIME = "It's bedtime"
+TIME_UP = "That's all the play time for today"
+TIME_REASONS = (BEDTIME, TIME_UP)  # the PIN then gives EXTRA_MINUTES more
 
 
 def minutes_text(seconds: float) -> str:
@@ -247,9 +275,10 @@ class PinEntry:
     """A combination lock: Up/Down change a digit, Left/Right move between
     them, A checks it, B cancels. Number keys (a keyboard, a TV remote) type."""
 
-    def __init__(self, reason: str, target=None, length: int = PIN_LENGTH) -> None:
+    def __init__(self, reason: str, target=None, length: int = PIN_LENGTH, checker=None) -> None:
         self.reason = reason
         self.target = target  # what to open once it's right
+        self.checker = checker or check_pin  # the household's (or an admin's) PIN by default
         self.digits = [0] * length
         self.pos = 0
         self.message = ""
@@ -283,7 +312,7 @@ class PinEntry:
         return self.check()
 
     def check(self) -> str | None:
-        if check_pin("".join(map(str, self.digits))):
+        if self.checker("".join(map(str, self.digits))):
             return "ok"
         self.message = "Not that one"
         self.digits = [0] * len(self.digits)

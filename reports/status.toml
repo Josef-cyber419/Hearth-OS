@@ -14,7 +14,7 @@ graphics; NVIDIA is left for later."""
 next = [
     "Your phone as a remote, with a keyboard for search and Wi-Fi passwords.",
     "Fix what turns up on the real PC.",
-    "When wanted: profiles and groups of tiles; NVIDIA support.",
+    "When wanted: groups of tiles; NVIDIA support.",
 ]
 
 reference_pc = "Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox controller, Wii Remotes on a DolphinBar"
@@ -84,7 +84,7 @@ since = "0.22.0"
 
 [[area]]
 name = "Family"
-what = "Daily game-time limit, bedtime and locked tiles behind a PIN"
+what = "Daily game-time limit, bedtime and locked tiles behind a PIN, per person"
 status = "shipped"
 since = "0.22.0"
 
@@ -116,8 +116,14 @@ what = "A web page with a d-pad and keyboard, paired with a code on the TV"
 status = "next"
 
 [[area]]
-name = "Profiles, folders"
-what = "Per-person favorites; groups of tiles"
+name = "People"
+what = "Who's playing? with optional PINs; own favorites, Continue, Steam and Discord; limits set by an admin"
+status = "shipped"
+since = "0.23.0"
+
+[[area]]
+name = "Folders"
+what = "Groups of tiles"
 status = "next"
 note = "deferred for now"
 
@@ -144,6 +150,7 @@ needs = "Update, then try the checklist in the release notes"
 
 # Captions for screenshots in reports/<version>/screens/.
 [screens]
+"picker.png" = "Who's playing?: one tile per person, each with an optional PIN."
 "emblems.png" = "The System tiles, each with its own drawing."
 "watch-next.png" = "Watch next: in progress on Jellyfin, Plex and Kodi, with how much is left."
 "family.png" = "Settings → Family: game time, bedtime, locked tiles."
