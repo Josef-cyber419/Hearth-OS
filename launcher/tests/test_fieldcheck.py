@@ -134,3 +134,41 @@ def test_press_finds_a_steam_game_in_front():
     assert drive.target(gs, {"overlay_open": False}) is hearth_win  # first in gamescope's list
     gs.top_level_windows = lambda: [game_win]
     assert drive.target(gs, {"overlay_open": False}) is game_win
+
+
+def test_windows_verdict_names_the_missing_step():
+    from hearth import windows
+    from hearth.gamescope import appid_for
+
+    fg = {"foreground": {"id": "game:pc:Dusk.AppImage", "name": "Dusk"}}
+    want = appid_for("game:pc:Dusk.AppImage")
+    lines = windows.verdict(fg, base=[want, 1], focusable=[1], tagged={want})
+    assert "asked for (base layer): yes" in lines[1] and "focusable: NO" in lines[3]
+    assert lines[-1].startswith("  -> gamescope sees the window")
+    lines = windows.verdict(fg, base=[want], focusable=[], tagged={999})
+    assert lines[-1].startswith("  -> no window is tagged")
+    steam = {"foreground": {"id": "game:steam:814380", "name": "Sekiro"}}
+    assert "app id 814380" in windows.verdict(steam, [769, 814380], [769], set())[0]
+    assert windows.verdict({"foreground": None}, [], [], set()) == ["Nothing in front: the home screen."]
+
+
+def test_windows_lists_each_window(monkeypatch):
+    import types
+
+    from Xlib import X
+
+    from hearth import windows
+
+    def win(wid, props, title):
+        w = types.SimpleNamespace(id=wid, props=props, title=title)
+        w.get_attributes = lambda: types.SimpleNamespace(map_state=X.IsViewable)
+        return w
+
+    a, b = win(1, {"STEAM_GAME": 769}, "Steam"), win(2, {}, None)
+    gs = types.SimpleNamespace(top_level_windows=lambda: [a, b], get_cardinal=lambda w, n: w.props.get(n),
+                               client_pid=lambda w: 10 if w is a else None, wm_class=lambda w: ("steam", "Steam"),
+                               window_title=lambda w: w.title)
+    monkeypatch.setattr(windows.session, "app_for_pid", lambda pid, state: ("app", "steam"))
+    lines = windows.window_lines(gs, {"foreground": None})
+    assert lines[0] == '  0x1  shown  app=769  class=Steam  pid=10  hearth=steam  "Steam"'
+    assert lines[1] == "  0x2  shown  untagged  class=Steam"

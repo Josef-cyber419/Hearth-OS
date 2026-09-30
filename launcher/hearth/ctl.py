@@ -597,6 +597,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("update")
     sub.add_parser("screenshot")
     sub.add_parser("footprint")
+    sub.add_parser("windows", help="what gamescope sees: focus, every window, and why the app in front isn't shown")
     p = sub.add_parser("art", help="find pictures online for emulated games without one, now")
     p.add_argument("-n", "--limit", type=int, default=500)
     sub.add_parser("check")
@@ -650,6 +651,11 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(problem)
         return 1 if problems else 0
+    if args.cmd == "windows":
+        from . import windows
+
+        print(windows.dump())
+        return 0
     if args.cmd == "art":
         from . import artfind, library
 

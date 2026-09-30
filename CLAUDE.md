@@ -32,7 +32,12 @@ plainly ("Update reports failed while a download is running"), with:
 - the Hearth version (`hearthctl status`) and the date;
 - the likely cause, if known, and a proposed fix.
 
-The field session files them with `gh issue create --label field-report`.
+The field session files them with `gh issue create --label field-report`,
+one problem per issue, **after searching** (`gh issue list --label
+field-report --state all --search "<words>"`): a known problem gets a
+comment, not a second issue. Re-testing a fix is a comment too
+("Verified on 0.23.0" or "Still happening on 0.23.0" with evidence); the
+cloud session closes verified ones.
 One-time setup on the PC: `gh` (built in from 0.23.0; before that
 `brew install gh`), then
 `gh auth login`, then `gh label create field-report --color d93f0b` if the
@@ -83,6 +88,7 @@ Useful on the PC:
 | `hearthctl footprint` | memory and CPU in use |
 | `hearthctl check` | every safe check in one report (docs/FIELD_TESTS.md) |
 | `hearthctl press up a` | send buttons to what's on the TV |
+| `hearthctl windows` | what gamescope sees, and why the app in front isn't shown |
 | `hearthctl screenshot` | what's on the TV, into ~/Pictures/Hearth (look at the PNG) |
 | `journalctl -b -u uupd --no-pager` | the OS updater |
 | `bootc status` (sudo) | booted, staged and rollback images |
@@ -91,10 +97,13 @@ Useful on the PC:
 ### After each update: the field tests
 
 Follow **docs/FIELD_TESTS.md**: tier 0 (`hearthctl check`, safe any time),
-then, with the owner's go-ahead, tiers 1 to 3 (the home screen, every app
+then, with the owner's go-ahead, re-check last run's open reports, try
+what's new in CHANGELOG.md, and tiers 1 to 3 (the home screen, every app
 and game, the hardware), driving the TV with `hearthctl press` and checking
 each step with `hearthctl screenshot`. File one field report per run in the
-format it describes, plus one issue per clearly separate failure.
+format it describes, plus one issue per clearly separate failure, as you go.
+One field session per run. The repo's `.claude/settings.json` pre-approves
+the plan's read-only commands, so the run carries on when the owner leaves.
 
 If the installed Hearth doesn't have a command yet (it came in a newer
 release than the one on the PC), run it from this checkout instead:

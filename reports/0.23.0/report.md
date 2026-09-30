@@ -10,9 +10,9 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.23.0 | Change since 0.22.4 |
 |---|--:|--:|
-| Lines of code | 16,937 | +1,452 |
-| Automated tests | 433 | +52 |
-| Lines of docs | 1,892 | +119 |
+| Lines of code | 17,047 | +1,562 |
+| Automated tests | 435 | +54 |
+| Lines of docs | 1,962 | +189 |
 | Guides in docs/ | 15 | +1 |
 | Pull requests merged | 27 | |
 | Versions released | 26 | |
@@ -21,10 +21,10 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 14,341 |
+| Home screen, Quick Menu and settings (Python) | 14,451 |
 | System image (scripts, services, config) | 1,206 |
 | Build and tools | 1,390 |
-| Tests | 5,990 |
+| Tests | 6,019 |
 
 ## What's new in 0.23.0
 
@@ -38,7 +38,7 @@ Lines of code by part (blank lines not counted):
   - Home (Quick Menu or `hearthctl home`) closes Settings, and `hearthctl status` says when Settings is open.
   - Lighter when idle: a Wii Remote lying still and the screen saver use a fraction of the processor they did.
   - More logs kept (up to 1 GB), so a crash can be looked into afterwards; updates write their progress to their own log.
-  - `hearthctl check`, `press` and `screenshot` are more accurate.
+  - `hearthctl check`, `press` and `screenshot` are more accurate, and `hearthctl windows` shows why an app hasn't reached the screen.
 - **People**: add everyone in the household (Settings → People). Hearth then starts on "Who's playing?", with an optional 4-digit PIN each. Each person has their own favorites, Continue row, play times, Steam account and Discord; ROMs, apps and installed games are shared. An admin sets each person's game time, bedtime and locked tiles, and only an admin opens Settings and Desktop Mode. With one person, nothing changes.
 - **Erasing a drive asks for your password** (Settings → Storage), the one Desktop Mode and `sudo` use. Using a drive as it is doesn't.
 - **Game art finds itself**: emulated games without a picture get one from libretro's free thumbnail library, in the background. `hearthctl art` fetches them now; off in Settings → Home screen.
@@ -99,7 +99,7 @@ _The System tiles, each with its own drawing._
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 16,937 | 433 | 1,892 | 15 | 27 |
+| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 17,047 | 435 | 1,962 | 15 | 27 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 27 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
 | [0.22.1](../0.22.1/report.md) | 2026-09-30 | 15,008 | 370 | 1,548 | 13 | 25 |

@@ -27,7 +27,8 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
     fraction of the processor they did.
   - More logs kept (up to 1 GB), so a crash can be looked into afterwards;
     updates write their progress to their own log.
-  - `hearthctl check`, `press` and `screenshot` are more accurate.
+  - `hearthctl check`, `press` and `screenshot` are more accurate, and
+    `hearthctl windows` shows why an app hasn't reached the screen.
 - **People**: add everyone in the household (Settings → People). Hearth
   then starts on "Who's playing?", with an optional 4-digit PIN each. Each
   person has their own favorites, Continue row, play times, Steam account
