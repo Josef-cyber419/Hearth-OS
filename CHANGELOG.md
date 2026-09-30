@@ -6,6 +6,13 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
+## 0.22.3 (2026-09-30)
+
+- **PC ports show up**: a game from `~/Games` (like the Dusklight port) could
+  run with sound but stay behind the "Starting…" screen, because it opened a
+  Wayland window Hearth can't bring to the front. PC ports are now always
+  started on X11, whatever library they use for their window.
+
 ## 0.22.2 (2026-09-30)
 
 - **One update at a time**: starting an update while one is already
