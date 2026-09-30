@@ -1126,10 +1126,21 @@ class SettingsApp:
         items.append(Item(f"{key}-erase", "Erase it and set it up for games", "action", confirm=True,
                           confirm_label=f"Press A again to erase {drive.model or 'this drive'}",
                           detail=f"Deletes everything on it: {drive.contents}",
-                          on_select=lambda: self._drive_job(
-                              key, "Erasing and setting it up… (a minute or so)",
-                              lambda: storage.erase(drive, storage.free_name(drive))[1])))
+                          on_select=lambda: self._erase(key, drive)))
         return items
+
+    def _erase(self, key: str, drive) -> None:
+        """Erasing needs the account's password (sudo checks it, not Hearth)."""
+        from . import storage
+
+        def entered(password: str) -> None:
+            if not password:
+                return
+            self._drive_job(key, "Erasing and setting it up… (a minute or so)",
+                            lambda: storage.erase(drive, storage.free_name(drive), password)[1])
+
+        self.open_keyboard("Your password, to erase the drive (the one for Desktop Mode and sudo)", entered,
+                           secret=True)
 
     def _drive_job(self, key: str, busy: str, work: Callable[[], str | None]) -> None:
         def run() -> str | None:

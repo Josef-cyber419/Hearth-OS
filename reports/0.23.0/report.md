@@ -10,9 +10,9 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.23.0 | Change since 0.22.4 |
 |---|--:|--:|
-| Lines of code | 15,985 | +500 |
-| Automated tests | 395 | +14 |
-| Lines of docs | 1,817 | +44 |
+| Lines of code | 16,004 | +519 |
+| Automated tests | 399 | +18 |
+| Lines of docs | 1,821 | +48 |
 | Guides in docs/ | 14 | – |
 | Pull requests merged | 26 | |
 | Versions released | 26 | |
@@ -21,14 +21,15 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 13,437 |
-| System image (scripts, services, config) | 1,166 |
+| Home screen, Quick Menu and settings (Python) | 13,455 |
+| System image (scripts, services, config) | 1,167 |
 | Build and tools | 1,382 |
-| Tests | 5,491 |
+| Tests | 5,530 |
 
 ## What's new in 0.23.0
 
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a lap of a circuit, Power Off an engine start button, and so on. Apps from Flathub show their own icon.
+- **Erasing a drive asks for your password** (Settings → Storage), the one Desktop Mode and `sudo` use. Using a drive as it is doesn't.
 - **Game art finds itself**: emulated games without a picture get one from libretro's free thumbnail library, in the background. `hearthctl art` fetches them now; off in Settings → Home screen.
 - **GitHub's `gh` command and `tmux` are built in**, so Claude Code on the PC can file field reports, and keeps working if the SSH connection drops (`tmux new -A -s claude`).
 
@@ -82,7 +83,7 @@ _The System tiles, each with its own drawing._
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 15,985 | 395 | 1,817 | 14 | 26 |
+| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 16,004 | 399 | 1,821 | 14 | 26 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 26 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
 | [0.22.1](../0.22.1/report.md) | 2026-09-30 | 15,008 | 370 | 1,548 | 13 | 25 |
