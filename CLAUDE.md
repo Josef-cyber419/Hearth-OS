@@ -33,7 +33,8 @@ plainly ("Update reports failed while a download is running"), with:
 - the likely cause, if known, and a proposed fix.
 
 The field session files them with `gh issue create --label field-report`.
-One-time setup on the PC: `gh` (`brew install gh` if it's missing), then
+One-time setup on the PC: `gh` (built in from 0.23.0; before that
+`brew install gh`), then
 `gh auth login`, then `gh label create field-report --color d93f0b` if the
 label doesn't exist yet. The cloud session fixes them, ships
 the fix through the normal release flow, and closes the issue naming the
@@ -117,7 +118,8 @@ PYTHONPATH=~/hearth-os/launcher python3 -m hearth.ctl check
   `python3 tools/progress_report.py` (update `reports/status.toml` first).
   Tests check all three agree. CI publishes the GitHub release and the image
   tag. A batched update bumps the version once, with its first change, and
-  its changelog entry and report grow with each change after that.
+  its changelog entry and report grow with each change after that (set the
+  entry's date to the ship date when shipping).
 - **Before pushing**:
   ```sh
   cd launcher && ruff check . && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest -q

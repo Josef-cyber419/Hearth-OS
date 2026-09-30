@@ -1,6 +1,6 @@
 [project]
 name = "hearth"
-version = "0.22.4"
+version = "0.23.0"
 description = "TV-style home screen and session hub for a living-room PC"
 requires-python = ">=3.11"
 # Fedora ships this as python3-pygame; pygame-ce works as a drop-in for development.
