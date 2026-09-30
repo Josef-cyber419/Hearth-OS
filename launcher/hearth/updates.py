@@ -94,9 +94,11 @@ def os_status() -> OsStatus:
         return OsStatus()
 
 
-def run_helper(action: str, log_file: Path | None = None) -> bool:
-    """Run `hearth-update apply|rollback` as root. True on success."""
-    out = open(log_file, "a") if log_file else subprocess.DEVNULL
+def run_helper(action: str, log_file: Path | None = None, show: bool = False) -> bool:
+    """Run `hearth-update apply|rollback` as root. True on success. Its output
+    goes to `log_file`, or to the terminal with `show` (hearthctl), so a
+    failure always says why."""
+    out = open(log_file, "a") if log_file else None if show else subprocess.DEVNULL
     try:
         return subprocess.run(["sudo", "-n", HELPER, action], stdout=out, stderr=subprocess.STDOUT).returncode == 0
     except OSError:

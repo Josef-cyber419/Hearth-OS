@@ -1309,10 +1309,12 @@ class SettingsApp:
         return items
 
     def _update(self) -> str:
-        ok = updates.run_helper("apply")
+        from . import logs
+
+        ok = updates.run_helper("apply", logs.log_path())
         status = updates.os_status()
         if not ok:
-            return "Update failed: see hearthctl logs"
+            return "Update failed: the reason is in hearthctl logs"
         return f"Version {status.staged} is ready: restart to finish" if status.update_ready else "Up to date"
 
     def _report(self) -> str:

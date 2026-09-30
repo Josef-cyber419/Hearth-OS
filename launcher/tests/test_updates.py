@@ -1,6 +1,6 @@
 from fakes import FakeActions, FakePactl
 
-from hearth import ctl, session
+from hearth import ctl, session, updates
 from hearth.audio import Audio
 from hearth.model import Nav
 from hearth.quickmenu import Context, QuickMenu, build_tabs
@@ -105,3 +105,17 @@ def test_channel_command(monkeypatch, capsys):
     assert ctl.cmd_channel("staging", run=lambda cmd: calls.append(cmd) or 0) == 0
     assert calls == [["sudo", "bootc", "switch", "ghcr.io/you/hearth-os:staging"]]
     assert ctl.cmd_channel("staging", run=lambda cmd: 1) == 1  # the switch failed
+
+
+def test_update_output_is_never_thrown_away(monkeypatch, tmp_path):
+    """hearthctl update shows the updater's output; the menus log it."""
+    import subprocess
+
+    seen = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, stdout=None, stderr=None: (
+        seen.append(stdout), subprocess.CompletedProcess(cmd, 1))[1])
+    assert updates.run_helper("apply", show=True) is False
+    assert seen[-1] is None  # straight to the terminal
+    log = tmp_path / "hearth.log"
+    updates.run_helper("apply", log)
+    assert seen[-1].name == str(log)
