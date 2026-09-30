@@ -145,3 +145,28 @@ def test_view_knows_where_tabs_and_options_are():
     item_rect, key = view.item_hits[0]
     assert view.hit((item_rect.centerx + view._origin[0], item_rect.centery + view._origin[1])) == ("item", key)
     assert view.hit((5, 5)) is None  # left of the panel: the game
+
+
+def test_switch_person_only_with_people():
+    menu, _, actions = make()
+    assert "switch-person" not in [i.key for i in menu.tabs[-1].items]
+    pactl, actions = FakePactl(), FakeActions()
+    audio = Audio(pactl)
+    state = {"foreground": {"id": "game", "name": "Game"}, "background": {}, "focus": "foreground"}
+    ctx = Context(audio, audio.snapshot(), state, actions, True, people=True)
+    item = next(i for i in build_tabs(ctx)[-1].items if i.key == "switch-person")
+    assert item.confirm and "Closes Game" in item.detail  # a game is in front: it closes
+    ctx = Context(audio, audio.snapshot(), {"foreground": None, "background": {}, "focus": "home"}, actions, True,
+                  people=True)
+    item = next(i for i in build_tabs(ctx)[-1].items if i.key == "switch-person")
+    assert not item.confirm
+
+
+def test_switch_person_action_asks_the_hub(tmp_path):
+    import types
+
+    from hearth import overlay, session
+
+    actions = overlay.Actions(types.SimpleNamespace(thaw=lambda: None))
+    assert actions.switch_person() == "close"
+    assert session.read()["switch_request"] is True

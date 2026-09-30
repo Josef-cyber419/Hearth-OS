@@ -134,11 +134,14 @@ def run_foreground(info: dict, gs: Gamescope | None, hold_seconds: float, config
                     break
             elif not session.entry_alive(info):
                 break
-            if info.get("resumable") and session.read().get("suspend_request"):
+            current = session.read()
+            if info.get("resumable") and current.get("suspend_request"):
                 suspended = suspend(info)
                 if suspended:
                     break
                 session.update(lambda s: s.__setitem__("suspend_request", False))
+            if current.get("switch_request"):  # Quick Menu → Switch person: close this, then ask
+                go_home()
             time.sleep(0.1)
     finally:
         watcher.stop()
@@ -428,6 +431,17 @@ def home_config(args, state: dict | None = None) -> cfg.Config:
 
 
 PERSON = "hearth:person"  # a tile on "Who's playing?": hearth:person <id>
+WAKE_SECONDS = 60  # asleep at least this long: ask who's playing again
+
+
+def ask_again(state: dict) -> str | None:
+    """Why "Who's playing?" should come back: the PC slept since the last
+    pick, or the Quick Menu asked. None if it needn't."""
+    if session.read().get("switch_request"):
+        return "switch"
+    if session.slept() - state.get("slept_at_pick", session.slept()) >= WAKE_SECONDS:
+        return "wake"
+    return None
 
 
 def picker_config() -> cfg.Config:
@@ -540,6 +554,10 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                   ask=lambda a: eviction_question(a, config))
     from . import profiles
 
+    if profiles.active() and state.get("person_chosen") and ask_again(state):
+        events.record("person_ask_again", why=ask_again(state))
+        session.update(lambda s: s.__setitem__("switch_request", False))
+        state["person_chosen"] = False
     if profiles.active() and not state.get("person_chosen"):
         # "Who's playing?" at start, and from the Switch person tile (B goes
         # back to whoever was playing, once someone has been picked).
@@ -554,6 +572,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
         elif chosen is None and not state.get("person_picked"):
             return "quit" if dev_mode else None
         state["person_chosen"] = True
+        state["slept_at_pick"] = session.slept()
         return None
     from . import whatsnew
 
@@ -561,7 +580,8 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                  badge="Update ready: restart to finish" if ready else None,
                  running=set(current["background"]), intro=state["intro"],
                  rebuild=lambda: home_config(args), sleep_after=config.sleep_minutes * 60,
-                 whats_new=whatsnew.pending(updates.hearth_version()), **common)
+                 whats_new=whatsnew.pending(updates.hearth_version()),
+                 interrupt=(lambda: ask_again(state)) if profiles.active() else None, **common)
     state["message"] = None
     state["intro"] = None
     frames = stats.summary()
@@ -585,7 +605,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                      hints=(("A", "Play"), ("Y", "Pin"), ("B", "Back")), **common)
         if app is None:
             return None
-    if app.command[0] == "hearth:people":
+    if app.command[0] in ("hearth:people", ui.INTERRUPTED):
         state["person_chosen"] = False  # back to "Who's playing?"
         return None
     if app.command[0] == "hearth:resume":

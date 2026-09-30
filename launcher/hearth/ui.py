@@ -27,6 +27,7 @@ from .style import Livery, Smooth, Type, ease_in_out, ease_out, enamel, mix, par
 log = logging.getLogger("hearth")
 
 RUNNING = (86, 214, 128)
+INTERRUPTED = "hearth:interrupted"  # run() ended because `interrupt` said so
 BOOT_SECONDS = 1.6
 RETURN_SECONDS = 0.55
 LAUNCH_SECONDS = 0.42
@@ -1887,6 +1888,7 @@ def run(
     hints: tuple | None = None,
     ask: Callable[[App], str | None] | None = None,
     whats_new: tuple[str, list[str]] | None = None,
+    interrupt: Callable[[], str | None] | None = None,
 ) -> App | None:
     """Show the home screen until the user picks an app.
 
@@ -1900,7 +1902,10 @@ def run(
     shows; after `sleep_after` the PC sleeps (0 = never). `offset` is where
     this surface sits on the screen (a safe-area inset), for the pointer.
     `ask` may return a question to confirm before a tile opens. `whats_new`
-    (version, notes) is shown once, after an update.
+    (version, notes) is shown once, after an update. `interrupt` is polled a
+    few times a second; a reason from it ends the run with an INTERRUPTED app
+    (the hub asks who's playing again after sleep, or when the Quick Menu
+    asks).
     """
     screen = HomeScreen(surface, home, title, livery=livery, motion=motion, intro=intro)
     screen.message = message
@@ -1929,6 +1934,8 @@ def run(
             was_blocked, blocked = blocked, input_blocked()
             if blocked and not was_blocked:
                 mapper.reset()
+        if interrupt and frames % 8 == 0 and interrupt():
+            return App(id=INTERRUPTED, name="", command=(INTERRUPTED,))
         now = pygame.time.get_ticks()
         navs: list[Nav] = []
         chosen = None

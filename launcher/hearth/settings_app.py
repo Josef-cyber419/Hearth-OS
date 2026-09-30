@@ -1297,6 +1297,12 @@ class SettingsApp:
                         "then sign in there",
                  on_change=lambda i: change(steam=steam_names[i - 1] if i else None)),
         ]
+        liveries = list(style.LIVERIES)
+        items.append(Item("person-livery", "Colour scheme", "choice",
+                          value=(liveries.index(p.livery) + 1) if p.livery in liveries else 0,
+                          options=("Household's", *(style.LIVERIES[k].name for k in liveries)),
+                          detail="Their own livery on the home screen, or the one in Appearance",
+                          on_change=lambda i: change(livery=liveries[i - 1] if i else None)))
         if pid != profiles.OWNER:
             items.append(Item("person-remove", f"Remove {p.name}", "action", confirm=True,
                               detail="Their favorites, play times and Discord go; games stay",

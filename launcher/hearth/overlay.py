@@ -84,6 +84,13 @@ class Actions:
             return "close"
         return self.go_home()
 
+    def switch_person(self):
+        """Back to "Who's playing?": the hub closes what's in front and asks."""
+        self.o.thaw()  # a paused game can't exit
+        session.update(lambda s: s.__setitem__("switch_request", True))
+        events.record("switch_person_asked")
+        return "close"
+
     def start_background(self, app_id):
         app = self.o.config.app(app_id)
         if app is None:
@@ -313,7 +320,7 @@ class Overlay:
         ctx = Context(self.audio, snapshot, self.state, self.actions,
                       discord_available=bool(discord and discord.available()), wii=wii,
                       frontend=game[0] if game else None, perf=self._perf_reading,
-                      media=self.media.poll())
+                      media=self.media.poll(), people=_people_active())
         self.menu.set_tabs(build_tabs(ctx))
 
     # -- updates ---------------------------------------------------------------
@@ -839,6 +846,15 @@ class Overlay:
             clock.tick(100)  # the pointer follows the remote smoothly (20 Hz while it lies still)
         else:
             clock.tick(20)
+
+
+def _people_active() -> bool:
+    from . import profiles
+
+    try:
+        return profiles.active()
+    except Exception:
+        return False
 
 
 def load_config(path: Path | None, fallback: cfg.Config | None = None) -> cfg.Config:

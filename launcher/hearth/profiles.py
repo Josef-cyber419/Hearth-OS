@@ -58,6 +58,7 @@ class Person:
     admin: bool = False
     steam: str | None = None  # the Steam account name they sign in with
     rules: dict = field(default_factory=dict)  # family limits: daily_minutes, bedtime, when_up, locked
+    livery: str | None = None  # their own colour scheme (style.LIVERIES), or the household's
 
     @property
     def initial(self) -> str:

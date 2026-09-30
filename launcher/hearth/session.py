@@ -53,12 +53,14 @@ def runtime_dir() -> Path:
 #   "suspend_request": bool   (the Quick Menu or a held Guide asks the hub to pause the game and go home)
 #   "screen": "settings" | null,  (a screen of the hub's own in front of the home screen)
 #   "close_screen": bool  (Home was asked for: the hub closes that screen)
+#   "switch_request": bool  (the Quick Menu asks for "Who's playing?": the hub closes what's in front)
 # }
 
 DEFAULT_STATE = {"foreground": None, "background": {}, "focus": "home", "overlay_open": False,
                  "paused": False, "requests": [], "update": None, "report": None,
                  "wii_mouse": {}, "wii": None, "wii_raw": False,
-                 "suspended": [], "suspend_request": False, "screen": None, "close_screen": False}
+                 "suspended": [], "suspend_request": False, "screen": None, "close_screen": False,
+                 "switch_request": False}
 
 
 def _state_path() -> Path:
@@ -104,6 +106,16 @@ def update(change: Callable[[dict], None]) -> dict:
             json.dump(state, f)
         os.replace(tmp, _state_path())
         return state
+
+
+def slept() -> float:
+    """Seconds the PC has spent asleep since boot: CLOCK_BOOTTIME counts them,
+    time.monotonic() doesn't. A rise since some earlier reading means it
+    slept and woke in between."""
+    try:
+        return time.clock_gettime(time.CLOCK_BOOTTIME) - time.monotonic()
+    except (AttributeError, OSError):
+        return 0.0
 
 
 # -- scopes --------------------------------------------------------------------

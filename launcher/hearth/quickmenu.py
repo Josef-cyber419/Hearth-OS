@@ -212,6 +212,8 @@ class Context:
     perf: Any = None
     # Media players on the bus (media.Player), playing ones first
     media: list = field(default_factory=list)
+    # More than one person uses this PC (profiles.active()): offer to switch
+    people: bool = False
 
 
 def build_tabs(ctx: Context) -> list[Tab]:
@@ -400,6 +402,10 @@ def _system_tab(ctx: Context) -> Tab:
                               detail=f"For {ctx.wii['app']}: point to move, A to click, 2 to right-click",
                               on_change=act.set_wii_mouse))
     tab.items.append(_report_item(ctx))
+    if ctx.people:
+        tab.items.append(Item("switch-person", "Switch person", "action", confirm=bool(fg),
+                              detail=("Closes " + fg["name"] + " and asks who's playing") if fg
+                              else "Back to \"Who's playing?\"", on_select=act.switch_person))
     tab.items.append(Item("sleep", "Sleep", "action", on_select=lambda: act.power("suspend")))
     # An update still downloading stops if the PC restarts (field report #33): say so.
     busy = (ctx.state.get("update") or {}).get("status") == "running"

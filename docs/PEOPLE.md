@@ -17,6 +17,8 @@ For each person, on the same page:
 - **Steam account**: the account Steam signs in to for them. Leave it on
   *Choose on Steam* for someone new: Steam asks them to sign in (tick
   *Remember me*), and Hearth remembers that account for them.
+- **Colour scheme**: their own livery on the home screen, or the household's
+  (Settings → Appearance).
 - **Remove**: their favorites, play times and Discord go; games stay. With
   one person left, Hearth goes back to not asking.
 
@@ -35,7 +37,11 @@ Settings → **Family** ([Family](FAMILY.md)).
 
 ## Switching
 
-- **Switch person** in the System row goes back to Who's playing? (B to stay).
+- **Switch person** in the System row goes back to Who's playing? (B to stay),
+  and so does Quick Menu → System → **Switch person** from inside a game or
+  app (it closes what's running first).
+- After the PC has **slept** for a minute or more, Who's playing? comes back
+  on its own, so the next person on the sofa picks themselves.
 - Switching closes games paused with Quick Resume, Steam and Discord, then
   opens the next person's: their Steam account the next time Steam starts,
   and their Discord.

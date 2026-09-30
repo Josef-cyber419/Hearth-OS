@@ -367,9 +367,23 @@ def load(path: Path | None = None, hide: bool = True) -> Config:
         if user.exists():
             data = merge(data, _read(user))
     try:
-        return parse(settings.apply(data, settings.load(), hide=hide))
+        config = parse(settings.apply(data, settings.load(), hide=hide))
     except ConfigError as e:
         # A bad settings.json mustn't take the home screen (and the Settings
         # tile, which is how you'd fix it) down with it.
         logging.getLogger("hearth").warning("ignoring %s: %s", settings.path(), e)
-        return parse(data)
+        config = parse(data)
+    return personal(config)
+
+
+def personal(config: Config) -> Config:
+    """The config with the current person's own choices on top: their colour
+    scheme (profiles.Person.livery), if they have one."""
+    from dataclasses import replace
+
+    from . import profiles, style
+
+    person = profiles.current()
+    if person is not None and person.livery in style.LIVERIES:
+        return replace(config, livery=person.livery)
+    return config

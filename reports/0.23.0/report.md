@@ -10,9 +10,9 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.23.0 | Change since 0.22.4 |
 |---|--:|--:|
-| Lines of code | 17,047 | +1,562 |
-| Automated tests | 435 | +54 |
-| Lines of docs | 1,962 | +189 |
+| Lines of code | 17,183 | +1,698 |
+| Automated tests | 450 | +69 |
+| Lines of docs | 1,976 | +203 |
 | Guides in docs/ | 15 | +1 |
 | Pull requests merged | 27 | |
 | Versions released | 26 | |
@@ -21,10 +21,10 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 14,451 |
+| Home screen, Quick Menu and settings (Python) | 14,587 |
 | System image (scripts, services, config) | 1,206 |
 | Build and tools | 1,390 |
-| Tests | 6,019 |
+| Tests | 6,225 |
 
 ## What's new in 0.23.0
 
@@ -39,7 +39,7 @@ Lines of code by part (blank lines not counted):
   - Lighter when idle: a Wii Remote lying still and the screen saver use a fraction of the processor they did.
   - More logs kept (up to 1 GB), so a crash can be looked into afterwards; updates write their progress to their own log.
   - `hearthctl check`, `press` and `screenshot` are more accurate, and `hearthctl windows` shows why an app hasn't reached the screen.
-- **People**: add everyone in the household (Settings → People). Hearth then starts on "Who's playing?", with an optional 4-digit PIN each. Each person has their own favorites, Continue row, play times, Steam account and Discord; ROMs, apps and installed games are shared. An admin sets each person's game time, bedtime and locked tiles, and only an admin opens Settings and Desktop Mode. With one person, nothing changes.
+- **People**: add everyone in the household (Settings → People). Hearth then starts on "Who's playing?", with an optional 4-digit PIN each. Each person has their own favorites, Continue row, play times, Steam account and Discord; ROMs, apps and installed games are shared. An admin sets each person's game time, bedtime and locked tiles, and only an admin opens Settings and Desktop Mode. With one person, nothing changes. "Who's playing?" comes back after the PC has slept, and from Quick Menu → System → Switch person; each person can have their own colour scheme.
 - **Erasing a drive asks for your password** (Settings → Storage), the one Desktop Mode and `sudo` use. Using a drive as it is doesn't.
 - **Game art finds itself**: emulated games without a picture get one from libretro's free thumbnail library, in the background. `hearthctl art` fetches them now; off in Settings → Home screen.
 - **GitHub's `gh` command and `tmux` are built in**, so Claude Code on the PC can file field reports, and keeps working if the SSH connection drops (`tmux new -A -s claude`).
@@ -66,7 +66,7 @@ Lines of code by part (blank lines not counted):
 | Performance | Hearth idles under 2% of one core and about 300 MB; hearthctl footprint | 🟡 Shipped |
 | Updates | Automatic, versioned, with releases on GitHub, a what's-new card and rollback | 🟡 Shipped |
 | Phone as a remote | A web page with a d-pad and keyboard, paired with a code on the TV | ⚪ Not started |
-| People **new** | Who's playing? with optional PINs; own favorites, Continue, Steam and Discord; limits set by an admin | 🟡 Shipped |
+| People **new** | Who's playing? (at start, after sleep, from the Quick Menu) with optional PINs; own favorites, colour scheme, Continue, Steam and Discord; limits set by an admin | 🟡 Shipped |
 | Folders | Groups of tiles | ⚪ Not started (deferred for now) |
 | NVIDIA graphics | A separate image with NVIDIA's driver | ⚪ Not started (deferred: AMD and Intel first) |
 | Netflix and similar | DRM limits these to low quality on any home-built PC | ⛔ Not possible |
@@ -74,6 +74,9 @@ Lines of code by part (blank lines not counted):
 **Confirmed** means reported working on the real PC; **Shipped** means built, tested and released, but not yet reported on.
 
 ## Screenshots
+
+![Sam's home screen in the Rosso livery they chose; the household's is Gulf.](screens/livery-sam.png)
+_Sam's home screen in the Rosso livery they chose; the household's is Gulf._
 
 ![Who's playing?: one tile per person, each with an optional PIN.](screens/picker.png)
 _Who's playing?: one tile per person, each with an optional PIN._
@@ -99,7 +102,7 @@ _The System tiles, each with its own drawing._
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 17,047 | 435 | 1,962 | 15 | 27 |
+| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 17,183 | 450 | 1,976 | 15 | 27 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 27 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
 | [0.22.1](../0.22.1/report.md) | 2026-09-30 | 15,008 | 370 | 1,548 | 13 | 25 |

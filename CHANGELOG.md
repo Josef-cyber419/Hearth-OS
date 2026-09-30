@@ -34,7 +34,9 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
   person has their own favorites, Continue row, play times, Steam account
   and Discord; ROMs, apps and installed games are shared. An admin sets each
   person's game time, bedtime and locked tiles, and only an admin opens
-  Settings and Desktop Mode. With one person, nothing changes.
+  Settings and Desktop Mode. With one person, nothing changes. "Who's
+  playing?" comes back after the PC has slept, and from Quick Menu → System
+  → Switch person; each person can have their own colour scheme.
 - **Erasing a drive asks for your password** (Settings → Storage), the
   one Desktop Mode and `sudo` use. Using a drive as it is doesn't.
 - **Game art finds itself**: emulated games without a picture get one from

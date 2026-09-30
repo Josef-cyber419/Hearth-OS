@@ -117,7 +117,7 @@ status = "next"
 
 [[area]]
 name = "People"
-what = "Who's playing? with optional PINs; own favorites, Continue, Steam and Discord; limits set by an admin"
+what = "Who's playing? (at start, after sleep, from the Quick Menu) with optional PINs; own favorites, colour scheme, Continue, Steam and Discord; limits set by an admin"
 status = "shipped"
 since = "0.23.0"
 
@@ -155,6 +155,7 @@ needs = "Update, then the field tests again (docs/FIELD_TESTS.md)"
 
 # Captions for screenshots in reports/<version>/screens/.
 [screens]
+"livery-sam.png" = "Sam's home screen in the Rosso livery they chose; the household's is Gulf."
 "picker.png" = "Who's playing?: one tile per person, each with an optional PIN."
 "emblems.png" = "The System tiles, each with its own drawing."
 "watch-next.png" = "Watch next: in progress on Jellyfin, Plex and Kodi, with how much is left."
