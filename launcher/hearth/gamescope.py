@@ -13,7 +13,9 @@ Every function here is a no-op when there's no X display or python-xlib.
 from __future__ import annotations
 
 import logging
+import os
 import zlib
+from pathlib import Path
 
 log = logging.getLogger("hearth")
 
@@ -31,6 +33,36 @@ OPAQUE = 0xFFFFFFFF
 
 def appid_for(app_id: str) -> int:
     return HOME_APPID + 1 + zlib.crc32(app_id.encode()) % 0xFFFE
+
+
+SESSION_VARS = ("DISPLAY", "XAUTHORITY", "GAMESCOPE_WAYLAND_DISPLAY", "XDG_RUNTIME_DIR")
+
+
+def adopt_session_display(proc: Path = Path("/proc"), uid: int | None = None) -> bool:
+    """From an SSH login (no DISPLAY), borrow Game Mode's display from the
+    running home screen, so hearthctl screenshot/press/check can reach the
+    TV. Returns whether a display is set."""
+    if os.environ.get("DISPLAY"):
+        return True
+    uid = os.getuid() if uid is None else uid
+    for d in proc.iterdir():
+        if not d.name.isdigit():
+            continue
+        try:
+            if d.stat().st_uid != uid:
+                continue
+            args = (d / "cmdline").read_bytes().split(b"\0")
+            if b"-m" not in args or args[args.index(b"-m") + 1] not in (b"hearth", b"hearth.overlay"):
+                continue
+            env = dict(v.split("=", 1) for v in (d / "environ").read_text(errors="replace").split("\0") if "=" in v)
+        except (OSError, IndexError, ValueError):
+            continue
+        if env.get("DISPLAY"):
+            for key in SESSION_VARS:
+                if env.get(key):
+                    os.environ[key] = env[key]
+            return True
+    return False
 
 
 class Gamescope:

@@ -81,9 +81,13 @@ def test_runner_starts_it_from_its_folder_even_without_execute_permission(tmp_pa
     folder.mkdir()
     game = folder / "dusk.AppImage"
     game.write_text(f"#!/usr/bin/bash\npwd > {tmp_path}/ran; echo \"$@\" >> {tmp_path}/ran; "
-                    f"echo \"$SDL_VIDEODRIVER $SDL_VIDEO_DRIVER\" >> {tmp_path}/ran\n")
+                    f"echo \"$SDL_VIDEODRIVER $SDL_VIDEO_DRIVER $GDK_BACKEND $QT_QPA_PLATFORM\" >> {tmp_path}/ran; "
+                    f"echo \"wayland=${{WAYLAND_DISPLAY:-none}}\" >> {tmp_path}/ran\n")
     game.chmod(0o644)  # as downloaded
+    # Game Mode exposes gamescope's Wayland socket: the game must not see it, or
+    # it may open a Wayland window Hearth can't show (the loading screen stays up).
     subprocess.run(["bash", str(RUN_GAME), str(game), "--fullscreen"], check=True, cwd=tmp_path,
-                   env={**os.environ})
-    assert (tmp_path / "ran").read_text().split("\n")[:3] == [str(folder), "--fullscreen", "x11 x11"]
+                   env={**os.environ, "WAYLAND_DISPLAY": "gamescope-0"})
+    assert (tmp_path / "ran").read_text().split("\n")[:4] == [str(folder), "--fullscreen", "x11 x11 x11 xcb",
+                                                              "wayland=none"]
     assert os.access(game, os.X_OK)

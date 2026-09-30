@@ -9,6 +9,7 @@ Everything below is run from a terminal: Desktop Mode (System → Desktop Mode
 | Command | What it does |
 |---|---|
 | `hearthctl doctor` | Checks every part of the setup and says how to fix what's wrong: Game Mode hook, controllers, audio, apps and emulators, updates. **Start here.** |
+| `hearthctl check` | Every safe check at once (setup, errors since boot, apps that didn't show, resources, network, devices), saved as a report. See [FIELD_TESTS.md](FIELD_TESTS.md). |
 | `hearthctl footprint` | Memory and processor in use, what Hearth itself uses, and the biggest programs. See [PERFORMANCE.md](PERFORMANCE.md). |
 | `hearthctl status` | What's running and in front, versions, whether an update is waiting. |
 | `hearthctl report` | Saves everything needed to fix a problem in one file. See [Reporting a problem](#reporting-a-problem). |

@@ -8,6 +8,8 @@ or over SSH from another computer).
   hearthctl report          save everything needed to fix a problem, in one file
   hearthctl screenshot      capture the screen into ~/Pictures/Hearth (the Captures tile)
   hearthctl footprint       memory and CPU in use, and the programs using them
+  hearthctl check           every safe check at once, saved as a report (docs/FIELD_TESTS.md)
+  hearthctl press up a      send buttons to what's on the TV (for testing over SSH)
   hearthctl update          install OS + app updates now (restart to finish)
   hearthctl channel [live|staging]  which build this PC follows; switch between them
   hearthctl rollback        go back to the previous OS version
@@ -323,6 +325,9 @@ def cmd_report(screenshot: bool, out: str | None) -> int:
 
 def cmd_screenshot() -> int:
     from . import captures
+    from .gamescope import adopt_session_display
+
+    adopt_session_display()  # over SSH: use Game Mode's display
 
     state = session.read()
     title = ((state["background"].get(state["focus"]) or {}).get("name") if state["focus"] in state["background"]
@@ -587,6 +592,10 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("update")
     sub.add_parser("screenshot")
     sub.add_parser("footprint")
+    sub.add_parser("check")
+    p = sub.add_parser("press", help="send buttons to the TV: up down left right a b x y view menu lb rb guide home")
+    p.add_argument("buttons", nargs="+")
+    p.add_argument("--delay", type=float, default=0.35, help="seconds between presses")
     p = sub.add_parser("channel", help="show or switch update channel: live or staging")
     p.add_argument("name", nargs="?", choices=sorted(updates.CHANNELS))
     p = sub.add_parser("rollback")
@@ -620,6 +629,20 @@ def main(argv: list[str] | None = None) -> int:
         return cmd_report(args.screenshot, args.out)
     if args.cmd == "update":
         return cmd_update()
+    if args.cmd == "check":
+        from . import fieldcheck
+
+        text = fieldcheck.markdown(fieldcheck.run())
+        print(text)
+        print(f"Saved {fieldcheck.save(text)}")
+        return 0
+    if args.cmd == "press":
+        from . import drive
+
+        problems = drive.press(args.buttons, args.delay)
+        for problem in problems:
+            print(problem)
+        return 1 if problems else 0
     if args.cmd == "footprint":
         from . import footprint
 
