@@ -72,22 +72,27 @@ Useful on the PC:
 | `hearthctl status` / `doctor` | version, what's running, setup problems |
 | `hearthctl logs -n 200` / `events` | Hearth's log and its timeline |
 | `hearthctl footprint` | memory and CPU in use |
+| `hearthctl check` | every safe check in one report (docs/FIELD_TESTS.md) |
+| `hearthctl press up a` | send buttons to what's on the TV |
 | `hearthctl screenshot` | what's on the TV, into ~/Pictures/Hearth (look at the PNG) |
 | `journalctl -b -u uupd --no-pager` | the OS updater |
 | `bootc status` (sudo) | booted, staged and rollback images |
 | `hearth-cec status` / `vendor` | the TV over HDMI-CEC (with an adapter) |
 
-### After each update: the checklist
+### After each update: the field tests
 
-Run these and file one field report with pass or fail for each (plus
-details for anything that fails):
+Follow **docs/FIELD_TESTS.md**: tier 0 (`hearthctl check`, safe any time),
+then, with the owner's go-ahead, tiers 1 to 3 (the home screen, every app
+and game, the hardware), driving the TV with `hearthctl press` and checking
+each step with `hearthctl screenshot`. File one field report per run in the
+format it describes, plus one issue per clearly separate failure.
 
-1. `hearthctl status` shows the new version; `hearthctl doctor` has no errors.
-2. `hearthctl footprint` after a minute idle: Hearth under 2% CPU, around 300 MB.
-3. `hearthctl screenshot` of the home screen looks right (look at the image).
-4. The changelog's items for this version, one by one, as far as they can be
-   checked without taking over the TV.
-5. `journalctl --user -p warning -b --no-pager | grep -i hearth` has nothing new.
+If the installed Hearth doesn't have a command yet (it came in a newer
+release than the one on the PC), run it from this checkout instead:
+
+```sh
+PYTHONPATH=~/hearth-os/launcher python3 -m hearth.ctl check
+```
 
 ## Rules for the cloud session (development)
 
