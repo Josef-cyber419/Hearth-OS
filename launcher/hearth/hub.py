@@ -233,6 +233,7 @@ def stop_app(proc: subprocess.Popen, unit: str | None) -> None:
         units = session.app_units(unit, proc.pid)
         for u in units:
             session.thaw(u)
+        session.ask_to_exit(proc.pid)  # first, so an AppImage isn't torn from its mount (#41)
         for u in units:
             session.stop(u)
         try:
@@ -470,9 +471,15 @@ def switch_person(pid: str) -> None:
     events.record("person_switched", person=pid, problems=problems)
 
 
-def eviction_question(app: cfg.App, config: cfg.Config) -> str | None:
+POWER_TILES = ("restart", "poweroff")
+
+
+def eviction_question(app: cfg.App, config: cfg.Config, updating=updates.in_progress) -> str | None:
     """Starting another game with Quick Resume full closes the oldest paused
-    one: say so first."""
+    one: say so first. Restarting or turning off while an update downloads
+    would cancel it (field report #33): say that too."""
+    if app.id in POWER_TILES:
+        return "AN UPDATE IS STILL DOWNLOADING: IT STOPS" if updating() else None
     paused = session.read()["suspended"]
     if not resumable(app, config) or any(e["id"] == app.id for e in paused):
         return None

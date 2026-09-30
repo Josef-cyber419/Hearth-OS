@@ -376,12 +376,36 @@ def quit_game(pids: list[int], wait: float = 3.0, kill=os.kill, alive=None, slee
                 pass
 
 
+GRACE_SECONDS = 2.0  # how long an app gets to exit by itself before its scope is stopped
+
+
+def ask_to_exit(pid: int | None, wait: float = GRACE_SECONDS, sleep=time.sleep) -> bool:
+    """SIGTERM the app's process group and give it a moment to exit by
+    itself. An AppImage runs from a FUSE mount held by a helper in the same
+    scope; stopping the scope kills both at once and the game dies of SIGBUS
+    (field report #41). True if it's gone."""
+    if not pid:
+        return False
+    try:
+        os.killpg(pid, 15)
+    except OSError:
+        return not _pid_alive(pid)
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        if not _pid_alive(pid):
+            return True
+        sleep(0.1)
+    return not _pid_alive(pid)
+
+
 def stop_entry(info: dict) -> None:
-    """Close an app (foreground or background) and everything it started."""
+    """Close an app (foreground or background) and everything it started:
+    ask it to exit, then stop what's left of its scope."""
     units = _units(info) if info.get("unit") else []
     if units:
         for u in units:
             thaw(u)
+        ask_to_exit(info.get("pid"))
         stopped = [stop(u) for u in units]
         if all(stopped) and not _pid_alive(info.get("pid")):
             return

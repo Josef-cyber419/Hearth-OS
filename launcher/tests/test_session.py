@@ -54,3 +54,23 @@ def test_focus_order_falls_back_to_home():
     assert session.focus_order(discord_over_game) == [appid_for("discord"), appid_for("kodi"), HOME_APPID]
     steam = {"focus": "foreground", "foreground": {"id": "steam", "tag_windows": False}, "background": {}}
     assert session.focus_order(steam) is None
+
+
+def test_closing_asks_the_app_to_exit_before_stopping_its_scope(monkeypatch):
+    # Field report #41: stopping the scope at once killed an AppImage's FUSE
+    # helper with it, and the game died of SIGBUS.
+    calls = []
+    alive = {"pid": True}
+    monkeypatch.setattr(session.os, "killpg", lambda pid, sig: (calls.append(("kill", pid, sig)), alive.update(pid=False)))
+    monkeypatch.setattr(session, "_pid_alive", lambda pid: alive["pid"])
+    monkeypatch.setattr(session, "_units", lambda info: [info["unit"]])
+    monkeypatch.setattr(session, "thaw", lambda u: calls.append(("thaw", u)))
+    monkeypatch.setattr(session, "stop", lambda u: calls.append(("stop", u)) or True)
+    session.stop_entry({"pid": 42, "unit": "hearth-app-x_1.scope"})
+    assert calls == [("thaw", "hearth-app-x_1.scope"), ("kill", 42, 15), ("stop", "hearth-app-x_1.scope")]
+
+
+def test_an_app_that_ignores_sigterm_gets_its_scope_stopped(monkeypatch):
+    monkeypatch.setattr(session.os, "killpg", lambda pid, sig: None)
+    monkeypatch.setattr(session, "_pid_alive", lambda pid: True)
+    assert session.ask_to_exit(42, wait=0.3, sleep=lambda s: None) is False

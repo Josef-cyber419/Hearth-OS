@@ -401,8 +401,13 @@ def _system_tab(ctx: Context) -> Tab:
                               on_change=act.set_wii_mouse))
     tab.items.append(_report_item(ctx))
     tab.items.append(Item("sleep", "Sleep", "action", on_select=lambda: act.power("suspend")))
-    tab.items.append(Item("restart", "Restart", "action", confirm=True, on_select=lambda: act.power("reboot")))
-    tab.items.append(Item("poweroff", "Power off", "action", confirm=True, on_select=lambda: act.power("poweroff")))
+    # An update still downloading stops if the PC restarts (field report #33): say so.
+    busy = (ctx.state.get("update") or {}).get("status") == "running"
+    warn = "Press A again: the update downloading stops" if busy else ""
+    tab.items.append(Item("restart", "Restart", "action", confirm=True, confirm_label=warn,
+                          on_select=lambda: act.power("reboot")))
+    tab.items.append(Item("poweroff", "Power off", "action", confirm=True, confirm_label=warn,
+                          on_select=lambda: act.power("poweroff")))
     return tab
 
 

@@ -6,6 +6,8 @@ few seconds.
 
 from __future__ import annotations
 
+import subprocess
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,8 +24,10 @@ class Link:
     @property
     def bars(self) -> int:
         """0-4, like a phone's."""
-        if self.kind != "wifi" or self.strength is None:
+        if self.kind != "wifi":
             return 0
+        if self.strength is None:
+            return 1  # connected, strength unknown: not "no signal"
         return min(4, max(1, (self.strength + 24) // 25))
 
 
@@ -45,7 +49,36 @@ def _wifi_quality(wireless: Path) -> dict[str, int]:
     return out
 
 
-def link(sys: Path = SYS, wireless: Path = WIRELESS) -> Link:
+NM_SECONDS = 30.0  # NetworkManager's signal reading, asked at most this often
+_nm_cache: tuple[float, int | None] = (-NM_SECONDS, None)
+
+
+def _nm_signal(run=None) -> int | None:
+    """The connected Wi-Fi network's signal (0-100) from NetworkManager, for
+    kernels without /proc/net/wireless (field report #38). Cached."""
+    global _nm_cache
+    now = time.monotonic()
+    if now - _nm_cache[0] < NM_SECONDS:
+        return _nm_cache[1]
+    signal = None
+    try:
+        if run is None:
+            out = subprocess.run(["nmcli", "-t", "-f", "IN-USE,SIGNAL", "dev", "wifi", "list", "--rescan", "no"],
+                                 capture_output=True, text=True, timeout=3).stdout
+        else:
+            out = run()
+        for line in out.splitlines():
+            in_use, _, value = line.partition(":")
+            if in_use.strip() == "*" and value.strip().isdigit():
+                signal = max(0, min(100, int(value)))
+                break
+    except (OSError, subprocess.SubprocessError):
+        pass
+    _nm_cache = (now, signal)
+    return signal
+
+
+def link(sys: Path = SYS, wireless: Path = WIRELESS, nm=_nm_signal) -> Link:
     """The best connection that's up: wired beats Wi-Fi, like the network's own choice."""
     quality = _wifi_quality(wireless)
     best = Link("none")
@@ -64,7 +97,8 @@ def link(sys: Path = SYS, wireless: Path = WIRELESS) -> Link:
             continue
         if (iface / "wireless").exists() or (iface / "phy80211").exists():
             if best.kind == "none":
-                best = Link("wifi", quality.get(iface.name))
+                strength = quality.get(iface.name)
+                best = Link("wifi", strength if strength is not None else nm())
         else:
             return Link("wired")
     return best

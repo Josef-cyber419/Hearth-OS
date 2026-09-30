@@ -47,7 +47,7 @@ def test_not_connected(tmp_path):
 
 def test_bars():
     assert [netstate.Link("wifi", s).bars for s in (0, 20, 45, 70, 100)] == [1, 1, 2, 3, 4]
-    assert netstate.Link("wired").bars == 0 and netstate.Link("wifi", None).bars == 0
+    assert netstate.Link("wired").bars == 0 and netstate.Link("wifi", None).bars == 1
 
 
 def test_drawn_in_the_status_bar(monkeypatch):
@@ -62,3 +62,16 @@ def test_drawn_in_the_status_bar(monkeypatch):
             assert scr._link == link
     finally:
         pygame.quit()
+
+
+def test_wifi_strength_from_networkmanager_without_proc_wireless(tmp_path, monkeypatch):
+    # Field report #38: kernel 7.2 has no /proc/net/wireless, so it said 0 bars.
+    iface = tmp_path / "sys" / "wlp5s0"
+    (iface / "device").mkdir(parents=True)
+    (iface / "wireless").mkdir()
+    (iface / "operstate").write_text("up\n")
+    link = netstate.link(tmp_path / "sys", tmp_path / "missing", nm=lambda: 49)
+    assert link == netstate.Link("wifi", 49) and link.bars == 2
+    monkeypatch.setattr(netstate, "_nm_cache", (-100.0, None))
+    assert netstate._nm_signal(run=lambda: "  :72\n*:49\n") == 49
+    assert netstate._nm_signal(run=lambda: "*:90\n") == 49  # cached for a while
