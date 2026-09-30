@@ -58,6 +58,10 @@ This PC is the family TV. Treat it gently:
   cloud session's release branch. To propose a code change, push a branch
   named `field/<short-topic>` and open a pull request into `staging`, or
   describe the patch in the field report.
+- **Which code is on the TV**: the installed version is `main` (or
+  `staging` if the owner switched to the `:staging` image). `staging` is
+  usually ahead of `main` with the next update's work, so check out the
+  branch that matches before reading code to diagnose a problem.
 - **Try code changes live without a new image**: `hearthctl dev ~/hearth-os/launcher`
   makes Game Mode run the launcher from this checkout (restart Game Mode to
   apply); `hearthctl dev --off` goes back to the built-in one. Changes under
@@ -96,17 +100,24 @@ PYTHONPATH=~/hearth-os/launcher python3 -m hearth.ctl check
 
 ## Rules for the cloud session (development)
 
-- **Branches**: work on `staging`; open a pull request `staging` → `main`
-  and merge it once CI (tests + image build) is green. `main` is what every
-  PC installs; after each merge CI moves `staging` to match `main` (merge
-  `origin/staging` before the next push). Never push to `main` directly.
-- **Versions**: every change that ships bumps `VERSION` and
+- **Branches**: work on `staging`. `main` is what every PC installs, and
+  only a merge into it makes a release. Releases are batched: features and
+  fixes collect on `staging` under one open draft pull request `staging` →
+  `main` (its description lists what's in the update), and it's merged only
+  when the owner says to ship. CI builds every `staging` push into the
+  `:staging` image (version `<next>-dev.<commit>`) without releasing it.
+  After a merge CI moves `staging` to match `main` (merge `origin/staging`
+  before the next push). Never push to `main` directly. An urgent fix for
+  the released version goes on its own branch off `main` as a patch
+  release, only with the owner's OK, and is then merged into `staging`.
+- **Versions**: every release bumps `VERSION` and
   `launcher/pyproject.toml` (minor for features, patch for fixes), adds a
   dated `CHANGELOG.md` entry (short bullets in plain words: the home screen
   shows them after the update), and a progress report:
   `python3 tools/progress_report.py` (update `reports/status.toml` first).
   Tests check all three agree. CI publishes the GitHub release and the image
-  tag.
+  tag. A batched update bumps the version once, with its first change, and
+  its changelog entry and report grow with each change after that.
 - **Before pushing**:
   ```sh
   cd launcher && ruff check . && SDL_VIDEODRIVER=dummy SDL_AUDIODRIVER=dummy python -m pytest -q
