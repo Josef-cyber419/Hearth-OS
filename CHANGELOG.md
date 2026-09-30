@@ -11,6 +11,23 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a
   lap of a circuit, Power Off an engine start button, and so on. Apps from
   Flathub show their own icon.
+- **Fixes from the first field tests on the PC**:
+  - Steam: when a game started from its tile ends, Steam closes and you're
+    back home, instead of stuck in Steam's menus. Holding a controller's
+    Home button works on pads that send it as a Menu key (GuliKit).
+  - PC ports (AppImages in ~/Games, like Dusklight) now show up instead of
+    staying on "Starting…", and close cleanly instead of crashing.
+  - The Quick Menu no longer freezes or crashes when audio stops answering
+    (after a trip to Desktop Mode).
+  - Restart and Power Off warn while an update is still downloading.
+  - Wi-Fi shows its real signal on newer kernels.
+  - Home (Quick Menu or `hearthctl home`) closes Settings, and `hearthctl
+    status` says when Settings is open.
+  - Lighter when idle: a Wii Remote lying still and the screen saver use a
+    fraction of the processor they did.
+  - More logs kept (up to 1 GB), so a crash can be looked into afterwards;
+    updates write their progress to their own log.
+  - `hearthctl check`, `press` and `screenshot` are more accurate.
 - **People**: add everyone in the household (Settings → People). Hearth
   then starts on "Who's playing?", with an optional 4-digit PIN each. Each
   person has their own favorites, Continue row, play times, Steam account
