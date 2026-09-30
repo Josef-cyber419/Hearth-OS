@@ -8,11 +8,23 @@ dest="$HOME/Applications/ES-DE.AppImage"
 state="${XDG_STATE_HOME:-$HOME/.local/state}/hearth/esde-version"
 manifest_url=https://gitlab.com/es-de/emulationstation-de/-/raw/master/latest_release.json
 
-read -r version url md5 < <(curl -fsSL --retry 3 "$manifest_url" | python3 -c '
+fetch() { curl -fsSL --retry 3 --retry-all-errors --connect-timeout 20 "$@"; }
+
+if ! manifest=$(fetch "$manifest_url"); then
+    # Offline, GitLab down, or the line busy with a big download: an ES-DE
+    # that's already installed is fine as it is, so that's not a failure.
+    if [[ -x $dest ]]; then
+        echo "hearth-esde-update: couldn't check for a newer ES-DE; keeping the installed one" >&2
+        exit 0
+    fi
+    echo "hearth-esde-update: couldn't reach $manifest_url" >&2
+    exit 1
+fi
+read -r version url md5 < <(python3 -c '
 import json, sys
 stable = json.load(sys.stdin)["stable"]
 pkg = next(p for p in stable["packages"] if p["name"] == "LinuxAppImage")
-print(stable["version"], pkg["url"], pkg["md5"])')
+print(stable["version"], pkg["url"], pkg["md5"])' <<<"$manifest")
 
 # Where ES-DE looks for games, and where BIOS/firmware files go.
 mkdir -p "$HOME/ROMs" "$HOME/BIOS" "$HOME/Games"
@@ -24,7 +36,7 @@ fi
 mkdir -p "$(dirname "$dest")" "$(dirname "$state")"
 tmp=$(mktemp "$dest.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
-curl -fsSL --retry 3 -o "$tmp" "$url"
+fetch -o "$tmp" "$url"
 echo "$md5  $tmp" | md5sum --check --quiet -
 chmod 755 "$tmp"
 mv "$tmp" "$dest"

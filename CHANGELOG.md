@@ -6,6 +6,16 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
+## 0.22.2 (2026-09-30)
+
+- **One update at a time**: starting an update while one is already
+  downloading (Bazzite's automatic one, or an earlier press) now says
+  "already downloading" and waits for it, instead of failing on its lock and
+  reporting "update failed". And while one downloads, Hearth no longer says
+  the PC is up to date.
+- **ES-DE's update check** no longer fails when the network is busy or
+  GitLab can't be reached; the installed ES-DE is kept.
+
 ## 0.22.1 (2026-09-30)
 
 - **A failed update says why**: `hearthctl update` shows the updater's output

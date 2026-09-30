@@ -342,10 +342,14 @@ def cmd_request(kind: str) -> int:
 
 def cmd_update() -> int:
     print("Updating the OS and apps (this can take a while)…")
-    ok = updates.run_helper("apply", show=True)
+    result = updates.apply(show=True)
+    if result == "busy":
+        print("An update is already running (Bazzite's automatic one, or one started from the menu).\n"
+              "It finishes by itself; the home screen says when it's ready to restart.")
+        return 0
     updates.update_esde()
     status = updates.os_status()
-    if not ok:
+    if result == "failed":
         print("Update failed. Details above; for more: journalctl -b -u uupd")
         return 1
     print(f"Update {status.staged} is ready: restart to finish." if status.update_ready else "Already up to date.")

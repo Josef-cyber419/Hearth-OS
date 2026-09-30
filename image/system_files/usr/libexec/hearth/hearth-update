@@ -5,8 +5,16 @@
 #             The new OS takes effect on the next restart.
 #   rollback  boot the previous OS image on the next restart.
 set -euo pipefail
+BUSY=75  # an update is already running (Bazzite's automatic one, or ours)
 case "${1:-}" in
     apply)
+        # Only one at a time: a second one fails on uupd's lock, which used to
+        # show as "update failed" while the first was still downloading.
+        if pgrep -x uupd >/dev/null || pgrep -f '^(/usr/bin/)?bootc (upgrade|switch)' >/dev/null \
+                || pgrep -f '^(/usr/bin/)?rpm-ostree (upgrade|rebase)' >/dev/null; then
+            echo "hearth-update: an update is already running; it finishes in the background" >&2
+            exit $BUSY
+        fi
         if command -v uupd >/dev/null; then
             # Bazzite's updater, with the same options Steam's "System Update" uses.
             exec uupd --hw-check=false --disable-module-brew --disable-module-distrobox
