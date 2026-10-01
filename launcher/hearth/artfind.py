@@ -196,6 +196,12 @@ def find(system: str, stem: str, fetch=_get) -> str | None:
     return None
 
 
+_running = threading.Lock()
+_last_run = 0.0
+_retry_at = 0.0  # set when a run stopped for lack of network
+RETRY_SECONDS = 600
+
+
 def wanted(games) -> list[tuple[str, str]]:
     """(system, ROM file stem) for emulated games without a picture."""
     out = []
@@ -203,12 +209,19 @@ def wanted(games) -> list[tuple[str, str]]:
         if g.art or not g.key.startswith("rom:") or g.system not in SYSTEMS:
             continue
         rom = g.key.split(":", 2)[2]
-        out.append((g.system, Path(rom).stem if "." in rom else rom))
+        out.append((g.system, stem(rom)))
     return out
+
+
+def stem(name: str) -> str:
+    """A ROM's name without its extension; a folder like "Game (v4.00)" has
+    none to take off."""
+    return re.sub(r"\.[A-Za-z0-9]{1,5}$", "", name) if re.search(r"\.[A-Za-z0-9]{1,5}$", name) else name
 
 
 def run(games, limit: int = PER_RUN, fetch=_get, sleep=time.sleep) -> int:
     """Fetch pictures for up to `limit` games; how many were found."""
+    global _retry_at
     misses, now, got, tried = _misses(), time.time(), 0, 0
     for system, stem in wanted(games):
         if tried >= limit:
@@ -230,7 +243,8 @@ def run(games, limit: int = PER_RUN, fetch=_get, sleep=time.sleep) -> int:
             misses[miss_key] = now  # listed but not there: skip it for now
         except (urllib.error.URLError, OSError, ValueError) as e:
             log.info("game art: stopped at %s (%s)", miss_key, e)
-            break  # offline or the service is down: try again next run
+            _retry_at = time.monotonic() + RETRY_SECONDS  # offline (e.g. at boot): soon, not in 6 h
+            break
         sleep(PAUSE)
     _save_misses(misses)
     if got:
@@ -238,19 +252,16 @@ def run(games, limit: int = PER_RUN, fetch=_get, sleep=time.sleep) -> int:
     return got
 
 
-_running = threading.Lock()
-_last_run = 0.0
-
-
 def find_soon(games) -> None:
     """In the background, if it hasn't run lately and there's anything to find."""
-    global _last_run
-    if time.monotonic() - _last_run < RUN_EVERY and _last_run:
+    global _last_run, _retry_at
+    now = time.monotonic()
+    if _last_run and now - _last_run < RUN_EVERY and not (_retry_at and now >= _retry_at):
         return
     todo = wanted(games)
     if not todo or not _running.acquire(blocking=False):
         return
-    _last_run = time.monotonic()
+    _last_run, _retry_at = time.monotonic(), 0.0
 
     def work():
         try:

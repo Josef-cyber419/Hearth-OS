@@ -103,10 +103,22 @@ def load_art(path: str | None) -> pygame.Surface | None:
         if len(_art) > 200:
             _art.clear()
         try:
-            _art[path] = pygame.image.load(path)
+            _art[path] = as_truecolor(pygame.image.load(path))
         except (pygame.error, OSError, FileNotFoundError):
             _art[path] = None
     return _art[path]
+
+
+def as_truecolor(img: pygame.Surface) -> pygame.Surface:
+    """A 32-bit copy of a palette or greyscale picture (many of libretro's
+    thumbnails are 8-bit PNGs): smoothscale only takes 24- or 32-bit
+    surfaces, and one of these took the screen saver and the Library down
+    (field report #51)."""
+    if img.get_bitsize() >= 24:
+        return img
+    out = pygame.Surface(img.get_size(), pygame.SRCALPHA, 32)
+    out.blit(img, (0, 0))
+    return out
 
 
 def _wrap(font: pygame.font.Font, text: str, width: int) -> list[str]:
@@ -1889,6 +1901,7 @@ def run(
     ask: Callable[[App], str | None] | None = None,
     whats_new: tuple[str, list[str]] | None = None,
     interrupt: Callable[[], str | None] | None = None,
+    running_now: Callable[[], set[str]] | None = None,
 ) -> App | None:
     """Show the home screen until the user picks an app.
 
@@ -1936,6 +1949,8 @@ def run(
                 mapper.reset()
         if interrupt and frames % 8 == 0 and interrupt():
             return App(id=INTERRUPTED, name="", command=(INTERRUPTED,))
+        if running_now and frames % 30 == 0:
+            screen.running = running_now()  # a background app quit from the Quick Menu (#53)
         now = pygame.time.get_ticks()
         navs: list[Nav] = []
         chosen = None

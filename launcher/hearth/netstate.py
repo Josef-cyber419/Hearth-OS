@@ -75,7 +75,7 @@ def _ask_nm() -> None:
     _nm_asking.release()
 
 
-def _nm_signal(run=None) -> int | None:
+def _nm_signal(run=None, wait: bool = False) -> int | None:
     """The connected Wi-Fi network's signal (0-100) from NetworkManager, for
     kernels without /proc/net/wireless (field report #38). The last answer,
     refreshed in the background every NM_SECONDS: nmcli mustn't hold up the
@@ -85,13 +85,16 @@ def _nm_signal(run=None) -> int | None:
     if now - _nm_cache[0] >= NM_SECONDS:
         if run is not None:  # tests
             _nm_cache = (now, _parse_signal(run()))
+        elif wait:  # hearthctl: a one-off, so the answer now
+            if _nm_asking.acquire(blocking=False):
+                _ask_nm()
         elif _nm_asking.acquire(blocking=False):
             _nm_cache = (now, _nm_cache[1])  # not again until this one answers
             threading.Thread(target=_ask_nm, daemon=True, name="nmcli").start()
     return _nm_cache[1]
 
 
-def link(sys: Path = SYS, wireless: Path = WIRELESS, nm=_nm_signal) -> Link:
+def link(sys: Path = SYS, wireless: Path = WIRELESS, nm=None, wait: bool = False) -> Link:
     """The best connection that's up: wired beats Wi-Fi, like the network's own choice."""
     quality = _wifi_quality(wireless)
     best = Link("none")
@@ -111,7 +114,9 @@ def link(sys: Path = SYS, wireless: Path = WIRELESS, nm=_nm_signal) -> Link:
         if (iface / "wireless").exists() or (iface / "phy80211").exists():
             if best.kind == "none":
                 strength = quality.get(iface.name)
-                best = Link("wifi", strength if strength is not None else nm())
+                if strength is None:
+                    strength = nm() if nm is not None else _nm_signal(wait=wait)
+                best = Link("wifi", strength)
         else:
             return Link("wired")
     return best

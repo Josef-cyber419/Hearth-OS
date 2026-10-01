@@ -172,3 +172,39 @@ def test_windows_lists_each_window(monkeypatch):
     lines = windows.window_lines(gs, {"foreground": None})
     assert lines[0] == '  0x1  shown  app=769  class=Steam  pid=10  hearth=steam  "Steam"'
     assert lines[1] == "  0x2  shown  untagged  class=Steam"
+
+
+def test_control_properties_are_flushed_to_gamescope():
+    # Field report #43: the screenshot request sat in python-xlib's buffer.
+    import types
+
+    from hearth.gamescope import Gamescope
+
+    sent = []
+    d = types.SimpleNamespace(intern_atom=lambda name: 7, flush=lambda: sent.append("flush"))
+    gs = Gamescope.__new__(Gamescope)
+    gs.d, gs._atoms = d, {}
+    win = types.SimpleNamespace(change_property=lambda *a: sent.append("prop"))
+    gs._set_cardinals(win, "GAMESCOPECTRL_REQUEST_SCREENSHOT", [3])
+    assert sent == ["prop", "flush"]
+
+
+def test_a_steam_game_that_never_shows_gets_a_notice():
+    import time
+    import types
+
+    from hearth.overlay import Overlay
+
+    posted = []
+    fake = types.SimpleNamespace(
+        _first_window=set(), _slow_warned=set(), SLOW_START_SECONDS=Overlay.SLOW_START_SECONDS,
+        notices=types.SimpleNamespace(post=lambda *a, **k: posted.append(a)),
+        state={"foreground": {"id": "game:steam:814380", "name": "Sekiro", "tag_windows": False,
+                              "started": time.time() - 200}})
+    Overlay.notice_slow_start(fake)
+    Overlay.notice_slow_start(fake)
+    assert len(posted) == 1 and posted[0][0].startswith("Sekiro is taking a while")
+    fresh = {**fake.state, "foreground": {**fake.state["foreground"], "started": time.time() - 10}}
+    fake.state = fresh
+    Overlay.notice_slow_start(fake)
+    assert len(posted) == 1  # not yet

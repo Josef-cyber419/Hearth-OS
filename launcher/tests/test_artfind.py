@@ -116,3 +116,24 @@ def test_rate_limiting_stops_the_run_without_blaming_the_games():
     games = [_rom("n64", "Super Mario 64 (USA).z64"), _rom("n64", "Mario Kart 64 (USA).z64")]
     assert artfind.run(games, fetch=fetch, sleep=lambda s: None) == 0
     assert artfind._misses() == {}
+
+
+def test_a_folder_with_a_dot_keeps_its_name():
+    assert artfind.stem("Super Mario 64 (USA).z64") == "Super Mario 64 (USA)"
+    assert artfind.stem("Game (v4.00)") == "Game (v4.00)"
+    assert artfind.stem("Disc.chd") == "Disc"
+
+
+def test_offline_at_boot_tries_again_soon(monkeypatch):
+    monkeypatch.undo()  # conftest stubs find_soon out for every other test
+    games = [_rom("n64", "Super Mario 64 (USA).z64")]
+    started = []
+    monkeypatch.setattr(artfind.threading, "Thread", lambda target, daemon, name: type("T", (), {
+        "start": lambda self: (started.append(1), target())})())
+    monkeypatch.setattr(artfind, "_last_run", 0.0)
+    monkeypatch.setattr(artfind, "_retry_at", 0.0)
+    monkeypatch.setattr(artfind, "run", lambda g: artfind.__dict__.__setitem__("_retry_at", 1.0) or 0)
+    artfind.find_soon(games)
+    assert started == [1] and artfind._retry_at == 1.0  # offline: a retry is due
+    artfind.find_soon(games)
+    assert started == [1, 1]  # and taken, not left for 6 hours

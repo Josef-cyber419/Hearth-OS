@@ -29,6 +29,16 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
     updates write their progress to their own log.
   - `hearthctl check`, `press` and `screenshot` are more accurate, and
     `hearthctl windows` shows why an app hasn't reached the screen.
+- **Fixes from the second field run** (on this version's first build):
+  - Electron apps (VacuumTube, Twitch, Discord) close cleanly from the Quick
+    Menu instead of crashing, and games that take a while to start get a
+    "taking a while to start" note with how to get back home.
+  - Settings' sidebar fits every category on the screen; a game picture
+    saved as a palette PNG no longer makes the home screen crash.
+  - Game art tries again a few minutes after a boot without network,
+    instead of waiting six hours; Wi-Fi checks no longer stall the screen.
+  - `hearthctl screenshot` can't hand back the previous picture, and
+    `hearthctl press` reaches a game on gamescope's second display.
 - **People**: add everyone in the household (Settings → People). Hearth
   then starts on "Who's playing?", with an optional 4-digit PIN each. Each
   person has their own favorites, Continue row, play times, Steam account

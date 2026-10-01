@@ -1703,8 +1703,10 @@ class SettingsView(QuickMenuView):
     def _draw_sidebar(self, surf: pygame.Surface, app: SettingsApp) -> None:
         lv, u = self.lv, self.u
         y0 = self.header_h + int(26 * u)
-        row_h = int(68 * u)
-        f = self.type(24, "cond", "semibold")
+        # Rows fit the space above the footer however many categories there
+        # are (13 at 68u ran under the button hints, field report #50).
+        row_h = min(int(68 * u), (self.height - self.footer_h - y0) // len(CATEGORIES))
+        f = self.type(24 if row_h >= int(60 * u) else 21, "cond", "semibold")
         target = y0 + app.menu.tab * row_h
         y_bar = self.smooth.get("side_y", target, self._dt)
         active = app.zone == "nav"

@@ -290,6 +290,7 @@ SHIM_DIR = Path("/usr/libexec/hearth/shims")
 
 def app_env() -> dict[str, str]:
     env = dict(os.environ)
+    env.pop("SDL_VIDEO_X11_WMCLASS", None)  # pygame set it for the hub's own window (field report #52)
     # Shims (e.g. steamos-session-select) make "exit" inside apps land back home.
     if SHIM_DIR.is_dir():
         env["PATH"] = f"{SHIM_DIR}:{env.get('PATH', '')}"
@@ -402,16 +403,48 @@ def holds_fuse(pid: int, proc: Path = Path("/proc")) -> bool:
         return False
 
 
+# Processes that only wrap the app: the app itself is underneath them.
+WRAPPERS = frozenset({"bwrap", "flatpak", "systemd-run", "bash", "sh", "dash", "zsh"})
+
+
+def exit_targets(pid: int, procs: dict[int, tuple[int, str]], fuse) -> list[int]:
+    """The processes to ask to exit: the top of the app's own tree, under any
+    wrappers (bwrap, a shell, an AppImage runtime with its FUSE helper). An
+    Electron app signalled together with its zygote and renderers dies of a
+    CHECK (SIGTRAP), so only its main process is asked (field report #41)."""
+    children: dict[int, list[int]] = {}
+    for p, (parent, _) in procs.items():
+        children.setdefault(parent, []).append(p)
+
+    def wrapper(p: int) -> bool:
+        name = procs.get(p, (0, ""))[1]
+        if name in WRAPPERS or (name.startswith("hearth-") and name != "hearth-steam"):
+            return True
+        return any(fuse(c) for c in children.get(p, []))  # an AppImage's runtime
+
+    out: list[int] = []
+    todo = [pid]
+    while todo:
+        p = todo.pop(0)
+        if fuse(p):
+            continue
+        if wrapper(p) and children.get(p):
+            todo.extend(children[p])
+        elif p in procs or p == pid:
+            out.append(p)
+    return out
+
+
 def ask_to_exit(pid: int | None, wait: float = GRACE_SECONDS, sleep=time.sleep,
                 proc: Path = Path("/proc")) -> bool:
-    """SIGTERM the app's processes (not its FUSE helper, see holds_fuse) and
-    give them a moment to exit by themselves; stopping the scope at once
-    killed an AppImage's mount with the game and it died of SIGBUS (field
-    report #41). True if they're all gone."""
+    """SIGTERM the app's own main process(es) (see exit_targets) and give the
+    app a moment to close by itself; then the scope is stopped. Stopping it
+    at once killed an AppImage's mount with the game (SIGBUS, #41). True if
+    everything in the tree is gone."""
     if not pid:
         return False
     procs = _processes(proc)
-    targets = [p for p in [pid, *_descendants(pid, procs)] if not holds_fuse(p, proc)]
+    targets = exit_targets(pid, procs, lambda p: holds_fuse(p, proc))
     if not targets:
         return False
     for p in targets:
@@ -419,10 +452,11 @@ def ask_to_exit(pid: int | None, wait: float = GRACE_SECONDS, sleep=time.sleep,
             os.kill(p, signal.SIGTERM)
         except OSError:
             pass
+    everyone = [pid, *_descendants(pid, procs)]
     deadline = time.monotonic() + wait
-    while time.monotonic() < deadline and any(_pid_alive(p) for p in targets):
+    while time.monotonic() < deadline and any(_pid_alive(p) for p in everyone if not holds_fuse(p, proc)):
         sleep(0.1)
-    return not any(_pid_alive(p) for p in targets)
+    return not any(_pid_alive(p) for p in everyone)
 
 
 def stop_entry(info: dict) -> None:

@@ -70,7 +70,30 @@ def test_closing_asks_the_app_to_exit_before_stopping_its_scope(monkeypatch):
     monkeypatch.setattr(session, "thaw", lambda u: calls.append(("thaw", u)))
     monkeypatch.setattr(session, "stop", lambda u: calls.append(("stop", u)) or True)
     session.stop_entry({"pid": 42, "unit": "hearth-app-x_1.scope"})
-    assert calls == [("thaw", "hearth-app-x_1.scope"), ("kill", 42, 15), ("kill", 44, 15), ("stop", "hearth-app-x_1.scope")]
+    # The runtime (42) has a FUSE child, so it's a wrapper: only the game (44) is asked.
+    assert calls == [("thaw", "hearth-app-x_1.scope"), ("kill", 44, 15), ("stop", "hearth-app-x_1.scope")]
+
+
+def test_exit_targets_pick_the_apps_own_main_process():
+    # An Electron Flatpak: bwrap -> app -> zygote -> renderers. Only the app (#41).
+    procs = {1: (0, "bwrap"), 2: (1, "bwrap"), 3: (2, "vacuumtube"), 4: (3, "vacuumtube"), 5: (4, "vacuumtube")}
+    assert session.exit_targets(1, procs, lambda p: False) == [3]
+    # An AppImage: runtime -> FUSE helper + game. Only the game.
+    procs = {10: (0, "Dusklight"), 11: (10, "fusefs"), 12: (10, "dusklight"), 13: (12, "dusklight")}
+    assert session.exit_targets(10, procs, lambda p: p == 11) == [12]
+    # Our launcher script wrapping it: the same.
+    procs = {9: (0, "hearth-run-game"), 10: (9, "Dusklight"), 11: (10, "fusefs"), 12: (10, "dusklight")}
+    assert session.exit_targets(9, procs, lambda p: p == 11) == [12]
+    # hearth-steam forwards SIGTERM itself; a plain app is asked directly.
+    assert session.exit_targets(20, {20: (0, "hearth-steam"), 21: (20, "steam")}, lambda p: False) == [20]
+    assert session.exit_targets(30, {30: (0, "kodi"), 31: (30, "kodi")}, lambda p: False) == [30]
+    # A wrapper with nothing under it (yet) is asked itself rather than nobody.
+    assert session.exit_targets(40, {40: (0, "bash")}, lambda p: False) == [40]
+
+
+def test_app_env_keeps_the_hubs_window_class_to_itself(monkeypatch):
+    monkeypatch.setenv("SDL_VIDEO_X11_WMCLASS", "Hearth")  # pygame set it for the hub (#52)
+    assert "SDL_VIDEO_X11_WMCLASS" not in session.app_env()
 
 
 def test_an_app_that_ignores_sigterm_gets_its_scope_stopped(monkeypatch):

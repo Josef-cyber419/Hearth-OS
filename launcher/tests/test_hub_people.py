@@ -144,3 +144,25 @@ def test_settings_people_page_offers_a_colour_scheme(shipped_config, two):
     assert items["person-livery"].options[0] == "Household's" and items["person-livery"].value == 0
     items["person-livery"].on_change(list(style.LIVERIES).index("brg") + 1)
     assert profiles.get("sam").livery == "brg"
+
+
+def test_running_dots_follow_the_session(shipped_config):
+    # Field report #53: Discord's dot stayed after it quit from the Quick Menu.
+    from hearth.model import Home
+
+    pygame.display.init()
+    pygame.font.init()
+    try:
+        surface = pygame.display.set_mode((640, 360))
+        seen = []
+        running = {"discord"}
+
+        def now():
+            seen.append(set(running))
+            running.clear()
+            return set(running)
+
+        ui.run(surface, Home(cfg.load(shipped_config)), "Hearth", max_frames=70, running_now=now)
+        assert len(seen) >= 2
+    finally:
+        pygame.quit()

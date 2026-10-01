@@ -108,6 +108,7 @@ class Actions:
             info = s["background"].pop(app_id, None)
             if info:
                 session.stop_entry(info)
+                events.record("background_stop", id=app_id)
             if s["focus"] == app_id:
                 s["focus"] = "foreground" if s["foreground"] else "home"
 
@@ -235,6 +236,7 @@ class Overlay:
         self._housekept = 0.0
         self._seen: set[int] = set()
         self._first_window: set[tuple] = set()  # launches whose first window we've timed
+        self._slow_warned: set[tuple] = set()  # launches told "still starting" (#40)
         self._opened_at = 0.0
         self.frames = events.FrameStats()
         self._tries: dict[int, int] = {}
@@ -802,8 +804,25 @@ class Overlay:
             update = self.state.get("update") or {}
             if update.get("status") == "ready":
                 self.notices.update_ready(update.get("version") or "ready")
+            self.notice_slow_start()
         except Exception:  # a notice is never worth breaking the menu over
             log.exception("notices")
+
+    SLOW_START_SECONDS = 150
+
+    def notice_slow_start(self) -> None:
+        """A Steam game still not on screen minutes after launch (field report
+        #40: Steam's spinner for ever): say how to get out, once."""
+        fg = self.state.get("foreground")
+        if not fg or fg.get("tag_windows", True) or not fg.get("started"):
+            return
+        key = (fg["id"], fg["started"])
+        if key in self._first_window or key in self._slow_warned:
+            return
+        if time.time() - fg["started"] >= self.SLOW_START_SECONDS:
+            self._slow_warned.add(key)
+            self.notices.post(f"{fg['name']} is taking a while to start", "Hold Guide to go back home")
+            events.record("app_slow_start", id=fg["id"], seconds=round(time.time() - fg["started"]))
 
     def show_notice(self) -> bool:
         """Draw the current notice over the app (without taking its input).

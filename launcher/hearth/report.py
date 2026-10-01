@@ -204,8 +204,7 @@ def screenshot(timeout: float = 10.0) -> tuple[bytes, str] | None:
     """What's on screen, as PNG bytes and how it was taken.
 
     gamescope's own screenshot (the one Steam uses) captures exactly what's
-    shown; at 4K it takes about 5 s to arrive (field report #43). If it
-    doesn't, grab the focused window, plus the Quick Menu
+    shown, usually within a second. If it doesn't arrive, grab the focused window, plus the Quick Menu
     if it's open, straight from X instead."""
     if not os.environ.get("DISPLAY"):
         return None
@@ -215,12 +214,14 @@ def screenshot(timeout: float = 10.0) -> tuple[bytes, str] | None:
     if gs is None:
         return None
     target = Path("/tmp/gamescope.png")
-    before = target.stat().st_mtime if target.exists() else 0
+    with contextlib.suppress(OSError):
+        target.unlink()  # an old one mustn't pass for this request's (#43)
+    asked = time.time()
     gs.request_screenshot()
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         time.sleep(0.2)
-        if target.exists() and target.stat().st_mtime > before:
+        if target.exists() and target.stat().st_mtime >= asked - 1:
             time.sleep(0.3)  # let it finish writing
             return target.read_bytes(), "gamescope"
     with contextlib.suppress(Exception):

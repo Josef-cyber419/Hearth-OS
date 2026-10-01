@@ -39,17 +39,17 @@ note = "pointer working"
 [[area]]
 name = "Quick Resume"
 what = "Hold Guide to pause a game and pick it up later (up to 3)"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Quick Menu"
 what = "Guide button panel: audio, per-app volume, Discord, stats, power, updates, screenshots"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Streaming"
 what = "YouTube (VacuumTube), Twitch (VacuumStream), Kodi, Jellyfin, Plex, Moonlight"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Game stores"
@@ -59,22 +59,22 @@ status = "shipped"
 [[area]]
 name = "Customising"
 what = "Favorites with X, move tiles, hide tiles, liveries, sounds"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Search and details"
 what = "Search every app and game; Y on a game for play time and last played"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Settings"
 what = "Wi-Fi, static IP and DNS, Bluetooth, audio devices, storage (format and use a new drive)"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Captures"
 what = "Screenshots from the Quick Menu, a gallery tile, in the screen saver"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Watch next"
@@ -102,13 +102,13 @@ status = "shipped"
 [[area]]
 name = "Performance"
 what = "Hearth idles under 2% of one core and about 300 MB; hearthctl footprint"
-status = "shipped"
+status = "confirmed"
 since = "0.22.0"
 
 [[area]]
 name = "Updates"
 what = "Automatic, versioned, with releases on GitHub, a what's-new card and rollback"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Phone as a remote"
@@ -149,9 +149,9 @@ state = "Holding Guide for 4 s always gets you home; the cause isn't known"
 needs = "hearthctl status and hearthctl logs right after it happens"
 
 [[issue]]
-what = "0.23.0 not yet tried on the PC"
-state = "Built and tested in a virtual display; the 0.22.4 field tests found 21 problems, fixed here"
-needs = "Update, then the field tests again (docs/FIELD_TESTS.md)"
+what = "A few things from the field runs still need a look"
+state = "Two field runs on the PC (0.22.4 and the 0.23.0 build) found 25 problems; all but the Steam cold start above are fixed in 0.23.0"
+needs = "The field tests again on the released 0.23.0 (docs/FIELD_TESTS.md)"
 
 # Captions for screenshots in reports/<version>/screens/.
 [screens]

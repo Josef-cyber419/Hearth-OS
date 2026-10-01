@@ -10,9 +10,9 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.23.0 | Change since 0.22.4 |
 |---|--:|--:|
-| Lines of code | 17,183 | +1,698 |
-| Automated tests | 450 | +69 |
-| Lines of docs | 1,976 | +203 |
+| Lines of code | 17,261 | +1,776 |
+| Automated tests | 458 | +77 |
+| Lines of docs | 1,990 | +217 |
 | Guides in docs/ | 15 | +1 |
 | Pull requests merged | 27 | |
 | Versions released | 26 | |
@@ -21,10 +21,10 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 14,587 |
+| Home screen, Quick Menu and settings (Python) | 14,665 |
 | System image (scripts, services, config) | 1,206 |
 | Build and tools | 1,390 |
-| Tests | 6,225 |
+| Tests | 6,319 |
 
 ## What's new in 0.23.0
 
@@ -39,6 +39,11 @@ Lines of code by part (blank lines not counted):
   - Lighter when idle: a Wii Remote lying still and the screen saver use a fraction of the processor they did.
   - More logs kept (up to 1 GB), so a crash can be looked into afterwards; updates write their progress to their own log.
   - `hearthctl check`, `press` and `screenshot` are more accurate, and `hearthctl windows` shows why an app hasn't reached the screen.
+- **Fixes from the second field run** (on this version's first build):
+  - Electron apps (VacuumTube, Twitch, Discord) close cleanly from the Quick Menu instead of crashing, and games that take a while to start get a "taking a while to start" note with how to get back home.
+  - Settings' sidebar fits every category on the screen; a game picture saved as a palette PNG no longer makes the home screen crash.
+  - Game art tries again a few minutes after a boot without network, instead of waiting six hours; Wi-Fi checks no longer stall the screen.
+  - `hearthctl screenshot` can't hand back the previous picture, and `hearthctl press` reaches a game on gamescope's second display.
 - **People**: add everyone in the household (Settings → People). Hearth then starts on "Who's playing?", with an optional 4-digit PIN each. Each person has their own favorites, Continue row, play times, Steam account and Discord; ROMs, apps and installed games are shared. An admin sets each person's game time, bedtime and locked tiles, and only an admin opens Settings and Desktop Mode. With one person, nothing changes. "Who's playing?" comes back after the PC has slept, and from Quick Menu → System → Switch person; each person can have their own colour scheme.
 - **Erasing a drive asks for your password** (Settings → Storage), the one Desktop Mode and `sudo` use. Using a drive as it is doesn't.
 - **Game art finds itself**: emulated games without a picture get one from libretro's free thumbnail library, in the background. `hearthctl art` fetches them now; off in Settings → Home screen.
@@ -51,20 +56,20 @@ Lines of code by part (blank lines not counted):
 | Home screen | TV-style rows, liveries, a drawing or icon on every tile, a backdrop from the focused game, controller batteries and network by the clock | ✅ Confirmed on the PC |
 | Emulation | ES-DE with a tile per console; emulators tuned for the GPU and TV; game art found automatically | ✅ Confirmed on the PC (Dolphin working) |
 | Wii Remote | DolphinBar pointer on the home screen and as a mouse; handed to Dolphin for Wii games | ✅ Confirmed on the PC (pointer working) |
-| Quick Resume | Hold Guide to pause a game and pick it up later (up to 3) | 🟡 Shipped |
-| Quick Menu | Guide button panel: audio, per-app volume, Discord, stats, power, updates, screenshots | 🟡 Shipped |
-| Streaming | YouTube (VacuumTube), Twitch (VacuumStream), Kodi, Jellyfin, Plex, Moonlight | 🟡 Shipped |
+| Quick Resume | Hold Guide to pause a game and pick it up later (up to 3) | ✅ Confirmed on the PC |
+| Quick Menu | Guide button panel: audio, per-app volume, Discord, stats, power, updates, screenshots | ✅ Confirmed on the PC |
+| Streaming | YouTube (VacuumTube), Twitch (VacuumStream), Kodi, Jellyfin, Plex, Moonlight | ✅ Confirmed on the PC |
 | Game stores | Epic Games (Heroic), Battle.net, EA app and Ubisoft Connect (Lutris) tiles; their games in the Library | 🟡 Shipped |
-| Customising | Favorites with X, move tiles, hide tiles, liveries, sounds | 🟡 Shipped |
-| Search and details | Search every app and game; Y on a game for play time and last played | 🟡 Shipped |
-| Settings | Wi-Fi, static IP and DNS, Bluetooth, audio devices, storage (format and use a new drive) | 🟡 Shipped |
-| Captures | Screenshots from the Quick Menu, a gallery tile, in the screen saver | 🟡 Shipped |
+| Customising | Favorites with X, move tiles, hide tiles, liveries, sounds | ✅ Confirmed on the PC |
+| Search and details | Search every app and game; Y on a game for play time and last played | ✅ Confirmed on the PC |
+| Settings | Wi-Fi, static IP and DNS, Bluetooth, audio devices, storage (format and use a new drive) | ✅ Confirmed on the PC |
+| Captures | Screenshots from the Quick Menu, a gallery tile, in the screen saver | ✅ Confirmed on the PC |
 | Watch next | Shows and films in progress from Jellyfin, Plex and Kodi; resumes and reports back | 🟡 Shipped |
 | Family | Daily game-time limit, bedtime and locked tiles behind a PIN, per person | 🟡 Shipped |
 | Privacy | No ads or tracking; a guide to turn off the TV's own tracking, by make | 🟡 Shipped |
 | TV control (CEC) | TV on and to the right input on wake and on Guide; standby with the PC | 🟡 Shipped |
-| Performance | Hearth idles under 2% of one core and about 300 MB; hearthctl footprint | 🟡 Shipped |
-| Updates | Automatic, versioned, with releases on GitHub, a what's-new card and rollback | 🟡 Shipped |
+| Performance | Hearth idles under 2% of one core and about 300 MB; hearthctl footprint | ✅ Confirmed on the PC |
+| Updates | Automatic, versioned, with releases on GitHub, a what's-new card and rollback | ✅ Confirmed on the PC |
 | Phone as a remote | A web page with a d-pad and keyboard, paired with a code on the TV | ⚪ Not started |
 | People **new** | Who's playing? (at start, after sleep, from the Quick Menu) with optional PINs; own favorites, colour scheme, Continue, Steam and Discord; limits set by an admin | 🟡 Shipped |
 | Folders | Groups of tiles | ⚪ Not started (deferred for now) |
@@ -90,7 +95,7 @@ _The System tiles, each with its own drawing._
 |---|---|---|
 | A Steam game started cold from its tile stayed on Steam's spinner (Sekiro) | Seen once in the field tests (#40); the cause isn't known yet | The same game from Steam's own Game Mode, and PROTON_LOG=1 |
 | Steam "Switch to Desktop" can still hang | Holding Guide for 4 s always gets you home; the cause isn't known | hearthctl status and hearthctl logs right after it happens |
-| 0.23.0 not yet tried on the PC | Built and tested in a virtual display; the 0.22.4 field tests found 21 problems, fixed here | Update, then the field tests again (docs/FIELD_TESTS.md) |
+| A few things from the field runs still need a look | Two field runs on the PC (0.22.4 and the 0.23.0 build) found 25 problems; all but the Steam cold start above are fixed in 0.23.0 | The field tests again on the released 0.23.0 (docs/FIELD_TESTS.md) |
 
 ## Next
 
@@ -102,7 +107,7 @@ _The System tiles, each with its own drawing._
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 17,183 | 450 | 1,976 | 15 | 27 |
+| [0.23.0](../0.23.0/report.md) | 2026-09-30 | 17,261 | 458 | 1,990 | 15 | 27 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 27 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
 | [0.22.1](../0.22.1/report.md) | 2026-09-30 | 15,008 | 370 | 1,548 | 13 | 25 |

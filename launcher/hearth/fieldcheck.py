@@ -240,7 +240,7 @@ def network() -> list[Result]:
 
     out = []
     try:
-        link = netstate.link()
+        link = netstate.link(wait=True)
         out.append(Result("Connection", "ok" if link.kind != "none" else "fail",
                           {"wired": "wired", "wifi": f"Wi-Fi ({link.bars}/4 bars)", "none": "offline"}[link.kind]))
     except OSError as e:

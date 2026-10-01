@@ -20,6 +20,10 @@ tiers 1 to 3; file as you go". Before tier 1:
    problem twice.
 4. Run inside tmux (`tmux new -A -s claude`) so a dropped SSH connection
    doesn't end the run.
+5. Start a fresh session for a fresh run (`claude`). `claude --continue`
+   reopens the most recent session, which may be last night's run; `claude
+   --resume` lets you pick one by name. If a run is interrupted, resume it
+   with `--resume` and pick today's.
 
 The repo's `.claude/settings.json` pre-approves the read-only commands this
 plan uses (hearthctl's checks, journalctl, xprop, gh issue...), so a run

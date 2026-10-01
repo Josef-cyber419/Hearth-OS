@@ -272,6 +272,7 @@ def show_background(app: cfg.App, gs: Gamescope | None) -> None:
 
 
 def open_display(windowed: bool) -> pygame.Surface:
+    os.environ.setdefault("SDL_VIDEO_X11_WMCLASS", "Hearth")  # not "__main__.py" (#52)
     pygame.display.init()
     pygame.font.init()
     pygame.joystick.init()
@@ -581,7 +582,8 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                  running=set(current["background"]), intro=state["intro"],
                  rebuild=lambda: home_config(args), sleep_after=config.sleep_minutes * 60,
                  whats_new=whatsnew.pending(updates.hearth_version()),
-                 interrupt=(lambda: ask_again(state)) if profiles.active() else None, **common)
+                 interrupt=(lambda: ask_again(state)) if profiles.active() else None,
+                 running_now=lambda: set(session.read()["background"]), **common)
     state["message"] = None
     state["intro"] = None
     frames = stats.summary()

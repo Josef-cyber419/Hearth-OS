@@ -278,3 +278,18 @@ def test_retroarch_menu_moves_off_guide_even_if_tuned_before(home, monkeypatch):
     cfg.write_text(text.replace('"2"', '"4"'))  # changed later in RetroArch
     assert emutune.auto("1080p", done) == done
     assert 'input_menu_toggle_gamepad_combo = "4"' in cfg.read_text()  # kept
+
+
+def test_palette_pictures_are_made_truecolor(tmp_path):
+    # Field report #51: an 8-bit PNG from libretro crashed the saver and the Library.
+    pygame.display.init()
+    try:
+        img = pygame.Surface((16, 9), depth=8)
+        img.fill((200, 40, 40))
+        path = tmp_path / "snes.png"
+        pygame.image.save(img, str(path))
+        art = ui.load_art(str(path))
+        assert art.get_bitsize() == 32
+        assert ui.cover(art, (32, 18)).get_size() == (32, 18)
+    finally:
+        pygame.quit()
