@@ -83,13 +83,48 @@ def test_names(tmp_path, fstab):
 
 def test_helper_calls(monkeypatch):
     calls = []
-    monkeypatch.setattr(storage, "helper", lambda *a: calls.append(a) or (True, "Ready"))
+    monkeypatch.setattr(storage, "helper", lambda *a, **k: calls.append((a, k)) or (True, "Ready"))
     drive = storage.Drive("/dev/sda", "SSD", 256 * GB)
     part = storage.Part("/dev/sda1", 256 * GB, "ext4", uuid="u")
-    storage.erase(drive, "games")
+    storage.erase(drive, "games", "pw")
     storage.use(part, "games")
     storage.release(part)
-    assert calls == [("format", "/dev/sda", "games"), ("use", "/dev/sda1", "games"), ("release", "/dev/sda1")]
+    assert calls == [(("format", "/dev/sda", "games"), {"password": "pw"}), (("use", "/dev/sda1", "games"), {}),
+                     (("release", "/dev/sda1"), {})]
+
+
+class Sudo:
+    def __init__(self, code=0, out="Ready at /var/mnt/games", err=""):
+        self.result = storage.subprocess.CompletedProcess([], code, out, err)
+        self.calls = []
+
+    def __call__(self, cmd, **kw):
+        self.calls.append((cmd, kw.get("input")))
+        return self.result
+
+
+def test_erase_passes_the_password_to_sudo_every_time(monkeypatch):
+    sudo = Sudo()
+    monkeypatch.setattr(storage.subprocess, "run", sudo)
+    assert storage.helper("format", "/dev/sda", "games", password="pw") == (True, "Ready at /var/mnt/games")
+    cmd, stdin = sudo.calls[0]
+    assert cmd[:5] == ["sudo", "-k", "-S", "-p", ""] and cmd[-3:] == ["format", "/dev/sda", "games"]
+    assert stdin == "pw\n"
+    storage.helper("use", "/dev/sda1", "games")
+    assert sudo.calls[1] == (["sudo", "-n", storage.HELPER, "use", "/dev/sda1", "games"], None)
+
+
+def test_wrong_password(monkeypatch):
+    monkeypatch.setattr(storage.subprocess, "run", Sudo(1, "", "Sorry, try again.\nsudo: 1 incorrect password attempt"))
+    assert storage.helper("format", "/dev/sda", "games", password="nope") == (False, storage.WRONG_PASSWORD)
+
+
+def test_sudoers_asks_for_a_password_to_erase():
+    from pathlib import Path
+
+    rules = (Path(__file__).resolve().parents[2] / "image/system_files/etc/sudoers.d/hearth").read_text()
+    nopasswd = " ".join(line for line in rules.splitlines() if "NOPASSWD" in line)
+    assert "hearth-storage use" in nopasswd and "hearth-storage format" not in nopasswd
 
 
 # -- Steam ---------------------------------------------------------------------

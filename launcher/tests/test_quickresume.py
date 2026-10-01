@@ -130,3 +130,10 @@ def test_quick_menu_offers_quick_resume():
 
     assert "quick-resume" in items({"id": "g", "name": "Game", "resumable": True})
     assert "quick-resume" not in items({"id": "steam", "name": "Steam", "resumable": False})
+
+
+def test_restart_warns_while_an_update_downloads():
+    # Field report #33: a restart 17 s into an update cancelled it silently.
+    restart = cfg.App(id="restart", name="Restart", command=("systemctl", "reboot"), confirm=True)
+    assert hub.eviction_question(restart, None, updating=lambda: True).startswith("AN UPDATE")
+    assert hub.eviction_question(restart, None, updating=lambda: False) is None

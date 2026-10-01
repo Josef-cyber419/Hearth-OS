@@ -62,6 +62,8 @@ class Actions:
             session.stop_entry(state["foreground"])
         elif state["focus"] != "home":  # e.g. Discord in front of the home screen
             self.show("home")
+        elif state.get("screen"):  # Settings: the hub closes it
+            session.update(lambda s: s.__setitem__("close_screen", True))
         return "close"
 
     def quit_game(self):
@@ -82,6 +84,13 @@ class Actions:
             return "close"
         return self.go_home()
 
+    def switch_person(self):
+        """Back to "Who's playing?": the hub closes what's in front and asks."""
+        self.o.thaw()  # a paused game can't exit
+        session.update(lambda s: s.__setitem__("switch_request", True))
+        events.record("switch_person_asked")
+        return "close"
+
     def start_background(self, app_id):
         app = self.o.config.app(app_id)
         if app is None:
@@ -99,6 +108,7 @@ class Actions:
             info = s["background"].pop(app_id, None)
             if info:
                 session.stop_entry(info)
+                events.record("background_stop", id=app_id)
             if s["focus"] == app_id:
                 s["focus"] = "foreground" if s["foreground"] else "home"
 
@@ -226,6 +236,7 @@ class Overlay:
         self._housekept = 0.0
         self._seen: set[int] = set()
         self._first_window: set[tuple] = set()  # launches whose first window we've timed
+        self._slow_warned: set[tuple] = set()  # launches told "still starting" (#40)
         self._opened_at = 0.0
         self.frames = events.FrameStats()
         self._tries: dict[int, int] = {}
@@ -311,7 +322,7 @@ class Overlay:
         ctx = Context(self.audio, snapshot, self.state, self.actions,
                       discord_available=bool(discord and discord.available()), wii=wii,
                       frontend=game[0] if game else None, perf=self._perf_reading,
-                      media=self.media.poll())
+                      media=self.media.poll(), people=_people_active())
         self.menu.set_tabs(build_tabs(ctx))
 
     # -- updates ---------------------------------------------------------------
@@ -526,6 +537,25 @@ class Overlay:
             self._time_first_window(appid)
         self._seen &= present
         self._tries = {k: v for k, v in self._tries.items() if k in present}
+        self._time_steam_window()
+
+    STEAM_APPID = 769  # what gamescope calls Steam's own interface
+
+    def _time_steam_window(self) -> None:
+        """Steam and its games tag their own windows, so the time to the first
+        window is when gamescope lists the game (or Steam) as one it can show
+        (field report #45; a game that never gets there is #40)."""
+        fg = self.state["foreground"]
+        if not fg or fg.get("tag_windows", True) or not fg.get("started"):
+            return
+        key = (fg["id"], fg["started"])
+        if key in self._first_window:
+            return
+        game = fg["id"].split(":")[-1] if fg["id"].startswith("game:steam:") else None
+        want = int(game) if game and game.isdigit() else self.STEAM_APPID
+        if want in self.gs.get_cardinals(self.gs.root, "GAMESCOPE_FOCUSABLE_APPS"):
+            self._first_window.add(key)
+            events.record("app_window", id=fg["id"], seconds=round(time.time() - fg["started"], 1))
 
     def _time_first_window(self, appid: int) -> None:
         """How long the app in front took to show its first window."""
@@ -540,7 +570,7 @@ class Overlay:
     def owner_appid(self, win) -> int | None:
         state = self.state
         pid = self.gs.client_pid(win)
-        owner = session.app_for_pid(pid) if pid else None
+        owner = session.app_for_pid(pid, state) if pid else None  # the real id: it's hashed for STEAM_GAME
         fg = state["foreground"]
         if owner:
             kind, app_id = owner
@@ -774,8 +804,25 @@ class Overlay:
             update = self.state.get("update") or {}
             if update.get("status") == "ready":
                 self.notices.update_ready(update.get("version") or "ready")
+            self.notice_slow_start()
         except Exception:  # a notice is never worth breaking the menu over
             log.exception("notices")
+
+    SLOW_START_SECONDS = 150
+
+    def notice_slow_start(self) -> None:
+        """A Steam game still not on screen minutes after launch (field report
+        #40: Steam's spinner for ever): say how to get out, once."""
+        fg = self.state.get("foreground")
+        if not fg or fg.get("tag_windows", True) or not fg.get("started"):
+            return
+        key = (fg["id"], fg["started"])
+        if key in self._first_window or key in self._slow_warned:
+            return
+        if time.time() - fg["started"] >= self.SLOW_START_SECONDS:
+            self._slow_warned.add(key)
+            self.notices.post(f"{fg['name']} is taking a while to start", "Hold Guide to go back home")
+            events.record("app_slow_start", id=fg["id"], seconds=round(time.time() - fg["started"]))
 
     def show_notice(self) -> bool:
         """Draw the current notice over the app (without taking its input).
@@ -814,10 +861,19 @@ class Overlay:
         elif self.pointer_active:
             self.pointer.tick(clock.get_time() / 1000)
             clock.tick(120)
-        elif self.wii and self.wii.active:
-            clock.tick(100)  # the pointer follows the remote smoothly
+        elif self.wii and self.wii.in_use():
+            clock.tick(100)  # the pointer follows the remote smoothly (20 Hz while it lies still)
         else:
             clock.tick(20)
+
+
+def _people_active() -> bool:
+    from . import profiles
+
+    try:
+        return profiles.active()
+    except Exception:
+        return False
 
 
 def load_config(path: Path | None, fallback: cfg.Config | None = None) -> cfg.Config:

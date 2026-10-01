@@ -152,6 +152,22 @@ class WiiInput:
     def pointer(self) -> tuple[float, float] | None:
         return next((r.pointer for r in self.remotes.values() if r.connected and r.pointer), None)
 
+    IDLE_SECONDS = 3.0  # still this long: the caller can poll slowly
+
+    def in_use(self, now: float | None = None) -> bool:
+        """A connected remote moved or had a button down in the last few
+        seconds. One lying on the table needn't be read 100 times a second
+        all day (field report #48)."""
+        if not self.active:
+            return False
+        now = time.monotonic() if now is None else now
+        p = self.pointer
+        spot = (round(p[0], 3), round(p[1], 3)) if p else None
+        if spot != getattr(self, "_last_spot", None) or self._held:
+            self._last_spot = spot
+            self._used_at = now
+        return now - getattr(self, "_used_at", -1e9) < self.IDLE_SECONDS
+
     def _rescan(self) -> None:
         paths = set(self._find())
         for path in list(self.remotes):

@@ -32,11 +32,16 @@ import os
 import subprocess
 import sys
 import time
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
 from . import config as cfg
 from . import events, logs, session, updates
+
+# pygame, imported later when needed, prints a setuptools deprecation
+# warning on every run (field report #46); it's noise here.
+warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
 
 SESSION_OVERRIDES = Path("/etc/gamescope-session-plus/sessions.d")
 LISTS = [Path("/usr/share/hearth/flatpaks.list"), Path("/usr/share/hearth/emulators.list")]
@@ -280,7 +285,7 @@ def cmd_status() -> int:
         print(f"Update {os_status.staged} downloaded: restart to finish")
     front = state["focus"]
     front_name = (state["background"].get(front, {}).get("name") if front in state["background"]
-                  else (fg or {}).get("name") or "Home screen")
+                  else (fg or {}).get("name") or (state.get("screen") or "Home screen").capitalize())
     print(f"In front: {front_name}" + (" (paused)" if state["paused"] else ""))
     if fg:
         print(f"Running: {fg['name']}" + (f" [{fg['unit']}]" if fg.get("unit") else f" [pid {fg.get('pid')}]"))
@@ -592,6 +597,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("update")
     sub.add_parser("screenshot")
     sub.add_parser("footprint")
+    sub.add_parser("windows", help="what gamescope sees: focus, every window, and why the app in front isn't shown")
+    p = sub.add_parser("art", help="find pictures online for emulated games without one, now")
+    p.add_argument("-n", "--limit", type=int, default=500)
     sub.add_parser("check")
     p = sub.add_parser("press", help="send buttons to the TV: up down left right a b x y view menu lb rb guide home")
     p.add_argument("buttons", nargs="+")
@@ -643,6 +651,19 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(problem)
         return 1 if problems else 0
+    if args.cmd == "windows":
+        from . import windows
+
+        print(windows.dump())
+        return 0
+    if args.cmd == "art":
+        from . import artfind, library
+
+        games = library.all_games()
+        todo = artfind.wanted(games)
+        print(f"{len(todo)} emulated games without a picture; looking (up to {args.limit})...")
+        print(f"Found {artfind.run(games, limit=args.limit)}; they show on the home screen shortly.")
+        return 0
     if args.cmd == "footprint":
         from . import footprint
 

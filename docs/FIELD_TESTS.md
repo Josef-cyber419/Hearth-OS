@@ -5,6 +5,31 @@ CLAUDE.md) runs after each update, and how to report what it finds. It's in
 tiers: tier 0 is safe any time; later tiers use the TV, so they need the
 owner's go-ahead and, for some, their hands.
 
+## Starting a run
+
+The owner says something like "run the field tests for 0.23.0; I'm OK with
+tiers 1 to 3; file as you go". Before tier 1:
+
+1. `hearthctl status`: the version. Check out the matching code so what you
+   read is what's running: `git checkout main && git pull` for a release,
+   `git checkout staging && git pull` if `hearthctl channel` says staging.
+2. `gh auth status` (else the owner runs `gh auth login`), and
+   `gh issue list --label field-report --state open` to see what's still
+   open from last time: those get re-checked (below), not re-filed.
+3. **One session at a time.** Two sessions on the same run file the same
+   problem twice.
+4. Run inside tmux (`tmux new -A -s claude`) so a dropped SSH connection
+   doesn't end the run.
+5. Start a fresh session for a fresh run (`claude`). `claude --continue`
+   reopens the most recent session, which may be last night's run; `claude
+   --resume` lets you pick one by name. If a run is interrupted, resume it
+   with `--resume` and pick today's.
+
+The repo's `.claude/settings.json` pre-approves the read-only commands this
+plan uses (hearthctl's checks, journalctl, xprop, gh issue...), so a run
+doesn't stall on prompts once the owner has left; anything that changes the
+PC still asks.
+
 Throughout:
 
 - **See the TV**: `hearthctl screenshot` saves what's on screen to
@@ -18,6 +43,11 @@ Throughout:
   has the details.
 - Before tier 1: `hearthctl events -n 1` and note the time, so the report can
   show everything that happened during the run.
+- **Something never reached the screen?** `hearthctl windows` shows what
+  gamescope sees on every display (:0 and the games' :1): its focus
+  properties, each window with the app id tagged on it and who owns it,
+  and a verdict for the app in front. Run it at 10 s and 60 s and put both
+  in the report.
 
 ## Tier 0: automatic (any time, touches nothing)
 
@@ -54,6 +84,38 @@ Anything marked ❌ or ⚠️ goes in the report with its evidence.
 | 1.10 | Settings → Family: don't change it; screenshot | Asks for a PIN, or offers to set one |
 | 1.11 | Captures tile (if there): open, `press right`, `press b` | Gallery, full view, back |
 
+## Re-checking last time's reports (with the owner's OK for the tiers involved)
+
+For every open issue labelled `field-report`, read its last comment from the
+cloud session: it names the version with the fix and how to check it. Do
+that check on this version, then **comment on the issue** (don't file a new
+one):
+
+- `Verified on <version>: <one line of evidence>` (the cloud session closes it), or
+- `Still happening on <version>:` with the evidence the issue asked for.
+
+An issue that says it needs more data (for example a Steam game that stayed
+on Steam's spinner, or a controller whose buttons need reading) is a step in
+this run: gather what it asks for and comment with it.
+
+## New in this version (owner OK)
+
+Read the top entry of CHANGELOG.md and try each item, one line per item in
+the run's report. Things to know:
+
+- **People** (Settings → People): adding a second person makes the owner the
+  admin and Hearth starts on "Who's playing?". Test with the owner present:
+  add a person, set their PIN, pick them on the picker, check Steam signs in
+  to the right account (needs two Steam accounts), check the Switch person
+  tile, then remove the test person. Their files come back to one-person
+  mode.
+- **Erasing a drive asks for the password**: only on a spare USB stick the
+  owner plugs in for it, with the owner typing. Try a wrong password first
+  (nothing should happen), then the right one.
+- **Game art**: `hearthctl art` fetches pictures for emulated games without
+  one; count found, and check a few tiles afterwards.
+- **Emblems**: the System row's tiles have drawings; screenshot them.
+
 ## Tier 2: apps and games (owner OK; one at a time)
 
 For **each tile** in Play and Watch, and for one game each from the Library
@@ -76,11 +138,20 @@ Streaming apps: play 30 seconds of something; sound and picture, and Quick
 Menu → Audio shows it under "now playing". Store tiles (EA, Ubisoft,
 Battle.net): the Lutris installer or the app opens; no need to install.
 
+**A Steam game from its tile** (Steam not running first, then again with
+Steam already running): after 30 s and 2 min, `hearthctl windows`, and note
+whether the TV shows Steam's spinner ("B: Abort game") or the game. When it
+ends, the home screen should come back within 5 s. If the game stays on the
+spinner, also save `~/.local/share/Steam/logs/console-linux.txt` and the
+game's Proton log (`PROTON_LOG=1` set in the game's launch options in
+Steam, then `~/steam-<appid>.log`) and attach the last 100 lines of each.
+
 ## Tier 3: hardware (owner's hands)
 
 | # | Do | Pass if |
 |---|---|---|
 | 3.1 | Each controller: `hearthctl buttons`, owner presses A, B, Guide | Every button reported; Guide tap opens the Quick Menu in Game Mode |
+| 3.1b | A controller `hearthctl doctor` says has no Guide button (GuliKit and the like): `hearthctl buttons`, owner presses Home, Select, Start, and says which mode the pad is in (its switch or button combination) | The codes each one sends go in the report (`hearthctl buttons` prints them), so Hearth can be taught the pad |
 | 3.2 | Controller batteries | Shown by the clock; `hearthctl check` lists them |
 | 3.3 | Wii Remote on the DolphinBar | Pointer moves over tiles; A opens; `hearthctl doctor` says mode 4 |
 | 3.4 | TV remote (CEC) | Arrows and OK drive the home screen |
@@ -102,11 +173,16 @@ Battle.net): the Lutris installer or the app opens; no need to install.
 One field report (a GitHub issue labelled `field-report`, see CLAUDE.md) per
 run, titled "Field test <version> <date>":
 
-1. The `hearthctl check` summary (its "Needs attention" list).
+1. The `hearthctl check` summary (its "Needs attention" list); attach the
+   saved report with `--body-file` or as a second comment.
 2. A table of every test run: number, pass/fail, one line of detail.
 3. For each failure: what happened, the screenshot's description, the
-   evidence (events, log lines, command output), and the likely cause.
+   evidence (events, log lines, command output, `hearthctl windows` for
+   anything that never showed), and the likely cause.
 4. Anything odd that no test covered.
+5. The steps that needed the owner and weren't done, so they can be next time.
 
-A failure that's clearly separate (e.g. one app never shows its window) can
-also get an issue of its own, so it can be fixed and closed separately.
+A failure that's clearly separate (e.g. one app never shows its window) also
+gets an issue of its own, so it can be fixed and closed separately. **Search
+first**: `gh issue list --label field-report --state all --search "<words>"`;
+if it's there already, comment on it instead. File as you go, not at the end.

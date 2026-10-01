@@ -61,10 +61,25 @@ trap 'ending=yes; kill -TERM "$steam_pid" 2>/dev/null' TERM INT HUP
 trap '[[ $ending == no ]] && rm -f "$marker"' EXIT
 mkdir -p "$(dirname "$marker")"
 
+# Started for one game (a game's tile: steam://rungameid/<id>): when that
+# game has run and ended, close Steam too, so the TV comes back to Hearth.
+# Otherwise it stays on Steam's own screens with no way home for a
+# controller whose Guide button Steam keeps (field report #29).
+appid=
+for arg in "$@"; do
+    [[ $arg =~ ^steam://rungameid/([0-9]+) ]] && appid=${BASH_REMATCH[1]}
+done
+game_running() {
+    # Steam runs every game under its reaper: "reaper SteamLaunch AppId=<id> -- ..."
+    pgrep -f "SteamLaunch AppId=$appid( |$)" >/dev/null 2>&1
+}
+
 steam -gamepadui -steamos3 -steampal -steamdeck "$@" &
 steam_pid=$!
 
 left=no
+game_seen=no
+gone=0
 while kill -0 "$steam_pid" 2>/dev/null; do
     touch "$marker"
     if [[ $left == no ]] && desktop_requested; then
@@ -72,6 +87,16 @@ while kill -0 "$steam_pid" 2>/dev/null; do
         clear_desktop_login
         steam -shutdown
         left=yes
+    fi
+    if [[ -n $appid && $left == no ]]; then
+        if game_running; then
+            game_seen=yes
+            gone=0
+        elif [[ $game_seen == yes ]] && (( ++gone >= 6 )); then  # 3 s: not just a relaunch
+            echo "hearth-steam: game $appid ended; closing Steam and returning to Hearth" >&2
+            steam -shutdown
+            left=yes
+        fi
     fi
     sleep 0.5
 done

@@ -111,8 +111,9 @@ def rev_files(rev: str) -> dict[str, bytes]:
 
 
 def prs_in(rev: str) -> int:
-    subjects = git("log", "--first-parent", "--format=%s", rev)
-    return len(set(re.findall(r"#(\d+)", subjects)))
+    """Pull requests merged by then: the merge commits on the main line (a
+    commit subject can name other things with #, like field-report issues)."""
+    return len(git("log", "--first-parent", "--merges", "--format=%H", rev).split())
 
 
 # -- versions ---------------------------------------------------------------------
@@ -124,7 +125,8 @@ def changelog_dates() -> dict[str, str]:
 
 
 def changes(version: str) -> list[str]:
-    """That version's CHANGELOG bullets, as written."""
+    """That version's CHANGELOG bullets, as written. A nested bullet starts
+    with a tab."""
     out, inside = [], False
     for line in (REPO / "CHANGELOG.md").read_text().splitlines():
         if line.startswith("## "):
@@ -133,6 +135,8 @@ def changes(version: str) -> list[str]:
             inside = line.split()[1] == version
         elif inside and line.startswith(("- ", "* ")):
             out.append(line[2:].strip())
+        elif inside and line.startswith(("  - ", "  * ")):
+            out.append("\t" + line[4:].strip())
         elif inside and line.strip() and out:
             out[-1] += " " + line.strip()
     return out
@@ -236,7 +240,8 @@ def markdown(version: str, rows: list[dict], status: dict, screens: list[Path]) 
            "| Part | Lines |", "|---|--:|"]
     out += [f"| {name} | {n(lines)} |" for name, lines in now["areas"].items()]
     out += ["", f"## What's new in {version}", ""]
-    out += [f"- {c}" for c in changes(version)] or ["- (no changelog entry)"]
+    out += [f"  - {c[1:]}" if c.startswith("\t") else f"- {c}" for c in changes(version)] \
+        or ["- (no changelog entry)"]
     out += ["", "## What's working", "", "| Area | What it does | Status |", "|---|---|---|"]
     for a in status["area"]:
         icon, words = STATUS[a["status"]]
@@ -300,6 +305,7 @@ def pdf(path: Path, version: str, rows: list[dict], status: dict, screens: list[
     cell = ParagraphStyle("CELL", parent=body, fontSize=8.8, leading=11.2)
     bold = ParagraphStyle("CELLB", parent=cell, fontName="Helvetica-Bold")
     bullet = ParagraphStyle("BUL", parent=body, leftIndent=12, bulletIndent=2)
+    sub_bullet = ParagraphStyle("SUB", parent=body, leftIndent=26, bulletIndent=16)
 
     def md(text: str) -> str:
         text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
@@ -369,7 +375,8 @@ def pdf(path: Path, version: str, rows: list[dict], status: dict, screens: list[
                 f"tests {delta(now['tests'], before['tests']).strip(' ()') or 'unchanged'}. "
                 f"Tested on: {status['reference_pc']}.", small)]
     s += [p(f"What's new in {version}", h2)]
-    s += [Paragraph(md(c), bullet, bulletText="•") for c in changes(version)]
+    s += [Paragraph(md(c[1:]), sub_bullet, bulletText="–") if c.startswith("\t")
+          else Paragraph(md(c), bullet, bulletText="•") for c in changes(version)]
     s += [p("What's working", h2)]
     data = [["Area", "What it does", "Status"]]
     for a in status["area"]:

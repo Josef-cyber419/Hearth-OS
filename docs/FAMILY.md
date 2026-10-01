@@ -1,7 +1,10 @@
 # Family: play-time limits, bedtime and locked tiles
 
-Settings → **Family** sets house rules for everyone who uses this PC. There
-are no profiles to set up: the rules apply to the PC.
+Settings → **Family** sets house rules. With one person on the PC they apply
+to everyone, under one household PIN (below). Once you've added people
+(Settings → **People**, see [People](PEOPLE.md)), each person who isn't an
+admin has their own limits, set by an admin on the same page ("Limits
+for"), and any admin's PIN lets them past a limit.
 
 ## Setting it up
 

@@ -77,3 +77,134 @@ def test_over_ssh_the_display_comes_from_the_home_screen(tmp_path, monkeypatch):
 def test_press_names_the_buttons_it_knows():
     problems = drive.press(["up", "jump"])
     assert problems and "unknown button 'jump'" in problems[0] and "guide" in problems[0]
+
+
+def test_check_leaves_out_the_false_alarms(monkeypatch):
+    # Field report #46: ended SSH logins, coredump module lists, old versions.
+    def run(cmd, timeout=15):
+        if cmd[:2] == ["systemctl", "--failed"]:
+            return 0, "session-10.scope loaded failed failed Session 10 of User joseph"
+        if cmd[:3] == ["systemctl", "--user", "--failed"]:
+            return 0, ""
+        if cmd[0] == "journalctl":
+            return 0, ("2026-09-30T01:10:15 bazzite systemd-coredump[1]: Process 36330 (dusklight) dumped core.\n"
+                       "2026-09-30T01:10:15 bazzite systemd-coredump[1]: Module libc.so.6 without build-id.\n"
+                       "2026-09-30T01:10:15 bazzite systemd-coredump[1]: #0  0x7f _Unwind_Find_FDE\n"
+                       "2026-09-30T01:10:15 bazzite systemd-coredump[1]: Stack trace of thread 36330:\n")
+        return 0, ""
+
+    monkeypatch.setattr(fieldcheck, "_run", run)
+    assert all(r.status == "ok" for r in fieldcheck.failed_units())
+    errors = fieldcheck.journal_errors()[0]
+    assert errors.evidence == ["2026-09-30T01:10:15 bazzite systemd-coredump[1]: Process 36330 (dusklight) dumped core."]
+
+
+def test_never_showed_a_window_only_counts_this_version(monkeypatch):
+    from hearth import updates
+
+    monkeypatch.setattr(updates, "hearth_version", lambda: "0.23.0")
+    events.record("session_start", version="0.22.4")
+    events.record("app_start", id="old")
+    events.record("app_exit", id="old", code=0)
+    events.record("session_start", version="0.23.0")
+    events.record("app_start", id="new")
+    events.record("app_exit", id="new", code=0)
+    results = {r.name: r for r in fieldcheck.app_history()}
+    assert len(results["Apps that never showed a window"].evidence) == 1
+    assert "new" in results["Apps that never showed a window"].evidence[0]
+
+
+def test_press_finds_a_steam_game_in_front():
+    # Field report #43: only the first base-layer id was compared.
+    import types
+
+    from Xlib import X
+
+    from hearth import drive
+
+    def win(wid, game, overlay=0):
+        w = types.SimpleNamespace(id=wid, tags={"STEAM_GAME": game, "STEAM_OVERLAY": overlay})
+        w.get_attributes = lambda: types.SimpleNamespace(map_state=X.IsViewable)
+        return w
+
+    hearth_win, game_win = win(1, 413091), win(2, 814380)
+    gs = types.SimpleNamespace(root="root", top_level_windows=lambda: [hearth_win, game_win],
+                               get_cardinals=lambda w, n: [413091, 769, 814380],
+                               get_cardinal=lambda w, n: w.tags.get(n))
+    assert drive.target(gs, {"overlay_open": False}) is hearth_win  # first in gamescope's list
+    gs.top_level_windows = lambda: [game_win]
+    assert drive.target(gs, {"overlay_open": False}) is game_win
+
+
+def test_windows_verdict_names_the_missing_step():
+    from hearth import windows
+    from hearth.gamescope import appid_for
+
+    fg = {"foreground": {"id": "game:pc:Dusk.AppImage", "name": "Dusk"}}
+    want = appid_for("game:pc:Dusk.AppImage")
+    lines = windows.verdict(fg, base=[want, 1], focusable=[1], tagged={want})
+    assert "asked for (base layer): yes" in lines[1] and "focusable: NO" in lines[3]
+    assert lines[-1].startswith("  -> gamescope sees the window")
+    lines = windows.verdict(fg, base=[want], focusable=[], tagged={999})
+    assert lines[-1].startswith("  -> no window is tagged")
+    steam = {"foreground": {"id": "game:steam:814380", "name": "Sekiro"}}
+    assert "app id 814380" in windows.verdict(steam, [769, 814380], [769], set())[0]
+    assert windows.verdict({"foreground": None}, [], [], set()) == ["Nothing in front: the home screen."]
+
+
+def test_windows_lists_each_window(monkeypatch):
+    import types
+
+    from Xlib import X
+
+    from hearth import windows
+
+    def win(wid, props, title):
+        w = types.SimpleNamespace(id=wid, props=props, title=title)
+        w.get_attributes = lambda: types.SimpleNamespace(map_state=X.IsViewable)
+        return w
+
+    a, b = win(1, {"STEAM_GAME": 769}, "Steam"), win(2, {}, None)
+    gs = types.SimpleNamespace(top_level_windows=lambda: [a, b], get_cardinal=lambda w, n: w.props.get(n),
+                               client_pid=lambda w: 10 if w is a else None, wm_class=lambda w: ("steam", "Steam"),
+                               window_title=lambda w: w.title)
+    monkeypatch.setattr(windows.session, "app_for_pid", lambda pid, state: ("app", "steam"))
+    lines = windows.window_lines(gs, {"foreground": None})
+    assert lines[0] == '  0x1  shown  app=769  class=Steam  pid=10  hearth=steam  "Steam"'
+    assert lines[1] == "  0x2  shown  untagged  class=Steam"
+
+
+def test_control_properties_are_flushed_to_gamescope():
+    # Field report #43: the screenshot request sat in python-xlib's buffer.
+    import types
+
+    from hearth.gamescope import Gamescope
+
+    sent = []
+    d = types.SimpleNamespace(intern_atom=lambda name: 7, flush=lambda: sent.append("flush"))
+    gs = Gamescope.__new__(Gamescope)
+    gs.d, gs._atoms = d, {}
+    win = types.SimpleNamespace(change_property=lambda *a: sent.append("prop"))
+    gs._set_cardinals(win, "GAMESCOPECTRL_REQUEST_SCREENSHOT", [3])
+    assert sent == ["prop", "flush"]
+
+
+def test_a_steam_game_that_never_shows_gets_a_notice():
+    import time
+    import types
+
+    from hearth.overlay import Overlay
+
+    posted = []
+    fake = types.SimpleNamespace(
+        _first_window=set(), _slow_warned=set(), SLOW_START_SECONDS=Overlay.SLOW_START_SECONDS,
+        notices=types.SimpleNamespace(post=lambda *a, **k: posted.append(a)),
+        state={"foreground": {"id": "game:steam:814380", "name": "Sekiro", "tag_windows": False,
+                              "started": time.time() - 200}})
+    Overlay.notice_slow_start(fake)
+    Overlay.notice_slow_start(fake)
+    assert len(posted) == 1 and posted[0][0].startswith("Sekiro is taking a while")
+    fresh = {**fake.state, "foreground": {**fake.state["foreground"], "started": time.time() - 10}}
+    fake.state = fresh
+    Overlay.notice_slow_start(fake)
+    assert len(posted) == 1  # not yet

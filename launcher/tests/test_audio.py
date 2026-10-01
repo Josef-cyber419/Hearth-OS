@@ -1,3 +1,4 @@
+import pytest
 from fakes import FakePactl
 
 from hearth.audio import Audio
@@ -51,3 +52,25 @@ def test_restored_discord_mutes_are_cleared_once():
     finally:
         SINK_INPUTS[1]["mute"] = False
         SOURCE_OUTPUTS[0]["mute"] = False
+
+
+def test_pactl_that_stops_answering_fails_fast(monkeypatch):
+    # Field report #31: a hung PipeWire made every Guide press wait 5 s per
+    # pactl call and then crash the Quick Menu (TimeoutExpired wasn't caught).
+    import subprocess
+
+    from hearth import audio
+
+    calls = []
+
+    def hang(cmd, **kw):
+        calls.append(cmd)
+        raise subprocess.TimeoutExpired(cmd, kw.get("timeout"))
+
+    monkeypatch.setattr(audio, "_stalled_until", 0.0)
+    monkeypatch.setattr(audio.subprocess, "run", hang)
+    with pytest.raises(RuntimeError):
+        audio.Audio().snapshot()
+    with pytest.raises(RuntimeError):
+        audio.Audio().snapshot()  # doesn't try again for a while
+    assert len(calls) == 1

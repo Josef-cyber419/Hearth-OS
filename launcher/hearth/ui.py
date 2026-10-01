@@ -18,8 +18,8 @@ from typing import Callable
 
 import pygame
 
-from . import events, style
-from .config import App
+from . import emblems, events, style
+from .config import App, flatpak_icon
 from .input import InputMapper
 from .model import Home, Nav
 from .style import Livery, Smooth, Type, ease_in_out, ease_out, enamel, mix, parse_color
@@ -27,6 +27,7 @@ from .style import Livery, Smooth, Type, ease_in_out, ease_out, enamel, mix, par
 log = logging.getLogger("hearth")
 
 RUNNING = (86, 214, 128)
+INTERRUPTED = "hearth:interrupted"  # run() ended because `interrupt` said so
 BOOT_SECONDS = 1.6
 RETURN_SECONDS = 0.55
 LAUNCH_SECONDS = 0.42
@@ -102,10 +103,22 @@ def load_art(path: str | None) -> pygame.Surface | None:
         if len(_art) > 200:
             _art.clear()
         try:
-            _art[path] = pygame.image.load(path)
+            _art[path] = as_truecolor(pygame.image.load(path))
         except (pygame.error, OSError, FileNotFoundError):
             _art[path] = None
     return _art[path]
+
+
+def as_truecolor(img: pygame.Surface) -> pygame.Surface:
+    """A 32-bit copy of a palette or greyscale picture (many of libretro's
+    thumbnails are 8-bit PNGs): smoothscale only takes 24- or 32-bit
+    surfaces, and one of these took the screen saver and the Library down
+    (field report #51)."""
+    if img.get_bitsize() >= 24:
+        return img
+    out = pygame.Surface(img.get_size(), pygame.SRCALPHA, 32)
+    out.blit(img, (0, 0))
+    return out
 
 
 def _wrap(font: pygame.font.Font, text: str, width: int) -> list[str]:
@@ -271,6 +284,9 @@ def paint_tile(size: tuple[int, int], app: App, th: Theme, lit: bool, icon: pyga
     if details:
         center = (int(w * 0.225), int(h * 0.42))
         radius = h * 0.235
+        if icon is None and (icon := emblems.for_app(app, int(h * 0.56), lv)) is not None and not lit:
+            icon = icon.copy()
+            icon.set_alpha(215)  # a touch dimmer, like the name, until focused
         if icon is not None:
             surf.blit(icon, icon.get_rect(center=center))
         else:
@@ -318,6 +334,9 @@ def paint_loading(size: tuple[int, int], app: App, livery: str = "gulf") -> pyga
             plat = style.tracked(th.font_date, app.platform.upper(), lv.dim, 0.3)
             surf.blit(plat, plat.get_rect(midtop=(w // 2, y)))
             y += plat.get_height() + th.gap // 3
+    elif (emblem := emblems.for_app(app, int(radius * 2.4), lv)) is not None:
+        surf.blit(emblem, emblem.get_rect(center=(w // 2, cy)))
+        y = int(cy + radius * 1.2 + th.gap * 1.2)
     else:
         style.circle(surf, (0, 0, 0, 60), (w // 2, cy + int(radius * 0.12)), radius * 1.04)
         style.roundel(surf, (w // 2, cy), radius, app.name[:1].upper(),
@@ -357,6 +376,7 @@ class HomeScreen:
         self.badge: str | None = None
         self.running: set[str] = set()  # background apps, marked on their tiles
         self._icons: dict[str, pygame.Surface | None] = {}
+        self._icon_paths: dict[str, str | None] = {}
         self._tiles: dict[tuple, pygame.Surface] = {}
         self._shadow: pygame.Surface | None = None
         self._scroll_y = 0.0
@@ -438,16 +458,23 @@ class HomeScreen:
         return strip
 
     def _icon(self, app: App, size: tuple[int, int]) -> pygame.Surface | None:
-        if not app.icon:
+        if app.id not in self._icon_paths:  # looked up once: it's a few file checks
+            self._icon_paths[app.id] = app.icon or flatpak_icon(app)
+        path = self._icon_paths[app.id]
+        if not path:
             return None
-        key = f"{app.icon}@{size}"
+        key = f"{path}@{size}"
         if key not in self._icons:
             try:
-                img = pygame.image.load(str(Path(app.icon).expanduser())).convert_alpha()
+                path = str(Path(path).expanduser())
+                if path.endswith(".svg") and hasattr(pygame.image, "load_sized_svg"):
+                    img = pygame.image.load_sized_svg(path, size).convert_alpha()
+                else:
+                    img = pygame.image.load(path).convert_alpha()
                 scale = min(size[0] / img.get_width(), size[1] / img.get_height())
                 new = (int(img.get_width() * scale), int(img.get_height() * scale))
                 self._icons[key] = pygame.transform.smoothscale(img, new)
-            except (pygame.error, FileNotFoundError, ZeroDivisionError):
+            except (pygame.error, OSError, ZeroDivisionError):
                 self._icons[key] = None
         return self._icons[key]
 
@@ -689,6 +716,16 @@ class HomeScreen:
         say so; "are you sure?"); the Search tile opens here."""
         if app is None:
             return None
+        if not pin_ok and app.command[:1] == ("hearth:person",):  # "Who's playing?": their own PIN, if any
+            from . import family, profiles
+
+            person = profiles.get(app.command[1])
+            if person is not None and person.pin:
+                self.pin = family.PinEntry(f"{person.name}'s PIN", app,
+                                           checker=lambda pin, pid=person.id: profiles.check_pin(pid, pin))
+                self._confirm_t0 = time.monotonic()
+                return None
+            pin_ok = True
         if not pin_ok:
             from . import family
 
@@ -785,7 +822,7 @@ class HomeScreen:
         from . import family
 
         entry, self.pin = self.pin, None
-        if entry.reason != "This one is locked":
+        if entry.reason in family.TIME_REASONS:
             family.grant_extra()
         events.record("pin_ok", tile=entry.target.id if entry.target else None)
         return self._open(entry.target, pin_ok=True)
@@ -1674,6 +1711,7 @@ class HomeScreen:
             if key in self._slide_cache:
                 return self._slide_cache[key]
             art = load_art(self._slides[key][2])
+            _art.pop(self._slides[key][2], None)  # keep only the scaled slide (#49: a 4K capture is 33 MB)
             if art is None:
                 del self._slides[key]
                 self._slide_cache.clear()  # keyed by position, which just moved
@@ -1689,6 +1727,20 @@ class HomeScreen:
             self._slide_cache[key] = img
             return img
         return None
+
+    def saver_fps(self) -> int:
+        """How often the screen saver redraws: a slow drift needs few frames
+        (field report #49: 24 fps cost 7% of a core all idle day); the
+        cross-fade and nothing else gets 24."""
+        slides = getattr(self, "_slides", [])
+        if not slides:
+            return 2  # just the time, drifting
+        into = (time.monotonic() - self._saver_t0) % SLIDE_SECONDS
+        return 24 if into < SLIDE_FADE + 0.2 and time.monotonic() - self._saver_t0 > SLIDE_SECONDS else 6
+
+    def stop_saver(self) -> None:
+        self.saver = False
+        self._slide_cache = {}  # the slides are full-screen surfaces: let them go
 
     def _draw_slide(self, i: int, age: float, alpha: int) -> None:
         th = self.theme
@@ -1848,6 +1900,8 @@ def run(
     hints: tuple | None = None,
     ask: Callable[[App], str | None] | None = None,
     whats_new: tuple[str, list[str]] | None = None,
+    interrupt: Callable[[], str | None] | None = None,
+    running_now: Callable[[], set[str]] | None = None,
 ) -> App | None:
     """Show the home screen until the user picks an app.
 
@@ -1861,7 +1915,10 @@ def run(
     shows; after `sleep_after` the PC sleeps (0 = never). `offset` is where
     this surface sits on the screen (a safe-area inset), for the pointer.
     `ask` may return a question to confirm before a tile opens. `whats_new`
-    (version, notes) is shown once, after an update.
+    (version, notes) is shown once, after an update. `interrupt` is polled a
+    few times a second; a reason from it ends the run with an INTERRUPTED app
+    (the hub asks who's playing again after sleep, or when the Quick Menu
+    asks).
     """
     screen = HomeScreen(surface, home, title, livery=livery, motion=motion, intro=intro)
     screen.message = message
@@ -1890,6 +1947,10 @@ def run(
             was_blocked, blocked = blocked, input_blocked()
             if blocked and not was_blocked:
                 mapper.reset()
+        if interrupt and frames % 8 == 0 and interrupt():
+            return App(id=INTERRUPTED, name="", command=(INTERRUPTED,))
+        if running_now and frames % 30 == 0:
+            screen.running = running_now()  # a background app quit from the Quick Menu (#53)
         now = pygame.time.get_ticks()
         navs: list[Nav] = []
         chosen = None
@@ -1903,7 +1964,7 @@ def run(
                                                                      pygame.CONTROLLERAXISMOTION else 1)):
                     idle_since = time.monotonic()
                     if screen.saver:  # waking up: this input only wakes the screen
-                        screen.saver = False
+                        screen.stop_saver()
                         from . import tv
 
                         tv.switch_here(tries=5)  # and the TV, if it drifted off to another input
@@ -1966,14 +2027,18 @@ def run(
             screen.start_saver()
             events.record("screen_saver", style=screen.saver_style, slides=len(screen._slides))
         if screen.saver:
+            if stats is not None:
+                stats.pause()
             screen.draw_saver()
             pygame.display.flip()
-            clock.tick(24 if screen._slides else 10)
+            clock.tick(screen.saver_fps())
             continue
         mono = time.monotonic()
         screen.settled = (screen.intro is None and mono - idle_since > SETTLE_SECONDS
                           and mono > screen.busy_until)
         if screen.settled:
+            if stats is not None:
+                stats.pause()  # a still screen isn't one long frame (field report #35)
             due = mono - last_draw >= SETTLED_REDRAW
             if not due and mono - last_look >= 1 / SETTLED_FPS:
                 last_look = mono

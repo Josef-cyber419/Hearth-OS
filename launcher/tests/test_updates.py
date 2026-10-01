@@ -118,7 +118,23 @@ def test_update_output_is_never_thrown_away(monkeypatch, tmp_path):
     assert seen[-1] is None  # straight to the terminal
     log = tmp_path / "hearth.log"
     updates.run_helper("apply", log)
-    assert seen[-1].name == str(log)
+    assert seen[-1].name == str(tmp_path / "update.log")  # its own file (field report #47)
+
+
+def test_a_failed_update_adds_its_last_lines_to_the_log(monkeypatch, tmp_path):
+    import subprocess
+
+    def helper(cmd, stdout=None, stderr=None):
+        stdout.write("\x1b[A\x1b[K\x1b[37mUpdating System (Importing) 80%\x1b[0m\r" * 500)
+        stdout.write("\nerror: Pulling: connection reset\n")
+        return subprocess.CompletedProcess(cmd, 1)
+
+    monkeypatch.setattr(subprocess, "run", helper)
+    log = tmp_path / "hearth.log"
+    assert updates.run_helper("apply", log) is False
+    lines = log.read_text().splitlines()
+    assert lines == ["hearth-update apply: Updating System (Importing) 80%",
+                     "hearth-update apply: error: Pulling: connection reset"]
 
 
 def test_an_update_already_running_is_busy_not_failed(monkeypatch):

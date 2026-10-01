@@ -23,7 +23,7 @@ def path() -> Path:
     return Path(base) / "hearth" / "settings.json"
 
 
-def load() -> dict:
+def _raw() -> dict:
     try:
         data = json.loads(path().read_text())
         return data if isinstance(data, dict) else {}
@@ -31,13 +31,52 @@ def load() -> dict:
         return {}
 
 
-def save(data: dict) -> None:
+def _person() -> str:
+    from . import profiles
+
+    return profiles.current_id()
+
+
+def load() -> dict:
+    """The settings, as the person using Hearth sees them: their own
+    favorites, tile order and hidden tiles (profiles.PERSONAL), the
+    household's everything else. The first person's are at the top level, as
+    before there were people; others' under "people"."""
+    from .profiles import OWNER, PERSONAL
+
+    data = _raw()
+    pid = _person()
+    if pid == OWNER:
+        return data
+    mine = (data.get("people") or {}).get(pid) or {}
+    view = {k: v for k, v in data.items() if k not in PERSONAL}
+    view.update({k: mine[k] for k in PERSONAL if k in mine})
+    return view
+
+
+def save_raw(data: dict) -> None:
+    """Write the whole file as it is (everyone's keys), see save()."""
     p = path()
     p.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".settings-")
     with os.fdopen(fd, "w") as f:
         json.dump(data, f, indent=2, sort_keys=True)
     os.replace(tmp, p)
+
+
+def save(data: dict) -> None:
+    from .profiles import OWNER, PERSONAL
+
+    pid = _person()
+    if pid != OWNER:
+        raw = _raw()
+        out = {k: v for k, v in data.items() if k not in PERSONAL and k != "people"}
+        out.update({k: raw[k] for k in PERSONAL if k in raw})
+        people = dict(raw.get("people") or {})
+        people[pid] = {k: data[k] for k in PERSONAL if k in data}
+        out["people"] = people
+        data = out
+    save_raw(data)
 
 
 def put(table: str, key: str, value: Any) -> dict:

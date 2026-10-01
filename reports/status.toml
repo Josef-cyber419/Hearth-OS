@@ -14,19 +14,19 @@ graphics; NVIDIA is left for later."""
 next = [
     "Your phone as a remote, with a keyboard for search and Wi-Fi passwords.",
     "Fix what turns up on the real PC.",
-    "When wanted: profiles and groups of tiles; NVIDIA support.",
+    "When wanted: groups of tiles; NVIDIA support.",
 ]
 
 reference_pc = "Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox controller, Wii Remotes on a DolphinBar"
 
 [[area]]
 name = "Home screen"
-what = "TV-style rows, liveries, a backdrop from the focused game, controller batteries and network by the clock"
+what = "TV-style rows, liveries, a drawing or icon on every tile, a backdrop from the focused game, controller batteries and network by the clock"
 status = "confirmed"
 
 [[area]]
 name = "Emulation"
-what = "ES-DE with a tile per console; emulators tuned for the GPU and TV"
+what = "ES-DE with a tile per console; emulators tuned for the GPU and TV; game art found automatically"
 status = "confirmed"
 note = "Dolphin working"
 
@@ -39,17 +39,17 @@ note = "pointer working"
 [[area]]
 name = "Quick Resume"
 what = "Hold Guide to pause a game and pick it up later (up to 3)"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Quick Menu"
 what = "Guide button panel: audio, per-app volume, Discord, stats, power, updates, screenshots"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Streaming"
 what = "YouTube (VacuumTube), Twitch (VacuumStream), Kodi, Jellyfin, Plex, Moonlight"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Game stores"
@@ -59,22 +59,22 @@ status = "shipped"
 [[area]]
 name = "Customising"
 what = "Favorites with X, move tiles, hide tiles, liveries, sounds"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Search and details"
 what = "Search every app and game; Y on a game for play time and last played"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Settings"
 what = "Wi-Fi, static IP and DNS, Bluetooth, audio devices, storage (format and use a new drive)"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Captures"
 what = "Screenshots from the Quick Menu, a gallery tile, in the screen saver"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Watch next"
@@ -84,7 +84,7 @@ since = "0.22.0"
 
 [[area]]
 name = "Family"
-what = "Daily game-time limit, bedtime and locked tiles behind a PIN"
+what = "Daily game-time limit, bedtime and locked tiles behind a PIN, per person"
 status = "shipped"
 since = "0.22.0"
 
@@ -102,13 +102,13 @@ status = "shipped"
 [[area]]
 name = "Performance"
 what = "Hearth idles under 2% of one core and about 300 MB; hearthctl footprint"
-status = "shipped"
+status = "confirmed"
 since = "0.22.0"
 
 [[area]]
 name = "Updates"
 what = "Automatic, versioned, with releases on GitHub, a what's-new card and rollback"
-status = "shipped"
+status = "confirmed"
 
 [[area]]
 name = "Phone as a remote"
@@ -116,8 +116,14 @@ what = "A web page with a d-pad and keyboard, paired with a code on the TV"
 status = "next"
 
 [[area]]
-name = "Profiles, folders"
-what = "Per-person favorites; groups of tiles"
+name = "People"
+what = "Who's playing? (at start, after sleep, from the Quick Menu) with optional PINs; own favorites, colour scheme, Continue, Steam and Discord; limits set by an admin"
+status = "shipped"
+since = "0.23.0"
+
+[[area]]
+name = "Folders"
+what = "Groups of tiles"
 status = "next"
 note = "deferred for now"
 
@@ -133,17 +139,25 @@ what = "DRM limits these to low quality on any home-built PC"
 status = "not-possible"
 
 [[issue]]
+what = "A Steam game started cold from its tile stayed on Steam's spinner (Sekiro)"
+state = "Seen once in the field tests (#40); the cause isn't known yet"
+needs = "The same game from Steam's own Game Mode, and PROTON_LOG=1"
+
+[[issue]]
 what = "Steam \"Switch to Desktop\" can still hang"
 state = "Holding Guide for 4 s always gets you home; the cause isn't known"
 needs = "hearthctl status and hearthctl logs right after it happens"
 
 [[issue]]
-what = "Recent updates not yet tried on the PC"
-state = "Built and tested in a virtual display"
-needs = "Update, then try the checklist in the release notes"
+what = "A few things from the field runs still need a look"
+state = "Two field runs on the PC (0.22.4 and the 0.23.0 build) found 25 problems; all but the Steam cold start above are fixed in 0.23.0"
+needs = "The field tests again on the released 0.23.0 (docs/FIELD_TESTS.md)"
 
 # Captions for screenshots in reports/<version>/screens/.
 [screens]
+"livery-sam.png" = "Sam's home screen in the Rosso livery they chose; the household's is Gulf."
+"picker.png" = "Who's playing?: one tile per person, each with an optional PIN."
+"emblems.png" = "The System tiles, each with its own drawing."
 "watch-next.png" = "Watch next: in progress on Jellyfin, Plex and Kodi, with how much is left."
 "family.png" = "Settings → Family: game time, bedtime, locked tiles."
 "pin.png" = "The PIN, entered like a combination lock."

@@ -318,7 +318,8 @@ def drives(monkeypatch, tmp_path):
     monkeypatch.setattr(storage, "drives", lambda *a, **k: [new, ready])
     monkeypatch.setattr(storage.Drive, "ready", property(lambda self: bool(self.mounted_at)))
     calls = []
-    monkeypatch.setattr(storage, "helper", lambda *a: (calls.append(a), (True, "Ready at /var/mnt/games"))[1])
+    monkeypatch.setattr(storage, "helper", lambda *a, password=None: (
+        calls.append(a if password is None else (*a, password)), (True, "Ready at /var/mnt/games"))[1])
     monkeypatch.setattr(storage, "free_name", lambda drive, *a: "games2")
     return calls, games
 
@@ -354,9 +355,24 @@ def test_erasing_takes_two_presses(shipped_config, offline, drives):
     app.handle(Nav.SELECT)
     assert calls == [] and app.menu.confirming == "drive-/dev/sda-erase"
     app.handle(Nav.SELECT)
+    # Then the account's password, which goes to sudo with the command.
+    assert calls == [] and app.keyboard is not None and app.keyboard.secret
+    app.keyboard.type("hunter22")
+    app.handle(Nav.MENU)  # Start = done
     wait_jobs(app)
-    assert calls == [("format", "/dev/sda", "games2")]
+    assert calls == [("format", "/dev/sda", "games2", "hunter22")]
     assert app.jobs.messages["drive-/dev/sda"] == "Ready at /var/mnt/games"
+
+
+def test_erase_needs_a_password(shipped_config, offline, drives):
+    calls, _ = drives
+    app = open_storage(shipped_config)
+    app.menu.select("drive-/dev/sda-erase")
+    app.handle(Nav.SELECT)
+    app.handle(Nav.SELECT)
+    app.keyboard.handle(Nav.BACK)  # backed out of the password
+    wait_jobs(app)
+    assert calls == []
 
 
 def test_moving_away_cancels_the_erase(shipped_config, offline, drives):
@@ -368,7 +384,7 @@ def test_moving_away_cancels_the_erase(shipped_config, offline, drives):
     app.menu.select("drive-/dev/sda-erase")
     app.handle(Nav.SELECT)
     wait_jobs(app)
-    assert calls == []  # the first press didn't count any more
+    assert calls == [] and app.keyboard is None  # the first press didn't count any more
 
 
 def test_roms_and_steam_toggles(shipped_config, offline, drives, monkeypatch):
@@ -594,3 +610,31 @@ def test_test_sound(monkeypatch, tmp_path):
     assert played == [b"RIFF"]  # a real WAV file
     monkeypatch.setattr(settings_app.shutil, "which", lambda name: None)
     assert "no player" in settings_app.play_test_sound()
+
+
+def test_home_closes_settings_and_status_names_it(shipped_config, offline):
+    # Field report #37: Settings was invisible to hearthctl status and to Home.
+    from hearth import overlay
+
+    pygame.display.init()
+    pygame.font.init()
+    try:
+        surface = pygame.display.set_mode((1280, 720))
+        seen = []
+        real_read = session.read
+
+        def read():
+            state = real_read()
+            seen.append(state.get("screen"))
+            if len(seen) == 2:  # while it's open: Home from the Quick Menu
+                overlay.Actions.go_home(type("A", (), {"o": None, "show": lambda s, f: None})())
+            return state
+
+        import unittest.mock as mock
+
+        with mock.patch.object(session, "read", read):
+            assert settings_app.run(surface, shipped_config, max_frames=200, input_blocked=lambda: False) is None
+        assert "settings" in seen and len(seen) < 6  # closed at once, not after 200 frames
+        assert session.read()["screen"] is None and not session.read()["close_screen"]
+    finally:
+        pygame.quit()

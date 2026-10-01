@@ -80,7 +80,8 @@ BY_KEY = {g.key: g for g in GUIDES}
 
 HEARTH_PROMISE = ("No ads, no sponsored tiles, and nothing sent about what you watch or play. "
                   "Hearth's logs and problem reports stay on this PC until you send one.")
-WHAT_LEAVES = ("Update checks (GitHub), app installs (Flathub), and whatever the apps and services you sign in "
+WHAT_LEAVES = ("Update checks (GitHub), app installs (Flathub), names of emulated games that need a picture "
+               "(libretro's thumbnails; off in Home screen settings), and whatever the apps and services you sign in "
                "to send themselves (Steam, YouTube...).")
 WHY_TV = ("Most smart TVs watch what's on screen, games from this PC included, and sell it to advertisers. "
           "Off is quicker, too.")

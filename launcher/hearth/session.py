@@ -51,12 +51,16 @@ def runtime_dir() -> Path:
 #   "wii_raw": bool,  (the Settings app is calibrating: the overlay writes wii-aim.json)
 #   "suspended": [{like foreground, + "paused_at"}, ...],  (Quick Resume: games kept paused, oldest first)
 #   "suspend_request": bool   (the Quick Menu or a held Guide asks the hub to pause the game and go home)
+#   "screen": "settings" | null,  (a screen of the hub's own in front of the home screen)
+#   "close_screen": bool  (Home was asked for: the hub closes that screen)
+#   "switch_request": bool  (the Quick Menu asks for "Who's playing?": the hub closes what's in front)
 # }
 
 DEFAULT_STATE = {"foreground": None, "background": {}, "focus": "home", "overlay_open": False,
                  "paused": False, "requests": [], "update": None, "report": None,
                  "wii_mouse": {}, "wii": None, "wii_raw": False,
-                 "suspended": [], "suspend_request": False}
+                 "suspended": [], "suspend_request": False, "screen": None, "close_screen": False,
+                 "switch_request": False}
 
 
 def _state_path() -> Path:
@@ -104,6 +108,16 @@ def update(change: Callable[[dict], None]) -> dict:
         return state
 
 
+def slept() -> float:
+    """Seconds the PC has spent asleep since boot: CLOCK_BOOTTIME counts them,
+    time.monotonic() doesn't. A rise since some earlier reading means it
+    slept and woke in between."""
+    try:
+        return time.clock_gettime(time.CLOCK_BOOTTIME) - time.monotonic()
+    except (AttributeError, OSError):
+        return 0.0
+
+
 # -- scopes --------------------------------------------------------------------
 
 
@@ -113,8 +127,7 @@ def scopes_available() -> bool:
 
 
 def unit_name(kind: str, app_id: str) -> str:
-    safe = re.sub(r"[^A-Za-z0-9_-]", "-", app_id)
-    return f"hearth-{kind}-{safe}_{time.monotonic_ns() % 10**9}.scope"
+    return f"hearth-{kind}-{safe_id(app_id)}_{time.monotonic_ns() % 10**9}.scope"
 
 
 def scoped(unit: str, command: tuple[str, ...]) -> list[str]:
@@ -224,21 +237,50 @@ def close_suspended(info: dict) -> None:
             pass
 
 
-def app_for_pid(pid: int) -> tuple[str, str] | None:
+def app_for_pid(pid: int, state: dict | None = None) -> tuple[str, str] | None:
     """("app" | "bg", app id) for a process Hearth started, from its cgroup."""
     try:
         cgroup = Path(f"/proc/{pid}/cgroup").read_text()
     except OSError:
         return None
-    return app_for_cgroup(cgroup)
+    return app_for_cgroup(cgroup, state)
 
 
-def app_for_cgroup(cgroup: str) -> tuple[str, str] | None:
+def _entries(state: dict) -> Iterator[tuple[str, dict]]:
+    """(app id, entry) for everything Hearth has running."""
+    fg = state.get("foreground")
+    if fg:
+        yield fg.get("id", ""), fg
+    for app_id, info in (state.get("background") or {}).items():
+        yield app_id, info
+    for entry in state.get("suspended") or []:
+        yield entry.get("id", ""), entry
+
+
+def app_for_cgroup(cgroup: str, state: dict | None = None) -> tuple[str, str] | None:
+    """The app a cgroup belongs to. The unit name only carries a tidied-up id
+    ("game:pc:Dusk.AppImage" becomes "game-pc-Dusk-AppImage"), so with the
+    session state the real id is looked up by the unit (then the tidied id)."""
     for part in reversed(cgroup.strip().split("/")):
         m = UNIT_RE.fullmatch(part)
-        if m:
-            return m.group(1), m.group(2)
+        if not m:
+            continue
+        kind, safe = m.group(1), m.group(2)
+        if state is not None:
+            entries = list(_entries(state))
+            for app_id, info in entries:
+                if info.get("unit") == part:
+                    return kind, app_id
+            for app_id, _info in entries:
+                if safe_id(app_id) == safe:
+                    return kind, app_id
+        return kind, safe
     return None
+
+
+def safe_id(app_id: str) -> str:
+    """An app id as it can appear in a unit name."""
+    return re.sub(r"[^A-Za-z0-9_-]", "-", app_id)
 
 
 # -- running apps --------------------------------------------------------------
@@ -248,6 +290,7 @@ SHIM_DIR = Path("/usr/libexec/hearth/shims")
 
 def app_env() -> dict[str, str]:
     env = dict(os.environ)
+    env.pop("SDL_VIDEO_X11_WMCLASS", None)  # pygame set it for the hub's own window (field report #52)
     # Shims (e.g. steamos-session-select) make "exit" inside apps land back home.
     if SHIM_DIR.is_dir():
         env["PATH"] = f"{SHIM_DIR}:{env.get('PATH', '')}"
@@ -348,12 +391,82 @@ def quit_game(pids: list[int], wait: float = 3.0, kill=os.kill, alive=None, slee
                 pass
 
 
+GRACE_SECONDS = 2.0  # how long an app gets to exit by itself before its scope is stopped
+
+
+def holds_fuse(pid: int, proc: Path = Path("/proc")) -> bool:
+    """A FUSE server: an AppImage's runtime keeps one to serve the game's own
+    files. Signalling it unmounts them under the running game (SIGBUS)."""
+    try:
+        return any(os.readlink(str(f)) == "/dev/fuse" for f in (proc / str(pid) / "fd").iterdir())
+    except OSError:
+        return False
+
+
+# Processes that only wrap the app: the app itself is underneath them.
+WRAPPERS = frozenset({"bwrap", "flatpak", "systemd-run", "bash", "sh", "dash", "zsh"})
+
+
+def exit_targets(pid: int, procs: dict[int, tuple[int, str]], fuse) -> list[int]:
+    """The processes to ask to exit: the top of the app's own tree, under any
+    wrappers (bwrap, a shell, an AppImage runtime with its FUSE helper). An
+    Electron app signalled together with its zygote and renderers dies of a
+    CHECK (SIGTRAP), so only its main process is asked (field report #41)."""
+    children: dict[int, list[int]] = {}
+    for p, (parent, _) in procs.items():
+        children.setdefault(parent, []).append(p)
+
+    def wrapper(p: int) -> bool:
+        name = procs.get(p, (0, ""))[1]
+        if name in WRAPPERS or (name.startswith("hearth-") and name != "hearth-steam"):
+            return True
+        return any(fuse(c) for c in children.get(p, []))  # an AppImage's runtime
+
+    out: list[int] = []
+    todo = [pid]
+    while todo:
+        p = todo.pop(0)
+        if fuse(p):
+            continue
+        if wrapper(p) and children.get(p):
+            todo.extend(children[p])
+        elif p in procs or p == pid:
+            out.append(p)
+    return out
+
+
+def ask_to_exit(pid: int | None, wait: float = GRACE_SECONDS, sleep=time.sleep,
+                proc: Path = Path("/proc")) -> bool:
+    """SIGTERM the app's own main process(es) (see exit_targets) and give the
+    app a moment to close by itself; then the scope is stopped. Stopping it
+    at once killed an AppImage's mount with the game (SIGBUS, #41). True if
+    everything in the tree is gone."""
+    if not pid:
+        return False
+    procs = _processes(proc)
+    targets = exit_targets(pid, procs, lambda p: holds_fuse(p, proc))
+    if not targets:
+        return False
+    for p in targets:
+        try:
+            os.kill(p, signal.SIGTERM)
+        except OSError:
+            pass
+    everyone = [pid, *_descendants(pid, procs)]
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline and any(_pid_alive(p) for p in everyone if not holds_fuse(p, proc)):
+        sleep(0.1)
+    return not any(_pid_alive(p) for p in everyone)
+
+
 def stop_entry(info: dict) -> None:
-    """Close an app (foreground or background) and everything it started."""
+    """Close an app (foreground or background) and everything it started:
+    ask it to exit, then stop what's left of its scope."""
     units = _units(info) if info.get("unit") else []
     if units:
         for u in units:
             thaw(u)
+        ask_to_exit(info.get("pid"))
         stopped = [stop(u) for u in units]
         if all(stopped) and not _pid_alive(info.get("pid")):
             return

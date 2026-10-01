@@ -10,7 +10,9 @@ set -euxo pipefail
 #   v4l-utils          cec-ctl, for HDMI-CEC TV control
 #   linuxconsoletools  inputattach, for the Pulse-Eight USB-CEC adapter
 #   mpv                low-latency full-screen view of an HDMI capture card
-dnf5 -y install python3-pygame python3-evdev python3-xlib v4l-utils linuxconsoletools mpv
+#   gh                 GitHub's CLI: the field session files field reports with it
+#   tmux               keeps an SSH session (and Claude Code in it) running if the connection drops
+dnf5 -y install python3-pygame python3-evdev python3-xlib v4l-utils linuxconsoletools mpv gh tmux
 
 # --- check that Game Mode will actually start Hearth ------------------------
 # Hearth hooks in through /etc/gamescope-session-plus/sessions.d/<session>,

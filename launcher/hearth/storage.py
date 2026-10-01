@@ -174,18 +174,31 @@ def free_name(drive: Drive, base: Path = Path("/var/mnt"), fstab: Path = FSTAB) 
 # -- the privileged helper -----------------------------------------------------
 
 
-def helper(*args: str) -> tuple[bool, str]:
-    """Run hearth-storage as root. (ok, the last thing it said)."""
+WRONG_PASSWORD = "Wrong password"
+
+
+def helper(*args: str, password: str | None = None) -> tuple[bool, str]:
+    """Run hearth-storage as root. (ok, the last thing it said).
+
+    Erasing a drive needs the account's password: sudoers only lets the
+    other actions through without one. -k makes sudo ask even if it was
+    given recently, so the password is checked every time."""
+    if password is None:
+        cmd, stdin = ["sudo", "-n", HELPER, *args], None
+    else:
+        cmd, stdin = ["sudo", "-k", "-S", "-p", "", HELPER, *args], password + "\n"
     try:
-        p = subprocess.run(["sudo", "-n", HELPER, *args], capture_output=True, text=True, timeout=600)
+        p = subprocess.run(cmd, input=stdin, capture_output=True, text=True, timeout=600)
     except (OSError, subprocess.TimeoutExpired) as e:
         return False, str(e)
+    if password is not None and p.returncode != 0 and re.search(r"incorrect password|Sorry, try again", p.stderr):
+        return False, WRONG_PASSWORD
     said = (p.stdout + p.stderr).strip().splitlines()
     return p.returncode == 0, said[-1] if said else ("Done" if p.returncode == 0 else "Failed")
 
 
-def erase(drive: Drive, name: str) -> tuple[bool, str]:
-    return helper("format", drive.path, name)
+def erase(drive: Drive, name: str, password: str) -> tuple[bool, str]:
+    return helper("format", drive.path, name, password=password)
 
 
 def use(part: Part, name: str) -> tuple[bool, str]:

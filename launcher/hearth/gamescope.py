@@ -91,6 +91,7 @@ class Gamescope:
 
     def _set_cardinals(self, win, name: str, values: list[int]) -> None:
         win.change_property(self.atom(name), Xatom.CARDINAL, 32, values)
+        self.d.flush()  # python-xlib buffers it; gamescope must hear now (field report #43)
 
     def get_cardinal(self, win, name: str) -> int | None:
         try:
@@ -98,6 +99,13 @@ class Gamescope:
         except XError:
             return None
         return int(prop.value[0]) if prop and len(prop.value) else None
+
+    def get_cardinals(self, win, name: str) -> list[int]:
+        try:
+            prop = win.get_full_property(self.atom(name), X.AnyPropertyType)
+        except XError:
+            return []
+        return [int(v) for v in prop.value] if prop else []
 
     # -- windows ---------------------------------------------------------------
 

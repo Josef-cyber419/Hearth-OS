@@ -240,3 +240,13 @@ def test_hearthctl_buttons_shows_presses_and_reconnects(fake):
     assert "Guide down" in text and "=> tap -> Quick Menu" in text
     assert "went away" in text
     assert "+ Xbox Wireless Controller (/dev/input/event9)" in text
+
+
+def test_a_held_menu_key_goes_home_too():
+    # Field report #30: a GuliKit's Home button is KEY_MENU, with no BTN_MODE.
+    from hearth.homebutton import KEY_MENU, HomeButton
+
+    b = HomeButton(hold_seconds=4.0)
+    assert not b.key(KEY_MENU, 1, now=0.0)
+    assert not b.tick(3.0)
+    assert b.tick(4.1)

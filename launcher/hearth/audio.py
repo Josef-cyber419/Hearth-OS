@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import subprocess
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Sequence
 
@@ -20,8 +21,23 @@ Runner = Callable[[Sequence[str]], str]
 MAX_PERCENT = 150
 
 
+PACTL_TIMEOUT = 2.0
+STALLED_SECONDS = 30.0  # after a timeout, don't ask again for this long
+_stalled_until = 0.0
+
+
 def run_pactl(args: Sequence[str]) -> str:
-    result = subprocess.run(["pactl", *args], capture_output=True, text=True, timeout=5)
+    """pactl's answer. If PipeWire stops answering (it can after a trip to
+    Desktop Mode, field report #31), fail fast with RuntimeError rather than
+    holding up the Quick Menu for seconds on every call."""
+    global _stalled_until
+    if time.monotonic() < _stalled_until:
+        raise RuntimeError("audio isn't answering")
+    try:
+        result = subprocess.run(["pactl", *args], capture_output=True, text=True, timeout=PACTL_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        _stalled_until = time.monotonic() + STALLED_SECONDS
+        raise RuntimeError("audio isn't answering") from None
     if result.returncode != 0:
         raise RuntimeError(f"pactl {' '.join(args)}: {result.stderr.strip()}")
     return result.stdout

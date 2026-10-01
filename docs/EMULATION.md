@@ -28,8 +28,13 @@ The plan: use the desktop for maintenance, and the TV screen for playing.
    `ROMs/gc/`, `ROMs/switch/`.
 4. Click **Return to Gaming Mode** on the desktop. The console appears in the
    Emulation menu.
-5. **Artwork**: in ES-DE press Start → *Scraper*, create a free ScreenScraper
-   account, and let it download box art and videos for everything.
+5. **Artwork**: Hearth finds a picture for each game by itself, from
+   libretro's free thumbnail library (the one RetroArch uses), a little at a
+   time in the background; `hearthctl art` fetches them all now. ROMs named
+   like No-Intro sets ("Super Mario 64 (USA)") match best. For box art and
+   videos in ES-DE too, press Start → *Scraper* there, create a free
+   ScreenScraper account, and let it download everything: Hearth uses what
+   ES-DE finds first. Off in Settings → Home screen → *Find game art online*.
 
 **Games on a second drive?** Settings → **Storage** sets the drive up (see
 [Adding a drive](STORAGE.md)), then **ROMs on it** moves your ROMs folder

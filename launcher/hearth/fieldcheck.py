@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -78,7 +79,9 @@ def failed_units() -> list[Result]:
         code, text = _run(cmd)
         # Unit lines look like "hearth-esde-update.service loaded failed failed ...".
         units = [w[0] for w in (line.split() for line in text.splitlines())
-                 if w and "." in w[0] and w[0].rsplit(".", 1)[1] in ("service", "timer", "mount", "socket", "scope")]
+                 if w and "." in w[0] and w[0].rsplit(".", 1)[1] in ("service", "timer", "mount", "socket", "scope")
+                 # Ended logins (SSH) whose leftovers systemd had to kill: not a problem.
+                 and not w[0].startswith("session-")]
         if code == 127 or (code != 0 and not units):
             first = (text.splitlines() or ["?"])[0][:100]
             out.append(Result(f"Failed {scope} services", "info", f"couldn't ask systemd: {first}"))
@@ -116,7 +119,9 @@ def journal_errors() -> list[Result]:
     if code == 127 or "No journal files" in text:
         return [Result("Errors since boot", "info", "journalctl not available")]
     lines = [line for line in text.splitlines()
-             if line.strip() and not line.startswith(("-- ", "No journal files"))]
+             if line.strip() and not line.startswith(("-- ", "No journal files"))
+             # A core dump's module list and stack, one line each: keep its headline only.
+             and not re.search(r"systemd-coredump\[\d+\]:\s+(Module |#\d+ |Stack trace|ELF object)", line)]
     if not lines:
         return [Result("Errors since boot (your session)", "ok", "none")]
     return [Result("Errors since boot (your session)", "warn", f"{len(lines)} (latest 40 at most)", lines[-20:])]
@@ -132,7 +137,19 @@ def app_history(limit: int = 3000) -> list[Result]:
                       [events.describe(e) for e in crashes[-10:]]))
     started: dict[str, dict] = {}
     no_window, slow = [], []
-    for e in evs:
+    # Only since this version started (the last session_start with another
+    # version), so a check after an update is about the update.
+    from . import updates
+
+    now_version = updates.hearth_version()
+    since, older = 0, False
+    for i, e in enumerate(evs):
+        if e.get("event") == "session_start":
+            if e.get("version") != now_version:
+                older = True
+            elif older:  # the first start of this version after an older one
+                since, older = i, False
+    for e in evs[since:]:
         kind = e.get("event")
         if kind == "app_start":
             started[e.get("id", "?")] = e
@@ -170,15 +187,17 @@ def resources() -> list[Result]:
                   f"{h.cpu:.1f}% of a core, {footprint.gib(h.memory)} ({h.processes} processes)")]
     top = [f"{u.name}: {footprint.gib(u.memory)}, {u.cpu:.1f}%" for u in f.programs[:8]]
     out.append(Result("Biggest programs", "info", f"processor {f.cpu / f.cores:.1f}% of {f.cores} cores", top))
-    for label, path in (("Disk: system", "/"), ("Disk: /var (apps, games, updates)", "/var"),
+    # / is the read-only image (always "0 of 0"); the drive it's on is /sysroot.
+    for label, path in (("Disk: system drive", "/sysroot"), ("Disk: /var (apps, games, updates)", "/var"),
                         ("Disk: home", str(Path.home()))):
         try:
             u = shutil.disk_usage(path)
         except OSError:
             continue
         free = u.free / 2**30
-        # / is the read-only image and always looks full; only /var and home matter.
-        status = "info" if path == "/" else "fail" if free < 5 else "warn" if free < 20 else "ok"
+        if not u.total:
+            continue
+        status = "fail" if free < 5 else "warn" if free < 20 else "ok"
         out.append(Result(label, status, f"{free:.0f} GB free of {u.total / 2**30:.0f} GB"))
     return out
 
@@ -221,7 +240,7 @@ def network() -> list[Result]:
 
     out = []
     try:
-        link = netstate.link()
+        link = netstate.link(wait=True)
         out.append(Result("Connection", "ok" if link.kind != "none" else "fail",
                           {"wired": "wired", "wifi": f"Wi-Fi ({link.bars}/4 bars)", "none": "offline"}[link.kind]))
     except OSError as e:
@@ -243,7 +262,8 @@ def devices() -> list[Result]:
 
         pads = battery.controllers()
         out.append(Result("Controllers with a battery", "info",
-                          ", ".join(f"{b.name} {b.percent}%" for b in pads) or "none connected"))
+                          ", ".join(f"{b.name} {b.percent}%" for b in pads if b.percent is not None)
+                          or "none connected"))
     except Exception as e:
         out.append(Result("Controllers", "info", f"couldn't read: {e}"))
     try:

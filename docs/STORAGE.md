@@ -12,8 +12,10 @@ one in.
 
 - **Erase it and set it up for games**: deletes everything on the drive and
   formats it for Linux (ext4). Hearth asks you to press A a second time, and
-  that prompt names the drive it will erase. Use this for a drive from
-  Windows: NTFS and exFAT don't work well for Steam games on Linux.
+  that prompt names the drive it will erase; then it asks for your account's
+  password (the one Desktop Mode and `sudo` use), so nobody can wipe a drive
+  from the sofa without it. Use this for a drive from Windows: NTFS and exFAT
+  don't work well for Steam games on Linux.
 - **Use it for games (keeps its files)**: offered when the drive already has
   a Linux filesystem (ext4, btrfs or xfs). Nothing on it changes.
 

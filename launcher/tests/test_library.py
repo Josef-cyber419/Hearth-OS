@@ -177,6 +177,19 @@ def test_screen_saver_and_waking(shipped_config):
         assert ui.run(surface, Home(config), "Hearth", max_frames=5, saver_after=0.01) is None
         screen = ui.HomeScreen(surface, Home(config), "Hearth")
         screen.draw_saver()
+        # Field report #49: slow drift at 6 fps, 24 only for the cross-fade.
+        import time as _time
+
+        screen._slides = [("A", None, "a.png"), ("B", None, "b.png")]
+        screen._saver_t0 = _time.monotonic() - 5
+        assert screen.saver_fps() == 6
+        screen._saver_t0 = _time.monotonic() - ui.SLIDE_SECONDS - 1
+        assert screen.saver_fps() == 24
+        screen._slides = []
+        assert screen.saver_fps() == 2
+        screen._slide_cache = {0: surface}
+        screen.stop_saver()
+        assert screen._slide_cache == {} and not screen.saver
     finally:
         pygame.quit()
 
@@ -265,3 +278,18 @@ def test_retroarch_menu_moves_off_guide_even_if_tuned_before(home, monkeypatch):
     cfg.write_text(text.replace('"2"', '"4"'))  # changed later in RetroArch
     assert emutune.auto("1080p", done) == done
     assert 'input_menu_toggle_gamepad_combo = "4"' in cfg.read_text()  # kept
+
+
+def test_palette_pictures_are_made_truecolor(tmp_path):
+    # Field report #51: an 8-bit PNG from libretro crashed the saver and the Library.
+    pygame.display.init()
+    try:
+        img = pygame.Surface((16, 9), depth=8)
+        img.fill((200, 40, 40))
+        path = tmp_path / "snes.png"
+        pygame.image.save(img, str(path))
+        art = ui.load_art(str(path))
+        assert art.get_bitsize() == 32
+        assert ui.cover(art, (32, 18)).get_size() == (32, 18)
+    finally:
+        pygame.quit()

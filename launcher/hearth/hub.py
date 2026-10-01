@@ -134,11 +134,14 @@ def run_foreground(info: dict, gs: Gamescope | None, hold_seconds: float, config
                     break
             elif not session.entry_alive(info):
                 break
-            if info.get("resumable") and session.read().get("suspend_request"):
+            current = session.read()
+            if info.get("resumable") and current.get("suspend_request"):
                 suspended = suspend(info)
                 if suspended:
                     break
                 session.update(lambda s: s.__setitem__("suspend_request", False))
+            if current.get("switch_request"):  # Quick Menu → Switch person: close this, then ask
+                go_home()
             time.sleep(0.1)
     finally:
         watcher.stop()
@@ -233,6 +236,7 @@ def stop_app(proc: subprocess.Popen, unit: str | None) -> None:
         units = session.app_units(unit, proc.pid)
         for u in units:
             session.thaw(u)
+        session.ask_to_exit(proc.pid)  # first, so an AppImage isn't torn from its mount (#41)
         for u in units:
             session.stop(u)
         try:
@@ -268,6 +272,7 @@ def show_background(app: cfg.App, gs: Gamescope | None) -> None:
 
 
 def open_display(windowed: bool) -> pygame.Surface:
+    os.environ.setdefault("SDL_VIDEO_X11_WMCLASS", "Hearth")  # not "__main__.py" (#52)
     pygame.display.init()
     pygame.font.init()
     pygame.joystick.init()
@@ -406,6 +411,14 @@ def home_config(args, state: dict | None = None) -> cfg.Config:
             state["message"] = f"Config error: {e}"
     if not args.show_all:
         config = config.visible()
+    from . import profiles
+
+    if not profiles.active():  # "Switch person" only once there are people
+        from dataclasses import replace as _replace
+
+        config = _replace(config, rows=tuple(r for r in (
+            cfg.Row(r.title, tuple(a for a in r.apps if a.command[:1] != ("hearth:people",))) for r in config.rows)
+            if r.apps))
     try:
         config = library.with_game_rows(config)
     except Exception:  # never lose the home screen over the game library
@@ -418,9 +431,70 @@ def home_config(args, state: dict | None = None) -> cfg.Config:
     return config
 
 
-def eviction_question(app: cfg.App, config: cfg.Config) -> str | None:
+PERSON = "hearth:person"  # a tile on "Who's playing?": hearth:person <id>
+WAKE_SECONDS = 60  # asleep at least this long: ask who's playing again
+
+
+def ask_again(state: dict) -> str | None:
+    """Why "Who's playing?" should come back: the PC slept since the last
+    pick, or the Quick Menu asked. None if it needn't."""
+    if session.read().get("switch_request"):
+        return "switch"
+    if session.slept() - state.get("slept_at_pick", session.slept()) >= WAKE_SECONDS:
+        return "wake"
+    return None
+
+
+def picker_config() -> cfg.Config:
+    """ "Who's playing?": one tile per person."""
+    from . import profiles
+
+    tiles = tuple(cfg.App(id=f"person:{p.id}", name=p.name, command=(PERSON, p.id), color=p.color)
+                  for p in profiles.people())
+    return cfg.Config(title="Who's playing?", rows=(cfg.Row("People", tiles),))
+
+
+def switch_person(pid: str) -> None:
+    """Hand the TV to someone else: close what was theirs (paused games,
+    Steam, Discord), then bring in their Steam sign-in and Discord."""
+    from . import profiles, storage
+
+    if pid == profiles.current_id():
+        return
+    try:
+        profiles.note_steam_account()  # remember the last person's Steam account
+    except Exception:
+        log.exception("noting the Steam account")
+    for entry in list(session.read()["suspended"]):
+        close_paused(entry["id"])
+    per_person = set(profiles.PER_PERSON_TILES)
+    try:
+        per_person |= {a.id for row in cfg.load(hide=False).rows for a in row.apps
+                       if a.flatpak in profiles.PER_PERSON_APPS}
+    except (OSError, cfg.ConfigError):
+        pass
+    for app_id, info in list(session.read()["background"].items()):
+        if app_id in per_person:
+            session.stop_entry(info)
+            session.update(lambda s, a=app_id: s["background"].pop(a, None))
+    if storage.steam_running():
+        subprocess.run(["steam", "-shutdown"], capture_output=True, timeout=30, check=False)
+        deadline = time.monotonic() + 20
+        while storage.steam_running() and time.monotonic() < deadline:
+            time.sleep(0.5)
+    problems = profiles.switch(pid)
+    events.record("person_switched", person=pid, problems=problems)
+
+
+POWER_TILES = ("restart", "poweroff")
+
+
+def eviction_question(app: cfg.App, config: cfg.Config, updating=updates.in_progress) -> str | None:
     """Starting another game with Quick Resume full closes the oldest paused
-    one: say so first."""
+    one: say so first. Restarting or turning off while an update downloads
+    would cancel it (field report #33): say that too."""
+    if app.id in POWER_TILES:
+        return "AN UPDATE IS STILL DOWNLOADING: IT STOPS" if updating() else None
     paused = session.read()["suspended"]
     if not resumable(app, config) or any(e["id"] == app.id for e in paused):
         return None
@@ -479,13 +553,37 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                   clock=config.clock, swap_confirm=config.confirm == "east", offset=offset,
                   saver_after=config.screensaver_minutes * 60, saver_style=config.screensaver,
                   ask=lambda a: eviction_question(a, config))
+    from . import profiles
+
+    if profiles.active() and state.get("person_chosen") and ask_again(state):
+        events.record("person_ask_again", why=ask_again(state))
+        session.update(lambda s: s.__setitem__("switch_request", False))
+        state["person_chosen"] = False
+    if profiles.active() and not state.get("person_chosen"):
+        # "Who's playing?" at start, and from the Switch person tile (B goes
+        # back to whoever was playing, once someone has been picked).
+        picker = Home(picker_config())
+        picker.select_id(f"person:{profiles.current_id()}")
+        chosen = ui.run(view, picker, "Who's playing?", back_exits=bool(state.get("person_picked")),
+                        intro=state["intro"], hints=(("A", "Choose"),), **{**common, "ask": None})
+        state["intro"] = None
+        if chosen is not None and chosen.command[:1] == (PERSON,):
+            switch_person(chosen.command[1])
+            state["person_picked"] = True
+        elif chosen is None and not state.get("person_picked"):
+            return "quit" if dev_mode else None
+        state["person_chosen"] = True
+        state["slept_at_pick"] = session.slept()
+        return None
     from . import whatsnew
 
     app = ui.run(view, home, config.title, message=state["message"], allow_quit=dev_mode, stats=stats,
                  badge="Update ready: restart to finish" if ready else None,
                  running=set(current["background"]), intro=state["intro"],
                  rebuild=lambda: home_config(args), sleep_after=config.sleep_minutes * 60,
-                 whats_new=whatsnew.pending(updates.hearth_version()), **common)
+                 whats_new=whatsnew.pending(updates.hearth_version()),
+                 interrupt=(lambda: ask_again(state)) if profiles.active() else None,
+                 running_now=lambda: set(session.read()["background"]), **common)
     state["message"] = None
     state["intro"] = None
     frames = stats.summary()
@@ -509,6 +607,9 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                      hints=(("A", "Play"), ("Y", "Pin"), ("B", "Back")), **common)
         if app is None:
             return None
+    if app.command[0] in ("hearth:people", ui.INTERRUPTED):
+        state["person_chosen"] = False  # back to "Who's playing?"
+        return None
     if app.command[0] == "hearth:resume":
         app_id = app.command[1]
         return foreground(state, gs, lambda: resume(app_id, gs, config.guide_hold, config))
@@ -544,6 +645,13 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     state["surface"] = None
     state["message"] = launch(app, dry_run=args.dry_run, gs=gs, hold_seconds=config.guide_hold, config=config)
     state["intro"] = "return"
+    if app.id == "steam":
+        from . import profiles
+
+        try:
+            profiles.note_steam_account()  # whoever signed in is this person's Steam
+        except Exception:
+            log.exception("noting the Steam account")
     return None
 
 

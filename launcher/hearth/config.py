@@ -48,6 +48,24 @@ def flatpak_dirs() -> list[Path]:
     ]
 
 
+ICON_SIZES = ("512x512", "256x256", "128x128", "scalable")
+
+
+def flatpak_icon(app: "App") -> str | None:
+    """The icon a Flatpak app installs for itself, for tiles that just run it
+    (not tiles that only need it, like the Lutris stores)."""
+    if not app.flatpak or app.command[:3] != ("flatpak", "run", app.flatpak):
+        return None
+    for apps_dir in flatpak_dirs():
+        icons = apps_dir.parent / "exports/share/icons/hicolor"
+        for size in ICON_SIZES:
+            for ext in ("png", "svg"):
+                path = icons / size / "apps" / f"{app.flatpak}.{ext}"
+                if path.is_file():
+                    return str(path)
+    return None
+
+
 class ConfigError(ValueError):
     pass
 
@@ -59,6 +77,8 @@ class App:
     command: tuple[str, ...]
     color: str = "#3a3f58"
     icon: str | None = None
+    # A drawing for tiles without an icon (emblems.py), e.g. "gears".
+    emblem: str | None = None
     requires: tuple[str, ...] = ()
     requires_files: tuple[str, ...] = ()
     flatpak: str | None = None
@@ -147,6 +167,7 @@ class Config:
     safe_area: int = 0  # percent kept clear at the screen's edges, for TVs that crop (overscan)
     home_recent: bool = True  # the "Continue" row of recently played games
     home_watch: bool = True  # the "Watch next" row: shows in progress on Jellyfin, Plex, Kodi
+    game_art: bool = True  # find pictures online for emulated games without one (artfind.py)
     home_pins: bool = True  # the Favorites row
     sounds: bool = False  # soft UI sounds on the home screen (sounds.py)
     screensaver_minutes: int = 10  # 0 = never; protects OLED TVs from a still home screen
@@ -204,6 +225,7 @@ def _parse_app(raw: dict, where: str) -> App:
         command=_parse_command(raw, where),
         color=raw.get("color", App.color),
         icon=raw.get("icon"),
+        emblem=raw.get("emblem"),
         requires=tuple(requires),
         requires_files=tuple(requires_files),
         flatpak=raw.get("flatpak"),
@@ -264,6 +286,7 @@ def parse(data: dict) -> Config:
         safe_area=int(_number(theme, "theme", "safe_area", 0, 0, 10)),
         home_recent=bool(home_table.get("recent", True)),
         home_watch=bool(home_table.get("watch", True)),
+        game_art=bool(home_table.get("art", True)),
         home_pins=bool(home_table.get("pins", True)),
         sounds=bool(home_table.get("sounds", False)),
         screensaver_minutes=int(_number(home_table, "home", "screensaver_minutes", 10, 0, 240)),
@@ -344,9 +367,23 @@ def load(path: Path | None = None, hide: bool = True) -> Config:
         if user.exists():
             data = merge(data, _read(user))
     try:
-        return parse(settings.apply(data, settings.load(), hide=hide))
+        config = parse(settings.apply(data, settings.load(), hide=hide))
     except ConfigError as e:
         # A bad settings.json mustn't take the home screen (and the Settings
         # tile, which is how you'd fix it) down with it.
         logging.getLogger("hearth").warning("ignoring %s: %s", settings.path(), e)
-        return parse(data)
+        config = parse(data)
+    return personal(config)
+
+
+def personal(config: Config) -> Config:
+    """The config with the current person's own choices on top: their colour
+    scheme (profiles.Person.livery), if they have one."""
+    from dataclasses import replace
+
+    from . import profiles, style
+
+    person = profiles.current()
+    if person is not None and person.livery in style.LIVERIES:
+        return replace(config, livery=person.livery)
+    return config

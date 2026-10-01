@@ -6,6 +6,56 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
+## 0.23.0 (2026-10-01)
+
+- **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a
+  lap of a circuit, Power Off an engine start button, and so on. Apps from
+  Flathub show their own icon.
+- **Fixes from the first field tests on the PC**:
+  - Steam: when a game started from its tile ends, Steam closes and you're
+    back home, instead of stuck in Steam's menus. Holding a controller's
+    Home button works on pads that send it as a Menu key (GuliKit).
+  - PC ports (AppImages in ~/Games, like Dusklight) now show up instead of
+    staying on "Starting…", and close cleanly instead of crashing.
+  - The Quick Menu no longer freezes or crashes when audio stops answering
+    (after a trip to Desktop Mode).
+  - Restart and Power Off warn while an update is still downloading.
+  - Wi-Fi shows its real signal on newer kernels.
+  - Home (Quick Menu or `hearthctl home`) closes Settings, and `hearthctl
+    status` says when Settings is open.
+  - Lighter when idle: a Wii Remote lying still and the screen saver use a
+    fraction of the processor they did.
+  - More logs kept (up to 1 GB), so a crash can be looked into afterwards;
+    updates write their progress to their own log.
+  - `hearthctl check`, `press` and `screenshot` are more accurate, and
+    `hearthctl windows` shows why an app hasn't reached the screen.
+- **Fixes from the second field run** (on this version's first build):
+  - Electron apps (VacuumTube, Twitch, Discord) close cleanly from the Quick
+    Menu instead of crashing, and games that take a while to start get a
+    "taking a while to start" note with how to get back home.
+  - Settings' sidebar fits every category on the screen; a game picture
+    saved as a palette PNG no longer makes the home screen crash.
+  - Game art tries again a few minutes after a boot without network,
+    instead of waiting six hours; Wi-Fi checks no longer stall the screen.
+  - `hearthctl screenshot` can't hand back the previous picture, and
+    `hearthctl press` reaches a game on gamescope's second display.
+- **People**: add everyone in the household (Settings → People). Hearth
+  then starts on "Who's playing?", with an optional 4-digit PIN each. Each
+  person has their own favorites, Continue row, play times, Steam account
+  and Discord; ROMs, apps and installed games are shared. An admin sets each
+  person's game time, bedtime and locked tiles, and only an admin opens
+  Settings and Desktop Mode. With one person, nothing changes. "Who's
+  playing?" comes back after the PC has slept, and from Quick Menu → System
+  → Switch person; each person can have their own colour scheme.
+- **Erasing a drive asks for your password** (Settings → Storage), the
+  one Desktop Mode and `sudo` use. Using a drive as it is doesn't.
+- **Game art finds itself**: emulated games without a picture get one from
+  libretro's free thumbnail library, in the background. `hearthctl art`
+  fetches them now; off in Settings → Home screen.
+- **GitHub's `gh` command and `tmux` are built in**, so Claude Code on the
+  PC can file field reports, and keeps working if the SSH connection drops
+  (`tmux new -A -s claude`).
+
 ## 0.22.4 (2026-09-30)
 
 - **`hearthctl check`**: every safe check in one report: setup, failed

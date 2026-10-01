@@ -7,7 +7,9 @@
 # `flatpak` (a Flathub app ID, run with `flatpak run`). Optional keys:
 #   args     extra arguments appended to the command
 #   color    tile color, e.g. "#1b2838"
-#   icon     path to a PNG shown on the tile
+#   icon     path to a PNG (or SVG) shown on the tile; Flatpak apps use their own
+#   emblem   a drawing instead: gears camera moon circuit power garage shelf
+#            lens pad plug helmets (the System tiles have theirs already)
 #   requires commands that must exist on PATH, or the tile is hidden
 #   requires_files  files that must exist, or the tile is hidden (globs and ~ allowed)
 #   confirm  ask "are you sure?" first (power actions)
@@ -211,6 +213,14 @@ title = "Watch"
 
 [[rows]]
 title = "System"
+
+  [[rows.apps]]
+  # "Who's playing?" again. Shows once there's more than one person
+  # (Settings → People).
+  id = "people"
+  name = "Switch person"
+  command = "hearth:people"   # built in
+  color = "#4a3f5c"
 
   [[rows.apps]]
   # Your screenshots (Quick Menu → System → Take a screenshot). Appears once
