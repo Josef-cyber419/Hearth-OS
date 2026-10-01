@@ -6,7 +6,7 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
-## 0.23.0 (2026-09-30)
+## 0.23.0 (2026-10-01)
 
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a
   lap of a circuit, Power Off an engine start button, and so on. Apps from
