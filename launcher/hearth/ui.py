@@ -401,8 +401,10 @@ class HomeScreen:
         self.back_exits = False  # the Library: B leaves it
         self.exit = False
         self.saver = False  # the screen saver is showing
-        self.saver_style = "ambient"  # or "clock" (Settings → Home screen)
+        self.saver_style = "ambient"  # "photos", "both" or "clock" (Settings → Home screen)
+        self.saver_photos = ""  # the photos folder ("" = ~/Pictures)
         self._slides: list[tuple[str, str | None, str]] = []  # (title, platform, art) for ambient
+        self._photo_paths: set[str] = set()  # slides that are photos (loaded their own way)
         self._slide_cache: dict[int, pygame.Surface] = {}
         self._saver_t0 = 0.0
         self.hints = (("A", "Open"), ("X", "Favorite"), ("Y", "Options"), ("VIEW", "Search"), ("GUIDE", "Quick Menu"))
@@ -1685,31 +1687,52 @@ class HomeScreen:
 
     def start_saver(self) -> None:
         """The screen saver begins: gather the artwork to show (ambient)."""
+        import random
+
         self.saver = True
         self._slides = []
         self._slide_cache = {}
+        self._photo_paths = set()
         self._saver_t0 = time.monotonic()
-        if self.saver_style != "ambient":
+        rng = random.Random(int(self._saver_t0))
+        style_ = self.saver_style
+        if style_ not in ("ambient", "photos", "both"):
             return
-        try:
-            seen = set()
-            for game in self.games():
-                # Only checked here; each picture loads when its turn comes.
-                if game.art and game.art not in seen and os.path.isfile(game.art):
-                    seen.add(game.art)
-                    self._slides.append((game.title, game.platform, game.art))
-        except Exception:  # no art is fine: the clock saver then
-            log.exception("screen saver art")
-        try:
-            from . import captures
+        art: list[tuple[str, str | None, str]] = []
+        shots: list[tuple[str, str | None, str]] = []
+        if style_ in ("ambient", "both"):
+            try:
+                seen = set()
+                for game in self.games():
+                    # Only checked here; each picture loads when its turn comes.
+                    if game.art and game.art not in seen and os.path.isfile(game.art):
+                        seen.add(game.art)
+                        art.append((game.title, game.platform, game.art))
+            except Exception:  # no art is fine: the clock saver then
+                log.exception("screen saver art")
+            try:
+                from . import captures
 
-            for cap in captures.all_captures()[:SAVER_CAPTURES]:  # your latest screenshots too
-                self._slides.append((cap.title, "Screenshot", str(cap.path)))
-        except Exception:
-            log.exception("screen saver captures")
-        import random
+                for cap in captures.all_captures()[:SAVER_CAPTURES]:  # your latest screenshots too
+                    art.append((cap.title, "Screenshot", str(cap.path)))
+            except Exception:
+                log.exception("screen saver captures")
+        if style_ in ("photos", "both"):
+            try:
+                from . import photos
 
-        random.Random(int(self._saver_t0)).shuffle(self._slides)
+                folder = self.saver_photos or str(photos.home_pictures())
+                for path in photos.find(folder):
+                    shots.append((photos.caption(path, folder), None, str(path)))
+            except Exception:
+                log.exception("screen saver photos")
+        rng.shuffle(art)
+        rng.shuffle(shots)
+        if art and shots:  # both: half and half, however many photos there are
+            art, shots = art[:SLIDE_MAX // 2], shots[:SLIDE_MAX - min(len(art), SLIDE_MAX // 2)]
+        self._photo_paths = {path for _, _, path in shots}
+        self._slides = art + shots
+        rng.shuffle(self._slides)
         del self._slides[SLIDE_MAX:]
 
     def _slide(self, i: int) -> pygame.Surface | None:
@@ -1720,8 +1743,14 @@ class HomeScreen:
             key = i % len(self._slides)
             if key in self._slide_cache:
                 return self._slide_cache[key]
-            art = load_art(self._slides[key][2])
-            _art.pop(self._slides[key][2], None)  # keep only the scaled slide (#49: a 4K capture is 33 MB)
+            path = self._slides[key][2]
+            if path in self._photo_paths:
+                from . import photos
+
+                art = photos.load(path)  # the right way up; not cached (a phone photo is 50 MB)
+            else:
+                art = load_art(path)
+                _art.pop(path, None)  # keep only the scaled slide (#49: a 4K capture is 33 MB)
             if art is None:
                 del self._slides[key]
                 self._slide_cache.clear()  # keyed by position, which just moved
@@ -1904,6 +1933,7 @@ def run(
     back_exits: bool = False,
     saver_after: float = 0,
     saver_style: str = "ambient",
+    saver_photos: str = "",
     sleep_after: float = 0,
     swap_confirm: bool = False,
     offset: tuple[int, int] = (0, 0),
@@ -1922,7 +1952,8 @@ def run(
     `stats` (events.FrameStats) collects frame times. `rebuild` gives fresh
     contents after a change in the Options popup; `back_exits` makes B leave
     (the Library). After `saver_after` seconds without input the screen saver
-    shows; after `sleep_after` the PC sleeps (0 = never). `offset` is where
+    shows (`saver_style`: games' art, photos from `saver_photos`, both, or
+    the clock); after `sleep_after` the PC sleeps (0 = never). `offset` is where
     this surface sits on the screen (a safe-area inset), for the pointer.
     `ask` may return a question to confirm before a tile opens. `whats_new`
     (version, notes) is shown once, after an update. `interrupt` is polled a
@@ -1936,6 +1967,7 @@ def run(
     screen.rebuild = rebuild
     screen.back_exits = back_exits
     screen.saver_style = saver_style
+    screen.saver_photos = saver_photos
     screen.ask = ask
     screen.whats_new = whats_new
     if hints:

@@ -605,9 +605,14 @@ class SettingsApp:
     def _home(self) -> list[Item]:
         from . import ctl
 
+        from . import photos
+
         hidden = set(settings.load().get("hide", []))
         c = self.config
         saver = (0, 5, 10, 15, 30, 60)
+        styles = ["ambient", "photos", "both", "clock"]
+        folders = photos.candidates()
+        paths = [path for _, path in folders]
         sleep = (0, 30, 60, 120, 240)
         items = [
             Item("home-recent", "Continue: recently played games", "toggle", value=c.home_recent,
@@ -636,10 +641,17 @@ class SettingsApp:
                                for m in saver),
                  detail="Protects OLED TVs from a still picture",
                  on_change=lambda i: self.put("home", "screensaver_minutes", saver[i])),
-            Item("saver-style", "Screen saver shows", "choice", value=0 if c.screensaver == "ambient" else 1,
-                 options=("Your games' art", "Just the time"),
-                 detail="Art drifts slowly and is dimmed, so it's kind to OLED TVs",
-                 on_change=lambda i: self.put("home", "screensaver", ("ambient", "clock")[i])),
+            Item("saver-style", "Screen saver shows", "choice",
+                 value=styles.index(c.screensaver) if c.screensaver in styles else 0,
+                 options=("Your games' art", "Your photos", "Games and photos", "Just the time"),
+                 detail="Pictures drift slowly and are dimmed, so it's kind to OLED TVs",
+                 on_change=lambda i: self.put("home", "screensaver", styles[i])),
+            Item("photos-folder", "Photos folder", "choice",
+                 value=paths.index(c.photos_folder) if c.photos_folder in paths else 0,
+                 options=tuple(name for name, _ in folders),
+                 detail=(c.photos_folder if c.photos_folder in paths else paths[0])
+                 + " · a USB stick's Photos or DCIM folder shows here when it's plugged in",
+                 on_change=lambda i: self.put("home", "photos_folder", paths[i] if i else "")),
             Item("idle-sleep", "Sleep when left on the home screen", "choice",
                  value=sleep.index(c.sleep_minutes) if c.sleep_minutes in sleep else 0,
                  options=tuple("Never" if m == 0 else f"After {m} minutes" if m < 60 else

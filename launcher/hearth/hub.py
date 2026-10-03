@@ -553,6 +553,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     common = dict(input_blocked=lambda: session.read()["overlay_open"], livery=config.scheme, motion=config.motion,
                   clock=config.clock, swap_confirm=config.confirm == "east", offset=offset,
                   saver_after=config.screensaver_minutes * 60, saver_style=config.screensaver,
+                  saver_photos=config.photos_folder,
                   ask=lambda a: eviction_question(a, config))
     from . import profiles
 

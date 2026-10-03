@@ -171,7 +171,10 @@ class Config:
     home_pins: bool = True  # the Favorites row
     sounds: bool = False  # soft UI sounds on the home screen (sounds.py)
     screensaver_minutes: int = 10  # 0 = never; protects OLED TVs from a still home screen
-    screensaver: str = "ambient"  # "ambient" (your games' art, slowly panning) or "clock" (dark, just the time)
+    # "ambient" (your games' art, slowly panning), "photos" (your own, from
+    # photos_folder), "both", or "clock" (dark, just the time)
+    screensaver: str = "ambient"
+    photos_folder: str = ""  # where the photos are; "" is ~/Pictures (photos.py)
     sleep_minutes: int = 0  # 0 = never; sleep after this long idle on the home screen
     emulation_resolution: str = "auto"  # target for emulator upscaling: auto, 1080p, 1440p, 4k
     # Quick Resume: how many games stay paused in the background (0 = off),
@@ -300,7 +303,8 @@ def parse(data: dict) -> Config:
         home_pins=bool(home_table.get("pins", True)),
         sounds=bool(home_table.get("sounds", False)),
         screensaver_minutes=int(_number(home_table, "home", "screensaver_minutes", 10, 0, 240)),
-        screensaver=_choice(home_table, "home", "screensaver", ("ambient", "clock")),
+        screensaver=_choice(home_table, "home", "screensaver", ("ambient", "photos", "both", "clock")),
+        photos_folder=str(home_table.get("photos_folder") or ""),
         sleep_minutes=int(_number(home_table, "home", "sleep_minutes", 0, 0, 1440)),
         emulation_resolution=_choice(data.get("emulation", {}), "emulation", "resolution",
                                      ("auto", "1080p", "1440p", "4k")),
