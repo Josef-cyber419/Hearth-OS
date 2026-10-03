@@ -54,6 +54,7 @@ EDGE_ZONE = 0.12  # fraction of the screen's height at each edge
 # screen stops redrawing 60 times a second: an unchanging
 # picture shouldn't cost CPU. It redraws when what it shows changes (the clock,
 # batteries, network, a message). Input is still read 30 times a second.
+BUSY_SECONDS = 10.0  # how often, past the saver or sleep time, to ask whether the PC is in use after all
 SETTLE_SECONDS = 3.0
 SETTLED_FPS = 2  # how often a settled screen checks whether anything changed
 SETTLED_REDRAW = 10.0  # and redraws anyway, just in case
@@ -1747,7 +1748,7 @@ class HomeScreen:
             if path in self._photo_paths:
                 from . import photos
 
-                art = photos.load(path)  # the right way up; not cached (a phone photo is 50 MB)
+                art = photos.load(path, (th.width, th.height))  # the right way up, decoded small; not cached
             else:
                 art = load_art(path)
                 _art.pop(path, None)  # keep only the scaled slide (#49: a 4K capture is 33 MB)
@@ -1942,6 +1943,7 @@ def run(
     whats_new: tuple[str, list[str]] | None = None,
     interrupt: Callable[[], str | None] | None = None,
     running_now: Callable[[], set[str]] | None = None,
+    busy: Callable[[], str | None] | None = None,
 ) -> App | None:
     """Show the home screen until the user picks an app.
 
@@ -1959,7 +1961,9 @@ def run(
     (version, notes) is shown once, after an update. `interrupt` is polled a
     few times a second; a reason from it ends the run with an INTERRUPTED app
     (the hub asks who's playing again after sleep, or when the Quick Menu
-    asks).
+    asks). While `busy` says something is going on (another window in front,
+    music playing), the PC doesn't sleep; while a window is in front the saver
+    waits too.
     """
     screen = HomeScreen(surface, home, title, livery=livery, motion=motion, intro=intro)
     screen.message = message
@@ -1980,7 +1984,8 @@ def run(
     clock = pygame.time.Clock()
     frames = 0
     blocked = False
-    idle_since = time.monotonic()
+    idle_since = active_at = time.monotonic()
+    busy_asked = -1e9
     last_draw = last_look = 0.0
     drawn_looks = None
     while max_frames is None or frames < max_frames:
@@ -2060,11 +2065,23 @@ def run(
             return chosen
         if blocked:
             idle_since = time.monotonic()
-        idle = time.monotonic() - idle_since
-        if sleep_after and idle > sleep_after:
+        now_s = time.monotonic()
+        idle = now_s - idle_since
+        # Past a threshold, ask (every few seconds: it runs busctl) whether
+        # the PC is in use after all: another window in front means nothing
+        # counts as idle; music playing means no sleep, but the saver may run.
+        if busy and now_s - busy_asked > BUSY_SECONDS and (idle > sleep_after > 0 or idle > saver_after > 0):
+            busy_asked = now_s
+            doing = busy()
+            if doing == "shown":
+                idle_since = now_s
+                idle = 0.0
+            elif doing:
+                active_at = now_s
+        if sleep_after and idle > sleep_after and now_s - active_at > sleep_after:
             events.record("idle_sleep", minutes=round(idle / 60))
             subprocess.Popen(["systemctl", "suspend"])
-            idle_since = time.monotonic()
+            idle_since = active_at = now_s
         if saver_after and idle > saver_after and not screen.saver:
             screen.start_saver()
             events.record("screen_saver", style=screen.saver_style, slides=len(screen._slides))

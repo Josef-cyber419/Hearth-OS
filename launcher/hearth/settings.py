@@ -55,14 +55,20 @@ def load() -> dict:
     return view
 
 
-def save_raw(data: dict) -> None:
-    """Write the whole file as it is (everyone's keys), see save()."""
-    p = path()
+def write_json(p: Path, data: dict, private: bool = False) -> None:
+    """Write a JSON file whole or not at all (a temp file, then a rename)."""
     p.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=".settings-")
+    fd, tmp = tempfile.mkstemp(dir=p.parent, prefix=f".{p.stem}-")
     with os.fdopen(fd, "w") as f:
         json.dump(data, f, indent=2, sort_keys=True)
+    if private:
+        os.chmod(tmp, 0o600)
     os.replace(tmp, p)
+
+
+def save_raw(data: dict) -> None:
+    """Write the whole file as it is (everyone's keys), see save()."""
+    write_json(path(), data)
 
 
 def save(data: dict) -> None:

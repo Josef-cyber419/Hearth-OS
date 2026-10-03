@@ -117,6 +117,44 @@ def test_quick_menu_offers_to_stop_casting():
     assert not any(i.key == "stop-cast" for i in next(t for t in tabs if t.key == "system").items)
 
 
+def test_quick_menu_stop_casting_for_real(receivers_ready, monkeypatch):
+    """The real Actions.stop_cast, with a stand-in overlay (the Quick Menu's
+    process can't run headless)."""
+    import threading
+
+    from hearth import overlay
+
+    config = cfg.parse({})
+    cast.ensure(config)
+    session.update(lambda s: cast.take_screen(s, cast.AIRPLAY))
+    focused = []
+    stub = type("O", (), {"cast_watch": cast.Watch(), "config": config,
+                          "apply_focus": lambda self, state: focused.append(state["focus"])})()
+    stub.cast_watch.seen(77, cast.AIRPLAY)
+    threads = []
+    monkeypatch.setattr(threading, "Thread", lambda target, daemon, name: type("T", (), {
+        "start": lambda self: threads.append(target) or target()})())
+    assert overlay.Actions(stub).stop_cast() == "close"
+    state = session.read()
+    assert state["focus"] == "home" and state["cast"] is None and stub.cast_watch.windows == {}
+    assert cast.AIRPLAY in state["background"] and focused[0] == "home"  # restarted, ready for the next phone
+
+
+def test_a_receiver_that_died_mid_cast_is_forgotten():
+    s = {"foreground": None, "focus": cast.AIRPLAY, "background": {cast.AIRPLAY: {"name": "AirPlay"}},
+         "cast": {"id": cast.AIRPLAY, "name": "AirPlay", "back": "home"}}
+    s["background"].pop(cast.AIRPLAY)
+    cast.give_back(s, cast.AIRPLAY)
+    assert s["cast"] is None and s["focus"] == "home"
+
+
+def test_status_ladder():
+    config = cfg.parse({"cast": {"spotify": False}})
+    by = {r.id: (how, words) for r, how, words in cast.status(config, {cast.AIRPLAY: {}})}
+    assert by[cast.SPOTIFY][0] == "off"
+    assert by[cast.AIRPLAY][0] in ("running", "missing")  # depends on uxplay being installed here
+
+
 def test_stop_and_restart_drop_the_phone(receivers_ready):
     started, stopped = receivers_ready
     config = cfg.parse({})
@@ -135,6 +173,7 @@ def test_settings_page(shipped_config, receivers_ready):
     app.refresh()
     items = {i.key: i for i in app.menu.current.items}
     assert items["cast-airplay"].value is True and "Starts with the home screen" in items["cast-airplay"].detail
+    assert items["cast-spotify"].value is True  # the setting, even while the program is missing
     cast.ensure(cfg.load(shipped_config))
     app._load_cast()  # what load_for("casting") does in the background
     app.refresh()

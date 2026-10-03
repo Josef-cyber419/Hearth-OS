@@ -2,6 +2,7 @@
 
 import http.client
 import json
+import pathlib
 import types
 
 import pygame
@@ -85,12 +86,17 @@ def test_pairing_with_the_code_then_buttons_and_typing(served):
     assert client.call("POST", "/nothing")[0] == 404
 
 
-def test_five_wrong_codes_make_a_new_one_and_phones_are_remembered(served, tmp_path):
+def test_five_wrong_codes_pause_pairing_and_phones_are_remembered(served, tmp_path, monkeypatch):
     r, keys, flags, client = served
+    monkeypatch.setattr(remote.time, "sleep", lambda s: None)  # the wrong-code pause
     first = r.code
-    for _ in range(remote.CODE_TRIES):
-        client.call("POST", "/pair", {"code": "111111"})
-    assert r.code != first and r.failures == 0
+    for _ in range(remote.CODE_TRIES - 1):
+        assert client.call("POST", "/pair", {"code": "111111"})[0] == 403
+    status, body = client.call("POST", "/pair", {"code": "111111"})
+    assert status == 429 and "wait" in json.loads(body)["error"]
+    assert r.code == first and r.locked_for() > 0  # the code stays readable on the TV
+    assert client.call("POST", "/pair", {"code": r.code})[0] == 429  # even the right one waits
+    r.locked_until = 0.0
     client.call("POST", "/pair", {"code": r.code})
     assert len(r.tokens) == 1 and session.read()["remote"]["phones"] == 1
     again = remote.Remote(lambda: keys, port=0, phones=tmp_path / "phones.json")
@@ -99,6 +105,20 @@ def test_five_wrong_codes_make_a_new_one_and_phones_are_remembered(served, tmp_p
     assert client.call("POST", "/press", {"b": "up"})[0] == 401
     flags["enabled"] = False
     assert client.call("GET", "/me")[0] == 503
+
+
+def test_pairing_lockout_is_timed():
+    r = remote.Remote(lambda: None, port=0, phones=pathlib.Path("/nonexistent/p.json"))
+    for _ in range(remote.CODE_TRIES):
+        assert r.pair("000000", now=100.0) is None
+    assert r.locked_for(now=100.0) == remote.LOCKOUT_SECONDS and r.pair(r.code, now=130.0) is None
+    assert r.locked_for(now=100.0 + remote.LOCKOUT_SECONDS) == 0
+    assert r.pair(r.code, now=100.0 + remote.LOCKOUT_SECONDS) is not None
+
+
+def test_the_page_presses_enter_and_backspace_properly():
+    assert 'data-t="&#10;"' in remote.PAGE and 'data-b="backspace"' in remote.PAGE
+    assert "backspace" in drive.BUTTONS
 
 
 def test_what_the_tv_shows(served):

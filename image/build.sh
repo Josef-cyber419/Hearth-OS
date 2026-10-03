@@ -14,7 +14,9 @@ set -euxo pipefail
 #   tmux               keeps an SSH session (and Claude Code in it) running if the connection drops
 #   python3-qrcode     the QR code on Settings → Phone remote (the page works without it)
 #   uxplay             AirPlay receiver: a phone's video, photos, music or screen on the TV (Settings → Casting)
-dnf5 -y install python3-pygame python3-evdev python3-xlib v4l-utils linuxconsoletools mpv gh tmux python3-qrcode uxplay
+#   python3-pillow     decodes a phone's photos small for the screen saver (works without it, slower)
+dnf5 -y install python3-pygame python3-evdev python3-xlib v4l-utils linuxconsoletools mpv gh tmux python3-qrcode uxplay \
+    python3-pillow
 # UxPlay decodes the phone's H.264 with GStreamer; without a decoder, casting is sound only.
 if ! gst-inspect-1.0 avdec_h264 >/dev/null 2>&1 && ! gst-inspect-1.0 vah264dec >/dev/null 2>&1 \
         && ! gst-inspect-1.0 vaapih264dec >/dev/null 2>&1; then

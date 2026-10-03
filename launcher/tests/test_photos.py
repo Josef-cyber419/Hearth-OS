@@ -141,6 +141,7 @@ def test_settings_offer_the_styles_and_folders(shipped_config, monkeypatch, tmp_
                                                        ("CAMERA / DCIM", "/run/media/joseph/CAMERA/DCIM")])
     app = settings_app.SettingsApp(shipped_config)
     app.menu.tab = [c[0] for c in settings_app.CATEGORIES].index("home")
+    app._load_photo_folders()  # what load_for("home") does in the background
     app.refresh()
     items = {i.key: i for i in app.menu.current.items}
     assert items["saver-style"].options[1] == "Your photos" and items["photos-folder"].options[1] == "CAMERA / DCIM"

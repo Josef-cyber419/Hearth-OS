@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import secrets
 import socket
 import threading
@@ -32,16 +31,19 @@ from . import session
 log = logging.getLogger("hearth")
 
 PORT = 8420
-CODE_TRIES = 5
+CODE_TRIES = 5  # wrong codes in a row before pairing pauses
+LOCKOUT_SECONDS = 60  # how long it pauses
 TOKEN_NAME = "hearth"
 COOKIE_DAYS = 365
+ADDRESS_SECONDS = 30  # how long a looked-up address is reused
 
 active: "Remote | None" = None  # the server in this process (Settings and hearthctl ask it)
 
 
 def phones_path() -> Path:
-    base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
-    return Path(base) / "hearth" / "remote-phones.json"
+    from . import settings
+
+    return settings.path().parent / "remote-phones.json"
 
 
 def local_address() -> str | None:
@@ -87,6 +89,8 @@ class Remote:
         self.tokens: set[str] = self._load_phones()
         self.code = ""
         self.failures = 0
+        self.locked_until = 0.0  # pairing paused after too many wrong codes
+        self._address: tuple[float, str | None] | None = None
         self.new_code()
 
     # -- pairing ---------------------------------------------------------------
@@ -94,11 +98,22 @@ class Remote:
     def new_code(self) -> str:
         self.code = f"{secrets.randbelow(900000) + 100000}"
         self.failures = 0
+        self.locked_until = 0.0
         self.publish()
         return self.code
 
-    def pair(self, code: str) -> str | None:
-        """A token for a phone that typed the code; None (and a strike) if not."""
+    def locked_for(self, now: float | None = None) -> int:
+        """Seconds until pairing is allowed again (0: now)."""
+        return max(0, int(self.locked_until - (time.monotonic() if now is None else now) + 0.999))
+
+    def pair(self, code: str, now: float | None = None) -> str | None:
+        """A token for a phone that typed the code; None (and a strike) if
+        not. Five wrong in a row pause pairing for a minute: the code stays,
+        so the person on the sofa can still read and type it, and a device
+        guessing gets nowhere (a million codes at five a minute)."""
+        now = time.monotonic() if now is None else now
+        if now < self.locked_until:
+            return None
         if code.strip() == self.code:
             token = secrets.token_hex(16)
             self.tokens.add(token)
@@ -108,8 +123,9 @@ class Remote:
             return token
         self.failures += 1
         if self.failures >= CODE_TRIES:
-            log.info("phone remote: %d wrong codes, making a new one", self.failures)
-            self.new_code()
+            log.info("phone remote: %d wrong codes, pairing paused for %ds", self.failures, LOCKOUT_SECONDS)
+            self.locked_until = now + LOCKOUT_SECONDS
+            self.failures = 0
         return None
 
     def forget_phones(self) -> None:
@@ -132,19 +148,24 @@ class Remote:
             return set()
 
     def _save_phones(self) -> None:
+        from .settings import write_json
+
         try:
-            self.phones_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp = self.phones_path.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"tokens": sorted(self.tokens)}))
-            tmp.chmod(0o600)
-            os.replace(tmp, self.phones_path)
+            write_json(self.phones_path, {"tokens": sorted(self.tokens)}, private=True)
         except OSError as e:
             log.warning("phone remote: couldn't save paired phones: %s", e)
 
     # -- what the TV shows ---------------------------------------------------------
 
+    def address(self) -> str | None:
+        """This PC's address, looked up now and then (not on every page build)."""
+        now = time.monotonic()
+        if self._address is None or now - self._address[0] > ADDRESS_SECONDS:
+            self._address = (now, local_address())
+        return self._address[1]
+
     def url(self) -> str:
-        return f"http://{local_address() or hostname() + '.local'}:{self.port}"
+        return f"http://{self.address() or hostname() + '.local'}:{self.port}"
 
     def info(self) -> dict:
         return {"url": self.url(), "name_url": f"http://{hostname()}.local:{self.port}", "code": self.code,
@@ -253,7 +274,7 @@ button:active { background:var(--accent); color:var(--ink); }
   <div class="row"><button class="guide" data-b="guide">Guide · Quick Menu</button><button class="guide" data-b="home">Home</button></div>
   <form class="kb" id="kb"><input id="text" placeholder="Type here, then Send" autocapitalize="off" autocorrect="off">
     <button type="submit">Send</button></form>
-  <div class="row" style="margin-top:8px"><button data-t="\\n">Enter</button><button data-b="b">Delete</button></div>
+  <div class="row" style="margin-top:8px"><button data-t="&#10;">Enter</button><button data-b="backspace">Delete</button></div>
   <p class="hint">Sends to what's on the TV: Hearth's search, a Wi-Fi password, or an app's sign-in box.</p>
   <p class="err" id="err2"></p>
 </section>
@@ -270,8 +291,12 @@ async function post(path, data) {
 }
 function show(paired) { $('#pair').style.display = paired ? 'none' : 'block'; $('#remote').style.display = paired ? 'block' : 'none'; }
 async function refresh() {
-  try { const j = await (await fetch('/me')).json(); $('#front b').textContent = j.front; show(j.paired); }
-  catch (e) { $('#front b').textContent = 'not reachable'; }
+  try {
+    const r = await fetch('/me'); const j = await r.json();
+    if (r.status === 503) { $('#front b').textContent = 'the phone remote is turned off in Settings'; show(false);
+      $('#pair').style.display = 'none'; return; }
+    $('#front b').textContent = j.front; show(j.paired);
+  } catch (e) { $('#front b').textContent = 'not reachable'; }
 }
 $('#pairbtn').onclick = async () => {
   $('#err').textContent = '';
@@ -344,8 +369,13 @@ class Handler(BaseHTTPRequestHandler):
             return
         form = self._form()
         if path == "/pair":
-            token = remote.pair(form.get("code", ""))
-            if token is None:
+            wait = remote.locked_for()
+            token = None if wait else remote.pair(form.get("code", ""))
+            if wait or remote.locked_for():
+                self._json(HTTPStatus.TOO_MANY_REQUESTS,
+                           {"error": f"Too many tries: wait {remote.locked_for() or 1} seconds"})
+            elif token is None:
+                time.sleep(0.5)  # a wrong code costs a moment
                 self._json(HTTPStatus.FORBIDDEN, {"error": "That's not the code on the TV"})
             else:
                 self._json(HTTPStatus.OK, {"paired": True}, cookie=token)

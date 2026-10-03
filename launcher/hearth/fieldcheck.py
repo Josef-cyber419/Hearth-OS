@@ -257,6 +257,7 @@ def network() -> list[Result]:
 
 def phone_remote() -> list[Result]:
     """The phone remote's page answers, and the firewall lets phones reach it."""
+    import urllib.error
     import urllib.request
 
     from . import session
@@ -269,6 +270,10 @@ def phone_remote() -> list[Result]:
         with urllib.request.urlopen(f"http://127.0.0.1:{info['port']}/me", timeout=3) as resp:
             body = resp.read(200).decode("utf-8", "replace")
         out.append(Result("Phone remote", "ok" if '"front"' in body else "warn", f"{info['url']} answers"))
+    except urllib.error.HTTPError as e:
+        if e.code == 503:
+            return [Result("Phone remote", "info", "turned off in Settings → Phone remote")]
+        out.append(Result("Phone remote", "fail", f"{info['url']} answers with an error: {e}"))
     except OSError as e:
         out.append(Result("Phone remote", "fail", f"{info['url']} doesn't answer: {e}"))
     rc, zone = _run(["firewall-cmd", "--get-default-zone"], timeout=5)
@@ -294,17 +299,11 @@ def casting() -> list[Result]:
         state = session.read()
     except Exception as e:  # noqa: BLE001
         return [Result("Casting", "info", f"couldn't read the settings: {e}")]
-    for receiver, app, on in cast.receivers(config):
-        missing = app.missing()
-        running = app.id in state["background"]
-        if not on:
-            out.append(Result(f"{receiver.name} receiver", "info", "off in Settings → Casting"))
-        elif missing:
-            out.append(Result(f"{receiver.name} receiver", "warn", f"{receiver.needs} ({missing})"))
-        elif running:
-            out.append(Result(f"{receiver.name} receiver", "ok", f'running as "{cast.device_name(config)}"'))
-        else:
-            out.append(Result(f"{receiver.name} receiver", "warn", "on, but not running: hearthctl logs"))
+    marks = {"off": "info", "missing": "warn", "running": "ok", "stopped": "warn"}
+    for receiver, how, words in cast.status(config, state["background"]):
+        if how == "stopped":
+            words = "on, but not running: hearthctl logs"
+        out.append(Result(f"{receiver.name} receiver", marks[how], words))
     if config.cast_airplay and shutil.which("uxplay"):
         rc, _ = _run(["systemctl", "is-active", "--quiet", "avahi-daemon"], timeout=5)
         out.append(Result("AirPlay discovery (avahi)", "ok" if rc == 0 else "warn",

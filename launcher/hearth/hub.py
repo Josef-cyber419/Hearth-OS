@@ -379,10 +379,11 @@ def main(argv: list[str] | None = None) -> int:
         k: v for k, v in s["background"].items() if session.background_alive(v)},
         suspended=[e for e in s.get("suspended", []) if session.entry_alive(e)]))
 
-    from . import remote, settings
-
-    remote.start(lambda: bool((settings.load().get("remote") or {}).get("enabled", True)))
     dev_mode = args.windowed or args.dry_run
+    if not dev_mode:  # a page open to the network has no place in a window on a laptop
+        from . import remote
+
+        remote.start(lambda: cfg.load().remote_enabled)
     state = {"last_id": None, "message": None, "surface": None, "intro": "boot"}
     failures: list[float] = []
     while True:
@@ -593,7 +594,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                  rebuild=lambda: home_config(args), sleep_after=config.sleep_minutes * 60,
                  whats_new=whatsnew.pending(updates.hearth_version()),
                  interrupt=(lambda: ask_again(state)) if profiles.active() else None,
-                 running_now=lambda: set(session.read()["background"]), **common)
+                 running_now=lambda: set(session.read()["background"]), busy=in_use, **common)
     state["message"] = None
     state["intro"] = None
     frames = stats.summary()
@@ -663,6 +664,21 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
         except Exception:
             log.exception("noting the Steam account")
     return None
+
+
+def in_use() -> str | None:
+    """Is the PC being used while the home screen is up, so it mustn't
+    sleep: "shown" when something else is on the screen (Discord, a phone
+    casting), "playing" when music is (Spotify Connect, or any player on
+    the bus), None when it's just sitting there."""
+    try:
+        if session.read()["focus"] != "home":
+            return "shown"
+        from . import media
+
+        return "playing" if any(p.playing for p in media.players()) else None
+    except Exception:  # noqa: BLE001 - never a reason to stop the home screen
+        return None
 
 
 def foreground(state: dict, gs: Gamescope | None, run) -> None:

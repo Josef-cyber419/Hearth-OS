@@ -68,10 +68,11 @@ def test_high_contrast_home_screen_draws_plain_black_behind_the_rows(surface, sh
 def test_quick_menu_rows_grow_with_the_text(surface):
     view = QuickMenuView((1280, 720))
     assert view.row_scale == 1.0
+    standard = view.f_label.get_height()
     style.set_text_scale("large")
     view.set_theme("gulf")
-    assert view.row_scale > 1.0 and view.f_label.get_height() > QuickMenuView((1280, 720)).f_label.get_height() or \
-        view.f_label.get_height() > 0
+    assert view.row_scale > 1.0
+    assert view.f_label.get_height() > standard
 
 
 def test_settings_page_changes_text_size_and_contrast(shipped_config, surface):

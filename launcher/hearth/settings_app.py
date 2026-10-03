@@ -377,6 +377,10 @@ class SettingsApp:
         if category == "casting":  # which receivers are running right now
             self.jobs.start("cast-load", self._load_cast)
             return
+        if category == "home" and "home" not in self.data["loaded"]:  # drives with pictures: may be slow
+            self.data["loaded"].add("home")
+            self.jobs.start("photos-load", self._load_photo_folders)
+            return
         if category in self.data["loaded"] and not force:
             return
         self.data["loaded"].add(category)
@@ -421,6 +425,12 @@ class SettingsApp:
 
     def _load_cast(self) -> None:
         self.data["cast"] = dict(session.read().get("background") or {})
+        return None
+
+    def _load_photo_folders(self) -> None:
+        from . import photos
+
+        self.data["photo_folders"] = photos.candidates()
         return None
 
     def _load_tv(self) -> None:
@@ -621,7 +631,7 @@ class SettingsApp:
         c = self.config
         saver = (0, 5, 10, 15, 30, 60)
         styles = ["ambient", "photos", "both", "clock"]
-        folders = photos.candidates()
+        folders = self.data.get("photo_folders") or [("Pictures", str(photos.home_pictures()))]
         paths = [path for _, path in folders]
         sleep = (0, 30, 60, 120, 240)
         items = [
@@ -747,18 +757,11 @@ class SettingsApp:
         running_now = self.data.get("cast") or {}  # loaded when the page opens (load_for)
         name = cast.device_name(c)
         items = []
-        for receiver, app, on in cast.receivers(c):
-            missing = app.missing()
-            running = app.id in running_now
-            if missing:
-                how = receiver.needs
-            elif on:
-                how = f'Ready: look for "{name}"' if running else "Starts with the home screen"
-            else:
-                how = "Off"
+        on = cast.wanted(c)
+        for receiver, _state, how in cast.status(c, running_now):
             extra = {"airplay": "iPhone, iPad or Mac: a video, photos, music, or the whole screen",
                      "spotify": "The Spotify app's speaker list, on any phone (needs Premium)"}[receiver.setting]
-            items.append(Item(f"cast-{receiver.setting}", receiver.name, "toggle", value=on and not missing,
+            items.append(Item(f"cast-{receiver.setting}", receiver.name, "toggle", value=on[receiver.id],
                               detail=f"{extra} · {how}",
                               on_change=lambda v, k=receiver.setting: self.put("cast", k, bool(v))))
         items.append(Item("cast-name", "Name on the network", "action",
@@ -1906,7 +1909,13 @@ class SettingsView(QuickMenuView):
         shade = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         shade.fill((*lv.ink, 250))
         surf.blit(shade, (0, 0))
-        info = remote.active.info() if remote.active else {"url": "", "name_url": "", "code": "------"}
+        # The address and QR code are worked out once per code, not per frame.
+        code_now = remote.active.code if remote.active else ""
+        cached = getattr(self, "_pairing", None)
+        if cached is None or cached[0] != code_now:
+            info = remote.active.info() if remote.active else {"url": "", "name_url": "", "code": "------"}
+            self._pairing = (code_now, info, remote.qr_matrix(info["url"]) if info["url"] else None)
+        _, info, matrix = self._pairing
         x, y = self.margin, int(self.height * 0.2)
         title = style.tracked(self.type(30, "cond", "semibold"), "PHONE REMOTE", lv.dim, 0.3)
         surf.blit(title, (x, y))
@@ -1929,7 +1938,6 @@ class SettingsView(QuickMenuView):
         note = self.type(21, "text", "medium").render(
             "Same Wi-Fi as the PC. Once paired, the phone stays paired.", True, lv.dim)
         surf.blit(note, (x, y))
-        matrix = remote.qr_matrix(info["url"]) if info["url"] else None
         if matrix:
             side = int(self.height * 0.42)
             cell = max(2, side // len(matrix))

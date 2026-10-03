@@ -17,8 +17,9 @@ from . import session
 BUTTONS = {
     "up": "Up", "down": "Down", "left": "Left", "right": "Right",
     "a": "Return", "b": "Escape", "x": "f", "y": "o", "view": "slash", "menu": "Tab",
-    "lb": "q", "rb": "e",
+    "lb": "q", "rb": "e", "backspace": "BackSpace",
 }
+NO_DISPLAY = "no Game Mode display found: is Hearth running on the TV?"
 REQUESTS = {"guide": "menu", "home": "home"}
 
 
@@ -153,10 +154,7 @@ def press(names: list[str], delay: float = 0.6, sleep=time.sleep) -> list[str]:
         return [f"unknown button {n!r}: use {', '.join([*BUTTONS, *REQUESTS])}" for n in unknown]
     keys = Keys.connect()
     if keys is None:
-        from .gamescope import adopt_session_display
-
-        return ["no Game Mode display found: is Hearth running on the TV?" if not adopt_session_display()
-                else "couldn't open Game Mode's display"]
+        return [NO_DISPLAY]
     keys.sleep = sleep
     for name in names:
         problem = keys.press(name)

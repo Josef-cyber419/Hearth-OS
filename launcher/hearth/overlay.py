@@ -151,20 +151,26 @@ class Actions:
         return "close"
 
     def stop_cast(self):
-        from . import cast
-
+        """Drop the phone that's casting: the receiver restarts (off the UI
+        thread: stopping it waits for it to exit), and the screen goes back."""
         state = session.read()
         info = state.get("cast") or {}
         app_id = info.get("id") or (state["focus"] if cast.is_receiver(state["focus"]) else None)
         if not app_id:
             return "close"
-        self.overlay.cast_watch.windows = {w: a for w, a in self.overlay.cast_watch.windows.items() if a != app_id}
-        try:
-            cast.restart(app_id, self.overlay.config)
-        except Exception:
-            log.exception("stop casting")
+        self.o.cast_watch.windows = {w: a for w, a in self.o.cast_watch.windows.items() if a != app_id}
+        self.o.apply_focus(session.update(lambda s: cast.give_back(s, app_id)))
         events.record("cast_stop", id=app_id)
-        self.overlay.apply_focus(session.read())
+        config = self.o.config
+
+        def work() -> None:
+            try:
+                cast.restart(app_id, config)
+            except Exception:
+                log.exception("stop casting")
+            self.o.apply_focus(session.read())
+
+        threading.Thread(target=work, daemon=True, name="stop-cast").start()
         return "close"
 
     def report(self):
@@ -255,9 +261,7 @@ class Overlay:
         self._seen: set[int] = set()
         self._first_window: set[tuple] = set()  # launches whose first window we've timed
         self._slow_warned: set[tuple] = set()  # launches told "still starting" (#40)
-        from .cast import Watch
-
-        self.cast_watch = Watch()  # receivers' windows: a new one takes the screen (cast.py)
+        self.cast_watch = cast.Watch()  # receivers' windows: a new one takes the screen (cast.py)
         self._opened_at = 0.0
         self.frames = events.FrameStats()
         self._tries: dict[int, int] = {}
@@ -498,6 +502,7 @@ class Overlay:
             def drop(s):
                 for k in dead:
                     s["background"].pop(k, None)
+                    cast.give_back(s, k)  # a receiver that died mid-cast
                 if s["focus"] in dead:
                     s["focus"] = "foreground" if s["foreground"] else "home"
 
@@ -544,6 +549,11 @@ class Overlay:
                     continue
                 if self.gs.is_tagged(win):
                     self._seen.add(win.id)
+                    # A receiver's window from before this overlay started
+                    # (it was restarted mid-cast): still give the screen back when it goes.
+                    tagged = self._receiver_for(self.gs.get_cardinal(win, "STEAM_GAME"))
+                    if tagged:
+                        self.cast_watch.windows.setdefault(win.id, tagged)
                     continue
                 appid = self.owner_appid(win)
             except XError:
@@ -565,9 +575,15 @@ class Overlay:
             self.apply_focus(session.update(lambda s, a=app_id: cast.give_back(s, a)))
         self._time_steam_window()
 
+    def _receiver_for(self, appid: int | None) -> str | None:
+        """The running receiver whose windows carry this app id, if any."""
+        if not appid:
+            return None
+        return next((i for i in self.state["background"] if cast.is_receiver(i) and appid_for(i) == appid), None)
+
     def _cast_window(self, win_id: int, appid: int) -> None:
         """A receiver (AirPlay) just opened a window: a phone is casting, show it."""
-        app_id = next((i for i in self.state["background"] if cast.is_receiver(i) and appid_for(i) == appid), None)
+        app_id = self._receiver_for(appid)
         if self.cast_watch.seen(win_id, app_id) == "take":
             events.record("cast_start", id=app_id)
             self.apply_focus(session.update(lambda s: cast.take_screen(s, app_id)))

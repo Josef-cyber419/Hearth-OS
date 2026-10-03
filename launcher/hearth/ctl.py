@@ -608,7 +608,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("art", help="find pictures online for emulated games without one, now")
     p.add_argument("-n", "--limit", type=int, default=500)
     sub.add_parser("check")
-    p = sub.add_parser("press", help="send buttons to the TV: up down left right a b x y view menu lb rb guide home")
+    p = sub.add_parser("press", help="send buttons to the TV: up down left right a b x y view menu lb rb backspace "
+                                     "guide home")
     p.add_argument("buttons", nargs="+")
     p.add_argument("--delay", type=float, default=0.35, help="seconds between presses")
     p = sub.add_parser("type", help="type text into what's on the TV (ASCII; a newline presses Enter)")
@@ -657,7 +658,7 @@ def main(argv: list[str] | None = None) -> int:
         from . import drive
 
         keys = drive.Keys.connect()
-        problem = keys.type(args.text) if keys else "no Game Mode display found: is Hearth running on the TV?"
+        problem = keys.type(args.text) if keys else drive.NO_DISPLAY
         if problem:
             print(problem)
             return 1

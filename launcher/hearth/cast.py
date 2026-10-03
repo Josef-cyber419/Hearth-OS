@@ -80,6 +80,24 @@ def receivers(config: Config) -> list[tuple[Receiver, App, bool]]:
     return [(r, r.app(name), on[r.id]) for r in RECEIVERS]
 
 
+def status(config: Config, background: dict) -> list[tuple[Receiver, str, str]]:
+    """(receiver, state, words) for each: "off", "missing", "running" or
+    "stopped", with what to say about it; shared by Settings and hearthctl."""
+    out = []
+    name = device_name(config)
+    for receiver, app, on in receivers(config):
+        missing = app.missing()
+        if not on:
+            out.append((receiver, "off", "Off"))
+        elif missing:
+            out.append((receiver, "missing", f"{receiver.needs} ({missing})"))
+        elif app.id in background:
+            out.append((receiver, "running", f'Ready: look for "{name}"'))
+        else:
+            out.append((receiver, "stopped", "Starts with the home screen"))
+    return out
+
+
 def ensure(config: Config) -> None:
     """Start the receivers that are on and can run; stop the ones turned off.
     The hub does this with each visit to the home screen."""

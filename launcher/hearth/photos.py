@@ -17,7 +17,7 @@ import pygame
 EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 # Folder names a camera, phone or person uses for pictures, on a drive's top level.
 PICTURE_FOLDERS = ("Pictures", "Photos", "DCIM", "Pictures/Photos", "Fotos", "Bilder")
-MAX_FILES = 3000  # enough for any show; a huge library is sampled, not walked to the end
+MAX_FILES = 3000  # enough for any show; a bigger library is walked in a different order each time
 MAX_DEPTH = 4
 
 
@@ -60,11 +60,17 @@ def candidates(home: Path | None = None, mounts: list[Path] | None = None) -> li
     return out
 
 
-def find(folder: str | Path, limit: int = MAX_FILES, depth: int = MAX_DEPTH, home: Path | None = None) -> list[Path]:
+def find(folder: str | Path, limit: int = MAX_FILES, depth: int = MAX_DEPTH, home: Path | None = None,
+         seed: int | None = None) -> list[Path]:
     """Every picture under a folder (a few levels deep), skipping hidden
-    folders and Hearth's own screenshots, which the saver shows anyway."""
+    folders and Hearth's own screenshots, which the saver shows anyway.
+    Folders are walked in a random order, so a library bigger than `limit`
+    shows different years each time rather than always the first ones."""
+    import random
+
     from .captures import folder as captures_folder
 
+    rng = random.Random(seed)
     root = Path(folder).expanduser()
     skip = {captures_folder(home).resolve()}
     out: list[Path] = []
@@ -72,9 +78,10 @@ def find(folder: str | Path, limit: int = MAX_FILES, depth: int = MAX_DEPTH, hom
     while todo and len(out) < limit:
         here, level = todo.pop(0)
         try:
-            entries = sorted(os.scandir(here), key=lambda e: e.name)
+            entries = list(os.scandir(here))
         except OSError:
             continue
+        rng.shuffle(entries)
         for entry in entries:
             if entry.name.startswith("."):
                 continue
@@ -106,10 +113,9 @@ def exif_orientation(path: str | Path) -> int:
                     f.seek(size - 2, 1)
                     continue
                 app1 = f.read(size - 2)
-                break
+                if app1.startswith(b"Exif\x00\x00"):
+                    break  # an APP1 can also hold XMP; the EXIF one may come after it
     except (OSError, struct.error):
-        return 1
-    if not app1.startswith(b"Exif\x00\x00"):
         return 1
     tiff = app1[6:]
     if len(tiff) < 8:
@@ -140,10 +146,18 @@ def orient(img: pygame.Surface, orientation: int) -> pygame.Surface:
     return pygame.transform.rotate(img, turn) if turn else img
 
 
-def load(path: str | Path) -> pygame.Surface | None:
-    """A photo, the right way up; None if it won't load."""
+def load(path: str | Path, size: tuple[int, int] | None = None) -> pygame.Surface | None:
+    """A photo, the right way up; None if it won't load. With Pillow about
+    (python3-pillow is in the image), a JPEG is decoded no bigger than
+    needed (`size`, the screen's): a 48-megapixel phone photo would
+    otherwise take a long moment and a few hundred MB on the way to the
+    screen."""
     from .ui import as_truecolor
 
+    if size is not None:
+        small = _load_small(path, size)
+        if small is not None:
+            return small
     try:
         img = pygame.image.load(str(path))
     except (pygame.error, OSError, ValueError):
@@ -152,6 +166,20 @@ def load(path: str | Path) -> pygame.Surface | None:
     if str(path).lower().endswith((".jpg", ".jpeg")):
         img = orient(img, exif_orientation(path))
     return img
+
+
+def _load_small(path: str | Path, size: tuple[int, int]) -> pygame.Surface | None:
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        return None
+    try:
+        with Image.open(path) as im:
+            im.draft("RGB", (size[0] * 2, size[1] * 2))  # JPEG: decode at a fraction of the size
+            im = ImageOps.exif_transpose(im).convert("RGB")
+            return pygame.image.frombytes(im.tobytes(), im.size, "RGB")
+    except Exception:  # noqa: BLE001 - whatever Pillow dislikes, pygame may still read
+        return None
 
 
 def caption(path: Path, root: Path) -> str:
