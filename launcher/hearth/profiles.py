@@ -41,7 +41,7 @@ OWNER = "owner"  # the first person: keeps the files from before there were peop
 PIN_LENGTH = 4
 COLORS = ("#e8702a", "#3d8fd1", "#4caf6a", "#c9453b", "#8e5cc4", "#d4a72c", "#2aa198", "#d15a9b")
 # Settings keys that are each person's own (settings.py keeps them apart).
-PERSONAL = ("favorites", "pins", "order", "hide_recent", "hide")
+PERSONAL = ("favorites", "pins", "order", "hide_recent", "hide", "accessibility")
 # Tiles only an admin can open (others are asked for an admin's PIN).
 ADMIN_TILES = frozenset({"settings", "desktop"})
 # Apps whose data (their ~/.var/app folder) is each person's own.

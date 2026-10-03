@@ -96,15 +96,7 @@ class QuickMenuView:
         w, h = size
         self.u = h / 1080
         self.type = Type(self.u)
-        t = self.type
-        self.f_caption = t(17, "cond", "semibold")
-        self.f_title = t(48, "cond", "semibold")
-        self.f_clock = t(32, "cond", "semibold")
-        self.f_tab = t(18, "cond", "semibold")
-        self.f_label = t(27, "text", "semibold")
-        self.f_detail = t(19, "text", "medium")
-        self.f_value = t(28, "cond", "semibold")
-        self.f_avatar = t(26, "cond", "bold")
+        self._make_fonts()
         self.panel_w = int(640 * self.u)
         self.margin = int(28 * self.u)
         self.pad = int(58 * self.u)
@@ -126,6 +118,20 @@ class QuickMenuView:
         self.lv = style.livery(livery)
         self.reduced = motion == "reduced"
         self.smooth = Smooth(rate=16.0, instant=self.reduced)
+        self._make_fonts()  # the text size may have changed too (Settings → Accessibility)
+
+    def _make_fonts(self) -> None:
+        t = self.type
+        self.f_caption = t(17, "cond", "semibold")
+        self.f_title = t(48, "cond", "semibold")
+        self.f_clock = t(32, "cond", "semibold")
+        self.f_tab = t(18, "cond", "semibold")
+        self.f_label = t(27, "text", "semibold")
+        self.f_detail = t(19, "text", "medium")
+        self.f_value = t(28, "cond", "semibold")
+        self.f_avatar = t(26, "cond", "bold")
+        # Rows grow with the text (most of the way: the padding needn't).
+        self.row_scale = 1 + (style.TEXT_SCALE - 1) * 0.8
 
     def _make_backdrop(self) -> pygame.Surface:
         """Darken the game towards the right, where the panel sits."""
@@ -293,7 +299,7 @@ class QuickMenuView:
     def _draw_items(self, s: pygame.Surface, menu: QuickMenu, area: pygame.Rect, t: float,
                     highlight: float = 1.0) -> None:
         lv, pad = self.lv, self.pad
-        row_h, gap = self.px(98), self.px(6)
+        row_h, gap = self.px(98 * self.row_scale), self.px(6)
         items = menu.current.items
         sel = menu.selected
         idx = items.index(sel) if sel in items else 0

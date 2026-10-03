@@ -53,6 +53,16 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   you watch or play. Settings → Privacy shows how to turn off your **TV's own
   tracking**, for its make. Hearth itself idles at under 2% of one processor
   core and about 300 MB ([PERFORMANCE.md](docs/PERFORMANCE.md)).
+- **Cast from your phone**: the PC shows up as a screen and a speaker on the
+  home network, for AirPlay (video, photos, music, screen mirroring from an
+  iPhone, iPad or Mac), Spotify Connect, and YouTube with a TV code
+  ([CASTING.md](docs/CASTING.md)).
+- **Your phone as a remote**: a page on your network with a d-pad, the
+  buttons and a keyboard, paired once with a code (and a QR code) on the TV:
+  Wi-Fi passwords, searches and sign-ins typed on the phone (Settings →
+  Phone remote).
+- **Accessibility**: larger text and a high-contrast look, each person's own
+  (Settings → Accessibility); the screen saver can show your own photos.
 - **Captures**: take a screenshot over any game from the Quick Menu; the
   **Captures** tile shows them all (full screen, flip through, delete), and
   they appear in the screen saver. Kept in `~/Pictures/Hearth`.

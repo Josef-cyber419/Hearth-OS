@@ -38,9 +38,12 @@ log = logging.getLogger("hearth")
 
 CATEGORIES = [
     ("appearance", "Appearance", "Colours, motion and the clock."),
+    ("accessibility", "Accessibility", "Larger text and a high-contrast look, for whoever's playing."),
     ("home", "Home screen", "Which tiles show, and what Game Mode starts in."),
     ("audio", "Audio", "Where sound plays and which microphone is used, for every app."),
     ("controllers", "Controllers", "Connected controllers, the Guide button, and the controller as a mouse."),
+    ("remote", "Phone remote", "Your phone as a remote with a keyboard: a page on your home network."),
+    ("casting", "Casting", "Your phone's video, music and screen on the TV: AirPlay, Spotify Connect, YouTube."),
     ("wii", "Wii Remote", "Wii Remotes on a DolphinBar: aiming, sensitivity and calibration."),
     ("emulation", "Emulation", "Emulator settings tuned for this PC and your TV."),
     ("bluetooth", "Bluetooth", "Pair controllers and headsets."),
@@ -331,6 +334,7 @@ class SettingsApp:
         self.keyboard: Keyboard | None = None
         self._keyboard_done: Callable[[str], None] | None = None
         self.calibrating: Calibration | None = None
+        self.pairing = False  # the phone remote's code and QR code, full screen
         self.launch: App | None = None  # an app to open on the way out (Desktop Mode)
         self.data: dict = {"net": None, "wifi": None, "networks": [], "bt_power": None, "bt": [],
                            "os": None, "drives": None, "ip": None, "audio": None, "tv": None, "loaded": set()}
@@ -369,6 +373,13 @@ class SettingsApp:
             return
         if category == "audio":  # so do headsets and TVs
             self.jobs.start("audio-load", self._load_audio)
+            return
+        if category == "casting":  # which receivers are running right now
+            self.jobs.start("cast-load", self._load_cast)
+            return
+        if category == "home" and "home" not in self.data["loaded"]:  # drives with pictures: may be slow
+            self.data["loaded"].add("home")
+            self.jobs.start("photos-load", self._load_photo_folders)
             return
         if category in self.data["loaded"] and not force:
             return
@@ -412,6 +423,16 @@ class SettingsApp:
         self.data["drives"] = storage.drives()
         return None
 
+    def _load_cast(self) -> None:
+        self.data["cast"] = dict(session.read().get("background") or {})
+        return None
+
+    def _load_photo_folders(self) -> None:
+        from . import photos
+
+        self.data["photo_folders"] = photos.candidates()
+        return None
+
     def _load_tv(self) -> None:
         from . import tv
 
@@ -432,8 +453,9 @@ class SettingsApp:
         self._refreshed = time.monotonic()
 
     def build(self) -> list[Tab]:
-        pages = {"appearance": self._appearance, "home": self._home, "audio": self._audio,
-                 "controllers": self._controllers,
+        pages = {"appearance": self._appearance, "accessibility": self._accessibility, "home": self._home,
+                 "audio": self._audio,
+                 "controllers": self._controllers, "remote": self._remote, "casting": self._casting,
                  "wii": self._wii, "emulation": self._emulation, "bluetooth": self._bluetooth,
                  "network": self._network, "storage": self._storage, "people": self._people,
                  "family": self._family,
@@ -451,7 +473,7 @@ class SettingsApp:
 
     def _appearance(self) -> list[Item]:
         c = self.config
-        names = list(style.LIVERIES)
+        names = style.liveries()
         return [
             Item("livery", "Livery", "choice", value=names.index(c.livery) if c.livery in names else 0,
                  options=tuple(style.LIVERIES[n].name for n in names), detail="The colour scheme, after a racing car",
@@ -466,6 +488,29 @@ class SettingsApp:
                  detail="Raise this if your TV cuts off the edges (overscan)",
                  on_change=lambda v: self.put("theme", "safe_area", int(v))),
         ]
+
+    def _accessibility(self) -> list[Item]:
+        from . import profiles
+
+        c = self.config
+        sizes = list(style.TEXT_SIZES)
+        whose = (f"For {profiles.current().name}; everyone else keeps theirs"
+                 if profiles.active() and profiles.current() else "")
+        items = [
+            Item("text-size", "Text size", "choice", value=sizes.index(c.text_size) if c.text_size in sizes else 0,
+                 options=("Standard", "Large", "Larger"),
+                 detail=whose or "Everywhere: the home screen, the Quick Menu and Settings",
+                 on_change=lambda i: self.put("accessibility", "text_size", sizes[i])),
+            Item("contrast", "High contrast", "toggle", value=c.contrast,
+                 detail="Black, white and yellow, a thick ring round what's chosen, no glow behind the rows",
+                 on_change=lambda on: self.put("accessibility", "contrast", bool(on))),
+            Item("motion-access", "Motion", "choice", value=0 if c.motion == "full" else 1,
+                 options=("Full", "Reduced"), detail="Reduced: nothing moves on its own (also in Appearance)",
+                 on_change=lambda i: self.put("theme", "motion", ("full", "reduced")[i])),
+            Item("prompts-access", "Button names on screen", "info",
+                 detail="Set in Controllers: Xbox, PlayStation or Nintendo names, or follow what's in your hand"),
+        ]
+        return items
 
     # -- Watch next: Jellyfin and Plex sign-in -------------------------------------
 
@@ -580,9 +625,14 @@ class SettingsApp:
     def _home(self) -> list[Item]:
         from . import ctl
 
+        from . import photos
+
         hidden = set(settings.load().get("hide", []))
         c = self.config
         saver = (0, 5, 10, 15, 30, 60)
+        styles = ["ambient", "photos", "both", "clock"]
+        folders = self.data.get("photo_folders") or [("Pictures", str(photos.home_pictures()))]
+        paths = [path for _, path in folders]
         sleep = (0, 30, 60, 120, 240)
         items = [
             Item("home-recent", "Continue: recently played games", "toggle", value=c.home_recent,
@@ -611,10 +661,17 @@ class SettingsApp:
                                for m in saver),
                  detail="Protects OLED TVs from a still picture",
                  on_change=lambda i: self.put("home", "screensaver_minutes", saver[i])),
-            Item("saver-style", "Screen saver shows", "choice", value=0 if c.screensaver == "ambient" else 1,
-                 options=("Your games' art", "Just the time"),
-                 detail="Art drifts slowly and is dimmed, so it's kind to OLED TVs",
-                 on_change=lambda i: self.put("home", "screensaver", ("ambient", "clock")[i])),
+            Item("saver-style", "Screen saver shows", "choice",
+                 value=styles.index(c.screensaver) if c.screensaver in styles else 0,
+                 options=("Your games' art", "Your photos", "Games and photos", "Just the time"),
+                 detail="Pictures drift slowly and are dimmed, so it's kind to OLED TVs",
+                 on_change=lambda i: self.put("home", "screensaver", styles[i])),
+            Item("photos-folder", "Photos folder", "choice",
+                 value=paths.index(c.photos_folder) if c.photos_folder in paths else 0,
+                 options=tuple(name for name, _ in folders),
+                 detail=(c.photos_folder if c.photos_folder in paths else paths[0])
+                 + " · a USB stick's Photos or DCIM folder shows here when it's plugged in",
+                 on_change=lambda i: self.put("home", "photos_folder", paths[i] if i else "")),
             Item("idle-sleep", "Sleep when left on the home screen", "choice",
                  value=sleep.index(c.sleep_minutes) if c.sleep_minutes in sleep else 0,
                  options=tuple("Never" if m == 0 else f"After {m} minutes" if m < 60 else
@@ -648,6 +705,82 @@ class SettingsApp:
         self.jobs.messages["boot"] = "Saved: restart to apply"
         self.refresh()
         return None
+
+    def _remote(self) -> list[Item]:
+        from . import remote
+
+        c = self.config
+        items = [Item("remote-on", "Phone remote", "toggle", value=c.remote_enabled,
+                      detail="A page on your home network: a d-pad, the buttons and a keyboard",
+                      on_change=lambda on: self.put("remote", "enabled", bool(on)))]
+        server = remote.active
+        if server is None:
+            items.append(Item("remote-none", "Not running", "info",
+                              detail="The page starts with Hearth in Game Mode"))
+            return items
+        info = server.info()
+        phones = info["phones"]
+
+        def show() -> None:
+            self.pairing = True
+            return None
+
+        def forget() -> None:
+            server.forget_phones()
+            self.jobs.messages["remote-forget"] = "Forgotten: each phone needs the code again"
+            self.refresh()
+            return None
+
+        def new_code() -> None:
+            server.new_code()
+            self.refresh()
+            return None
+
+        items += [
+            Item("remote-show", "Show the code on the TV", "action",
+                 detail=f"{info['url']} · code {info['code']}", on_select=show),
+            Item("remote-how", "How it works", "info",
+                 detail="On a phone on the same Wi-Fi, open the address and type the code once; "
+                        "then it's a remote, and anything you type on it lands on the TV"),
+            Item("remote-new", "New code", "action", detail="Phones already paired keep working",
+                 on_select=new_code),
+            Item("remote-forget", "Forget paired phones", "action", confirm=True,
+                 detail=self.note("remote-forget", f"{phones} paired; they'll need the code again" if phones
+                                  else "None paired yet"), on_select=forget),
+        ]
+        return items
+
+    def _casting(self) -> list[Item]:
+        from . import cast
+
+        c = self.config
+        running_now = self.data.get("cast") or {}  # loaded when the page opens (load_for)
+        name = cast.device_name(c)
+        items = []
+        on = cast.wanted(c)
+        for receiver, _state, how in cast.status(c, running_now):
+            extra = {"airplay": "iPhone, iPad or Mac: a video, photos, music, or the whole screen",
+                     "spotify": "The Spotify app's speaker list, on any phone (needs Premium)"}[receiver.setting]
+            items.append(Item(f"cast-{receiver.setting}", receiver.name, "toggle", value=on[receiver.id],
+                              detail=f"{extra} · {how}",
+                              on_change=lambda v, k=receiver.setting: self.put("cast", k, bool(v))))
+        items.append(Item("cast-name", "Name on the network", "action",
+                          detail=f'"{name}" is what a phone lists; press A to change it',
+                          on_select=lambda: self.open_keyboard(
+                              "Name on the network",
+                              lambda t: self.put("cast", "name", t.strip()[:40] or None), text=name)))
+        youtube = self.config.app("youtube")
+        items.append(Item("cast-youtube", "YouTube from your phone", "info",
+                          detail="In the YouTube tile: Settings → Link with TV code. On the phone's YouTube app: "
+                                 "your picture → Settings → Watch on TV → Enter TV code"))
+        if youtube is not None and youtube.available():
+            items.append(Item("cast-youtube-open", "Open YouTube to link it", "action",
+                              detail="The code is under YouTube's own Settings",
+                              on_select=lambda: self._open(youtube)))
+        items.append(Item("cast-how", "How it works", "info",
+                          detail="Pick the name above on your phone and it's on the TV. Hold Guide to come back "
+                                 "to Hearth; Quick Menu → System → Stop casting drops the phone"))
+        return items
 
     def _controllers(self) -> list[Item]:
         c = self.config
@@ -1297,7 +1430,7 @@ class SettingsApp:
                         "then sign in there",
                  on_change=lambda i: change(steam=steam_names[i - 1] if i else None)),
         ]
-        liveries = list(style.LIVERIES)
+        liveries = style.liveries()
         items.append(Item("person-livery", "Colour scheme", "choice",
                           value=(liveries.index(p.livery) + 1) if p.livery in liveries else 0,
                           options=("Household's", *(style.LIVERIES[k].name for k in liveries)),
@@ -1558,6 +1691,10 @@ class SettingsApp:
                 if result == "done" and done:
                     done(kb.text)  # may open the next keyboard (People asks name, PIN, name)
             return None
+        if self.pairing:
+            if nav in (Nav.BACK, Nav.SELECT, Nav.MENU):
+                self.pairing = False
+            return None
         if self.calibrating is not None:
             if nav is Nav.BACK:
                 self._stop_calibration()
@@ -1670,8 +1807,10 @@ class SettingsView(QuickMenuView):
         now = time.monotonic()
         self._dt, self._last = min(0.1, now - self._last), now
         c = app.config
-        if (self.lv.name, self.reduced, self.clock) != (style.livery(c.livery).name, c.motion == "reduced", c.clock):
-            self.set_theme(c.livery, c.motion, c.clock)  # live preview of Appearance changes
+        look = (style.livery(c.scheme).name, c.motion == "reduced", c.clock, style.TEXT_SIZES.get(c.text_size, 1.0))
+        if (self.lv.name, self.reduced, self.clock, style.TEXT_SCALE) != look:
+            style.set_text_scale(c.text_size)
+            self.set_theme(c.scheme, c.motion, c.clock)  # live preview of Appearance and Accessibility changes
         lv, u = self.lv, self.u
         surf.blit(self.background(), (0, 0))
         self.hits = []
@@ -1695,6 +1834,8 @@ class SettingsView(QuickMenuView):
         self._draw_footer_hints(surf, app)
         if app.calibrating:
             self._draw_calibration(surf, app.calibrating)
+        if app.pairing:
+            self._draw_pairing(surf)
         if app.keyboard:
             self._draw_keyboard(surf, app.keyboard)
         if self.pointer and now - self.pointer_at < 2.5:
@@ -1750,6 +1891,8 @@ class SettingsView(QuickMenuView):
             hints = (("A", "Type"), ("B", "Delete"), ("START", "Done"))
         elif app.calibrating:
             hints = (("A", "Aimed at it"), ("B", "Cancel"))
+        elif app.pairing:
+            hints = (("B", "Close"),)
         elif app.zone == "nav":
             hints = (("A", "Open"), ("B", "Close settings"))
         else:
@@ -1757,6 +1900,58 @@ class SettingsView(QuickMenuView):
         x = self.margin
         for button, label in hints:
             x = style.button_hint(surf, x, cy, button, label, self.type, self.lv)
+
+    def _draw_pairing(self, surf: pygame.Surface) -> None:
+        """The phone remote's address, code and QR code, big enough to read from the sofa."""
+        from . import remote
+
+        lv, u = self.lv, self.u
+        shade = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        shade.fill((*lv.ink, 250))
+        surf.blit(shade, (0, 0))
+        # The address and QR code are worked out once per code, not per frame.
+        code_now = remote.active.code if remote.active else ""
+        cached = getattr(self, "_pairing", None)
+        if cached is None or cached[0] != code_now:
+            info = remote.active.info() if remote.active else {"url": "", "name_url": "", "code": "------"}
+            self._pairing = (code_now, info, remote.qr_matrix(info["url"]) if info["url"] else None)
+        _, info, matrix = self._pairing
+        x, y = self.margin, int(self.height * 0.2)
+        title = style.tracked(self.type(30, "cond", "semibold"), "PHONE REMOTE", lv.dim, 0.3)
+        surf.blit(title, (x, y))
+        y += title.get_height() + int(26 * u)
+        step = self.type(26, "text", "medium").render("On your phone, open", True, lv.text)
+        surf.blit(step, (x, y))
+        y += step.get_height() + int(8 * u)
+        for address in (info["name_url"], info["url"]):
+            if address:
+                line = self.type(40, "cond", "semibold").render(address, True, lv.second)
+                surf.blit(line, (x, y))
+                y += line.get_height() + int(4 * u)
+        y += int(30 * u)
+        step = self.type(26, "text", "medium").render("and type this code", True, lv.text)
+        surf.blit(step, (x, y))
+        y += step.get_height() + int(6 * u)
+        code = style.tracked(self.type(150, "cond", "bold"), info["code"], lv.accent, 0.18)
+        surf.blit(code, (x, y))
+        y += code.get_height() + int(16 * u)
+        note = self.type(21, "text", "medium").render(
+            "Same Wi-Fi as the PC. Once paired, the phone stays paired.", True, lv.dim)
+        surf.blit(note, (x, y))
+        if matrix:
+            side = int(self.height * 0.42)
+            cell = max(2, side // len(matrix))
+            side = cell * len(matrix)
+            quiet = cell * 2
+            box = pygame.Rect(0, 0, side + quiet * 2, side + quiet * 2)
+            box.midright = (self.width - self.margin, self.height // 2)
+            pygame.draw.rect(surf, (255, 255, 255), box, border_radius=int(12 * u))
+            for r, row in enumerate(matrix):
+                for c, dark in enumerate(row):
+                    if dark:
+                        surf.fill((0, 0, 0), (box.x + quiet + c * cell, box.y + quiet + r * cell, cell, cell))
+            cap = style.tracked(self.type(18, "cond", "semibold"), "SCAN WITH THE CAMERA", lv.dim, 0.2)
+            surf.blit(cap, cap.get_rect(midtop=(box.centerx, box.bottom + int(14 * u))))
 
     def _draw_calibration(self, surf: pygame.Surface, cal: Calibration) -> None:
         lv, u = self.lv, self.u
@@ -1839,7 +2034,8 @@ def run(surface: pygame.Surface, config_path: Path | None = None, max_frames: in
     """Show the Settings app until it's closed. Returns an app to open next, if any."""
     app = SettingsApp(config_path)
     c = app.config
-    view = SettingsView(surface.get_size(), c.livery, c.motion, c.clock)
+    style.set_text_scale(c.text_size)
+    view = SettingsView(surface.get_size(), c.scheme, c.motion, c.clock)
     mapper = InputMapper()
     mapper.swap_confirm = c.confirm == "east"
     mapper.open_devices()

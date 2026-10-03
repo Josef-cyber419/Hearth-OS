@@ -195,6 +195,7 @@ class Actions(Protocol):
     def set_wii_mouse(self, on: bool) -> str | None: ...
     def media(self, bus: str, action: str) -> str | None: ...
     def screenshot(self) -> str | None: ...
+    def stop_cast(self) -> str | None: ...
 
 
 @dataclass
@@ -214,6 +215,8 @@ class Context:
     media: list = field(default_factory=list)
     # More than one person uses this PC (profiles.active()): offer to switch
     people: bool = False
+    # A phone is casting to the screen (cast.on_screen): the receiver's name
+    casting: str | None = None
 
 
 def build_tabs(ctx: Context) -> list[Tab]:
@@ -390,6 +393,9 @@ def _system_tab(ctx: Context) -> Tab:
         tab.items.append(Item("quick-resume", "Home, keep " + fg["name"] + " paused", "action",
                               detail="Quick Resume: pick it up later right where you left off",
                               on_select=act.quick_resume))
+    if ctx.casting:
+        tab.items.append(Item("stop-cast", f"Stop casting ({ctx.casting})", "action",
+                              detail="Drops the phone; it can cast again any time", on_select=act.stop_cast))
     if fg:
         tab.items.append(Item("home", "Close " + fg["name"], "action", confirm=True,
                               detail="Return to the home screen", on_select=act.go_home))

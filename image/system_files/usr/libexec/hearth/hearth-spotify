@@ -1,0 +1,10 @@
+#!/usr/bin/bash
+# Spotify Connect: spotifyd (see hearth-spotify-update), named for the Spotify
+# app's speaker list. Found by the phone over the network (no sign-in on the
+# PC); sound goes through PipeWire; MPRIS so the Quick Menu's Now playing and
+# the volume work. Started in the background by Hearth with the session.
+set -euo pipefail
+name=${1:-Hearth}
+app="$HOME/Applications/spotifyd"
+exec "$app" --no-daemon --backend pulseaudio --device-name "$name" --device-type tv --use-mpris \
+    --zeroconf-port 5354 --bitrate 320

@@ -54,13 +54,15 @@ def runtime_dir() -> Path:
 #   "screen": "settings" | null,  (a screen of the hub's own in front of the home screen)
 #   "close_screen": bool  (Home was asked for: the hub closes that screen)
 #   "switch_request": bool  (the Quick Menu asks for "Who's playing?": the hub closes what's in front)
+#   "remote": {"url", "name_url", "code", "port", "phones"} | null  (the phone remote's page, remote.py)
+#   "cast": {"id", "name", "since", "back"} | null  (a receiver's window is in front, cast.py)
 # }
 
 DEFAULT_STATE = {"foreground": None, "background": {}, "focus": "home", "overlay_open": False,
                  "paused": False, "requests": [], "update": None, "report": None,
                  "wii_mouse": {}, "wii": None, "wii_raw": False,
                  "suspended": [], "suspend_request": False, "screen": None, "close_screen": False,
-                 "switch_request": False}
+                 "switch_request": False, "remote": None, "cast": None}
 
 
 def _state_path() -> Path:

@@ -255,6 +255,66 @@ def network() -> list[Result]:
     return out
 
 
+def phone_remote() -> list[Result]:
+    """The phone remote's page answers, and the firewall lets phones reach it."""
+    import urllib.error
+    import urllib.request
+
+    from . import session
+
+    info = session.read().get("remote")
+    if not info:
+        return [Result("Phone remote", "info", "not running (starts with Hearth in Game Mode)")]
+    out = []
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{info['port']}/me", timeout=3) as resp:
+            body = resp.read(200).decode("utf-8", "replace")
+        out.append(Result("Phone remote", "ok" if '"front"' in body else "warn", f"{info['url']} answers"))
+    except urllib.error.HTTPError as e:
+        if e.code == 503:
+            return [Result("Phone remote", "info", "turned off in Settings → Phone remote")]
+        out.append(Result("Phone remote", "fail", f"{info['url']} answers with an error: {e}"))
+    except OSError as e:
+        out.append(Result("Phone remote", "fail", f"{info['url']} doesn't answer: {e}"))
+    rc, zone = _run(["firewall-cmd", "--get-default-zone"], timeout=5)
+    if rc == 0 and zone and zone != "FedoraWorkstation":  # that zone opens every port above 1024
+        rc, ports = _run(["firewall-cmd", "--list-ports"], timeout=5)
+        if rc == 0 and f"{info['port']}/tcp" not in ports.split():
+            out.append(Result("Phone remote firewall", "warn",
+                              f"zone {zone} may block port {info['port']}: "
+                              f"sudo firewall-cmd --add-port={info['port']}/tcp --permanent && sudo firewall-cmd --reload"))
+    return out
+
+
+def casting() -> list[Result]:
+    """The receivers a phone would look for: installed, running, discoverable."""
+    import shutil
+
+    from . import cast
+    from . import config as cfg
+
+    out = []
+    try:
+        config = cfg.load()
+        state = session.read()
+    except Exception as e:  # noqa: BLE001
+        return [Result("Casting", "info", f"couldn't read the settings: {e}")]
+    marks = {"off": "info", "missing": "warn", "running": "ok", "stopped": "warn"}
+    for receiver, how, words in cast.status(config, state["background"]):
+        if how == "stopped":
+            words = "on, but not running: hearthctl logs"
+        out.append(Result(f"{receiver.name} receiver", marks[how], words))
+    if config.cast_airplay and shutil.which("uxplay"):
+        rc, _ = _run(["systemctl", "is-active", "--quiet", "avahi-daemon"], timeout=5)
+        out.append(Result("AirPlay discovery (avahi)", "ok" if rc == 0 else "warn",
+                          "avahi-daemon running" if rc == 0 else "avahi-daemon not running: phones won't see the PC"))
+        decoder = next((d for d in ("avdec_h264", "vah264dec", "vaapih264dec")
+                        if _run(["gst-inspect-1.0", d], timeout=10)[0] == 0), None)
+        out.append(Result("AirPlay video decoder", "ok" if decoder else "warn",
+                          decoder or "no GStreamer H.264 decoder: casting would be sound only"))
+    return out
+
+
 def devices() -> list[Result]:
     out = []
     try:
@@ -340,7 +400,7 @@ SECTIONS = [
     ("Apps", app_history),
     ("What's running", running),
     ("Resources", lambda: resources() + temperatures() + graphics()),
-    ("Network", network),
+    ("Network", lambda: network() + phone_remote() + casting()),
     ("Devices", lambda: devices() + audio()),
     ("Library", library),
 ]
