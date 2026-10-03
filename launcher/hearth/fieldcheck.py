@@ -281,6 +281,41 @@ def phone_remote() -> list[Result]:
     return out
 
 
+def casting() -> list[Result]:
+    """The receivers a phone would look for: installed, running, discoverable."""
+    import shutil
+
+    from . import cast
+    from . import config as cfg
+
+    out = []
+    try:
+        config = cfg.load()
+        state = session.read()
+    except Exception as e:  # noqa: BLE001
+        return [Result("Casting", "info", f"couldn't read the settings: {e}")]
+    for receiver, app, on in cast.receivers(config):
+        missing = app.missing()
+        running = app.id in state["background"]
+        if not on:
+            out.append(Result(f"{receiver.name} receiver", "info", "off in Settings → Casting"))
+        elif missing:
+            out.append(Result(f"{receiver.name} receiver", "warn", f"{receiver.needs} ({missing})"))
+        elif running:
+            out.append(Result(f"{receiver.name} receiver", "ok", f'running as "{cast.device_name(config)}"'))
+        else:
+            out.append(Result(f"{receiver.name} receiver", "warn", "on, but not running: hearthctl logs"))
+    if config.cast_airplay and shutil.which("uxplay"):
+        rc, _ = _run(["systemctl", "is-active", "--quiet", "avahi-daemon"], timeout=5)
+        out.append(Result("AirPlay discovery (avahi)", "ok" if rc == 0 else "warn",
+                          "avahi-daemon running" if rc == 0 else "avahi-daemon not running: phones won't see the PC"))
+        decoder = next((d for d in ("avdec_h264", "vah264dec", "vaapih264dec")
+                        if _run(["gst-inspect-1.0", d], timeout=10)[0] == 0), None)
+        out.append(Result("AirPlay video decoder", "ok" if decoder else "warn",
+                          decoder or "no GStreamer H.264 decoder: casting would be sound only"))
+    return out
+
+
 def devices() -> list[Result]:
     out = []
     try:
@@ -366,7 +401,7 @@ SECTIONS = [
     ("Apps", app_history),
     ("What's running", running),
     ("Resources", lambda: resources() + temperatures() + graphics()),
-    ("Network", lambda: network() + phone_remote()),
+    ("Network", lambda: network() + phone_remote() + casting()),
     ("Devices", lambda: devices() + audio()),
     ("Library", library),
 ]

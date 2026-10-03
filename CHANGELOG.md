@@ -8,17 +8,21 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
 ## 0.24.0 (2026-10-03)
 
-- **Cast from your phone**: the PC shows up as "Hearth" for AirPlay (video,
-  photos, music and screen mirroring from an iPhone, iPad or Mac) and as a
-  Spotify Connect speaker; YouTube on your phone can drive the YouTube tile
-  with a TV code. Settings → Casting.
-- **Your phone as a remote**: Settings → Phone remote shows a code (and a QR
-  code); the page has a d-pad, the buttons and a keyboard, so Wi-Fi
-  passwords, searches and sign-ins are typed on the phone.
-- **Your photos in the screen saver**: a folder, or a USB stick's pictures,
-  on their own or mixed with your games' art (Settings → Home screen).
+- **Cast from your phone**: the PC shows up on your Wi-Fi as a screen and a
+  speaker. AirPlay from an iPhone, iPad or Mac (a video, photos, music or
+  the whole screen: it comes to the front, and goes away when you stop),
+  Spotify Connect (pick the PC in the Spotify app; Premium), and YouTube
+  with a TV code. Settings → Casting names it and turns each part on or
+  off; Quick Menu → System → Stop casting drops the phone.
+- **Your phone as a remote**: Settings → Phone remote shows a code and a QR
+  code; the page (nothing to install) has a d-pad, the buttons and a
+  keyboard, so Wi-Fi passwords, searches and sign-ins are typed on the phone.
+  `hearthctl type` types from a terminal the same way.
+- **Your photos in the screen saver**: a folder, or a plugged-in drive's
+  pictures, on their own or mixed with your games' art, the right way up
+  (Settings → Home screen).
 - **Accessibility**: Settings → Accessibility: larger text (two sizes) and a
-  high-contrast colour scheme, each person's own.
+  high-contrast look, each person's own.
 
 ## 0.23.0 (2026-10-01)
 

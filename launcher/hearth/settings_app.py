@@ -43,6 +43,7 @@ CATEGORIES = [
     ("audio", "Audio", "Where sound plays and which microphone is used, for every app."),
     ("controllers", "Controllers", "Connected controllers, the Guide button, and the controller as a mouse."),
     ("remote", "Phone remote", "Your phone as a remote with a keyboard: a page on your home network."),
+    ("casting", "Casting", "Your phone's video, music and screen on the TV: AirPlay, Spotify Connect, YouTube."),
     ("wii", "Wii Remote", "Wii Remotes on a DolphinBar: aiming, sensitivity and calibration."),
     ("emulation", "Emulation", "Emulator settings tuned for this PC and your TV."),
     ("bluetooth", "Bluetooth", "Pair controllers and headsets."),
@@ -373,6 +374,9 @@ class SettingsApp:
         if category == "audio":  # so do headsets and TVs
             self.jobs.start("audio-load", self._load_audio)
             return
+        if category == "casting":  # which receivers are running right now
+            self.jobs.start("cast-load", self._load_cast)
+            return
         if category in self.data["loaded"] and not force:
             return
         self.data["loaded"].add(category)
@@ -415,6 +419,10 @@ class SettingsApp:
         self.data["drives"] = storage.drives()
         return None
 
+    def _load_cast(self) -> None:
+        self.data["cast"] = dict(session.read().get("background") or {})
+        return None
+
     def _load_tv(self) -> None:
         from . import tv
 
@@ -437,7 +445,7 @@ class SettingsApp:
     def build(self) -> list[Tab]:
         pages = {"appearance": self._appearance, "accessibility": self._accessibility, "home": self._home,
                  "audio": self._audio,
-                 "controllers": self._controllers, "remote": self._remote,
+                 "controllers": self._controllers, "remote": self._remote, "casting": self._casting,
                  "wii": self._wii, "emulation": self._emulation, "bluetooth": self._bluetooth,
                  "network": self._network, "storage": self._storage, "people": self._people,
                  "family": self._family,
@@ -730,6 +738,45 @@ class SettingsApp:
                  detail=self.note("remote-forget", f"{phones} paired; they'll need the code again" if phones
                                   else "None paired yet"), on_select=forget),
         ]
+        return items
+
+    def _casting(self) -> list[Item]:
+        from . import cast
+
+        c = self.config
+        running_now = self.data.get("cast") or {}  # loaded when the page opens (load_for)
+        name = cast.device_name(c)
+        items = []
+        for receiver, app, on in cast.receivers(c):
+            missing = app.missing()
+            running = app.id in running_now
+            if missing:
+                how = receiver.needs
+            elif on:
+                how = f'Ready: look for "{name}"' if running else "Starts with the home screen"
+            else:
+                how = "Off"
+            extra = {"airplay": "iPhone, iPad or Mac: a video, photos, music, or the whole screen",
+                     "spotify": "The Spotify app's speaker list, on any phone (needs Premium)"}[receiver.setting]
+            items.append(Item(f"cast-{receiver.setting}", receiver.name, "toggle", value=on and not missing,
+                              detail=f"{extra} · {how}",
+                              on_change=lambda v, k=receiver.setting: self.put("cast", k, bool(v))))
+        items.append(Item("cast-name", "Name on the network", "action",
+                          detail=f'"{name}" is what a phone lists; press A to change it',
+                          on_select=lambda: self.open_keyboard(
+                              "Name on the network",
+                              lambda t: self.put("cast", "name", t.strip()[:40] or None), text=name)))
+        youtube = self.config.app("youtube")
+        items.append(Item("cast-youtube", "YouTube from your phone", "info",
+                          detail="In the YouTube tile: Settings → Link with TV code. On the phone's YouTube app: "
+                                 "your picture → Settings → Watch on TV → Enter TV code"))
+        if youtube is not None and youtube.available():
+            items.append(Item("cast-youtube-open", "Open YouTube to link it", "action",
+                              detail="The code is under YouTube's own Settings",
+                              on_select=lambda: self._open(youtube)))
+        items.append(Item("cast-how", "How it works", "info",
+                          detail="Pick the name above on your phone and it's on the TV. Hold Guide to come back "
+                                 "to Hearth; Quick Menu → System → Stop casting drops the phone"))
         return items
 
     def _controllers(self) -> list[Item]:

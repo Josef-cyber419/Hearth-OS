@@ -295,6 +295,9 @@ def cmd_status() -> int:
     for paused in reversed(state.get("suspended", [])):
         print(f"Quick Resume: {paused['name']} (paused)")
     print(f"Quick Menu: {'open' if state['overlay_open'] else 'closed'}")
+    cast_info = state.get("cast")
+    if cast_info:
+        print(f"Casting: {cast_info['name']}" + (" (on screen)" if state["focus"] == cast_info["id"] else ""))
     remote = state.get("remote")
     if remote:
         print(f"Phone remote: {remote['url']} (code {remote['code']}, {remote['phones']} paired)")

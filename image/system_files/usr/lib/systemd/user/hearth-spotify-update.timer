@@ -1,0 +1,10 @@
+[Unit]
+Description=Install spotifyd (Spotify Connect) shortly after login, then check for updates weekly
+
+[Timer]
+OnStartupSec=45s
+OnUnitActiveSec=1w
+Persistent=true
+
+[Install]
+WantedBy=timers.target

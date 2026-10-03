@@ -186,6 +186,11 @@ class Config:
     text_size: str = "normal"
     contrast: bool = False
     remote_enabled: bool = True  # the phone remote's page on the home network (remote.py)
+    # Casting (cast.py): the AirPlay and Spotify Connect receivers, and the
+    # name a phone sees ("" = this PC's host name).
+    cast_airplay: bool = True
+    cast_spotify: bool = True
+    cast_name: str = ""
 
     @property
     def scheme(self) -> str:
@@ -314,6 +319,9 @@ def parse(data: dict) -> Config:
         text_size=_choice(access, "accessibility", "text_size", ("normal", "large", "larger")),
         contrast=bool(access.get("contrast", False)),
         remote_enabled=bool(data.get("remote", {}).get("enabled", True)),
+        cast_airplay=bool(data.get("cast", {}).get("airplay", True)),
+        cast_spotify=bool(data.get("cast", {}).get("spotify", True)),
+        cast_name=str(data.get("cast", {}).get("name") or "")[:40],
     )
 
 

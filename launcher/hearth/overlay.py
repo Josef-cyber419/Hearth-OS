@@ -25,7 +25,7 @@ from pathlib import Path
 
 from . import config as cfg
 from . import input as input_
-from . import events, homebutton, logs, session, settings, style, updates
+from . import cast, events, homebutton, logs, session, settings, style, updates
 from .audio import Audio, Snapshot, reset_restored_discord_mutes
 from . import family
 from .gamescope import Gamescope, appid_for
@@ -150,6 +150,23 @@ class Actions:
         threading.Thread(target=self.o.take_screenshot, args=(title,), daemon=True).start()
         return "close"
 
+    def stop_cast(self):
+        from . import cast
+
+        state = session.read()
+        info = state.get("cast") or {}
+        app_id = info.get("id") or (state["focus"] if cast.is_receiver(state["focus"]) else None)
+        if not app_id:
+            return "close"
+        self.overlay.cast_watch.windows = {w: a for w, a in self.overlay.cast_watch.windows.items() if a != app_id}
+        try:
+            cast.restart(app_id, self.overlay.config)
+        except Exception:
+            log.exception("stop casting")
+        events.record("cast_stop", id=app_id)
+        self.overlay.apply_focus(session.read())
+        return "close"
+
     def report(self):
         if (session.read().get("report") or {}).get("status") != "running":
             session.update(lambda s: s.__setitem__("report", {"status": "running"}))
@@ -238,6 +255,9 @@ class Overlay:
         self._seen: set[int] = set()
         self._first_window: set[tuple] = set()  # launches whose first window we've timed
         self._slow_warned: set[tuple] = set()  # launches told "still starting" (#40)
+        from .cast import Watch
+
+        self.cast_watch = Watch()  # receivers' windows: a new one takes the screen (cast.py)
         self._opened_at = 0.0
         self.frames = events.FrameStats()
         self._tries: dict[int, int] = {}
@@ -324,7 +344,7 @@ class Overlay:
         ctx = Context(self.audio, snapshot, self.state, self.actions,
                       discord_available=bool(discord and discord.available()), wii=wii,
                       frontend=game[0] if game else None, perf=self._perf_reading,
-                      media=self.media.poll(), people=_people_active())
+                      media=self.media.poll(), people=_people_active(), casting=cast.on_screen(self.state))
         self.menu.set_tabs(build_tabs(ctx))
 
     # -- updates ---------------------------------------------------------------
@@ -537,9 +557,20 @@ class Overlay:
             self.gs.tag(win, appid)
             self._seen.add(win.id)
             self._time_first_window(appid)
+            self._cast_window(win.id, appid)
         self._seen &= present
         self._tries = {k: v for k, v in self._tries.items() if k in present}
+        for app_id in self.cast_watch.prune(present):  # the phone stopped: back to what was there
+            events.record("cast_end", id=app_id)
+            self.apply_focus(session.update(lambda s, a=app_id: cast.give_back(s, a)))
         self._time_steam_window()
+
+    def _cast_window(self, win_id: int, appid: int) -> None:
+        """A receiver (AirPlay) just opened a window: a phone is casting, show it."""
+        app_id = next((i for i in self.state["background"] if cast.is_receiver(i) and appid_for(i) == appid), None)
+        if self.cast_watch.seen(win_id, app_id) == "take":
+            events.record("cast_start", id=app_id)
+            self.apply_focus(session.update(lambda s: cast.take_screen(s, app_id)))
 
     STEAM_APPID = 769  # what gamescope calls Steam's own interface
 

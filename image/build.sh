@@ -13,7 +13,13 @@ set -euxo pipefail
 #   gh                 GitHub's CLI: the field session files field reports with it
 #   tmux               keeps an SSH session (and Claude Code in it) running if the connection drops
 #   python3-qrcode     the QR code on Settings → Phone remote (the page works without it)
-dnf5 -y install python3-pygame python3-evdev python3-xlib v4l-utils linuxconsoletools mpv gh tmux python3-qrcode
+#   uxplay             AirPlay receiver: a phone's video, photos, music or screen on the TV (Settings → Casting)
+dnf5 -y install python3-pygame python3-evdev python3-xlib v4l-utils linuxconsoletools mpv gh tmux python3-qrcode uxplay
+# UxPlay decodes the phone's H.264 with GStreamer; without a decoder, casting is sound only.
+if ! gst-inspect-1.0 avdec_h264 >/dev/null 2>&1 && ! gst-inspect-1.0 vah264dec >/dev/null 2>&1 \
+        && ! gst-inspect-1.0 vaapih264dec >/dev/null 2>&1; then
+    echo "build.sh: WARNING: no GStreamer H.264 decoder (avdec_h264/vah264dec): AirPlay video won't show" >&2
+fi
 
 # --- check that Game Mode will actually start Hearth ------------------------
 # Hearth hooks in through /etc/gamescope-session-plus/sessions.d/<session>,
@@ -44,6 +50,7 @@ fi
 systemctl enable hearth-flatpak-setup.service hearth-cec-poweroff.service
 systemctl --global enable hearth-esde-update.timer
 systemctl --global enable hearth-twitch-update.timer
+systemctl --global enable hearth-spotify-update.timer
 
 # --- automatic updates --------------------------------------------------------
 # Bazzite's deck images turn off their updater and leave updates to Steam's

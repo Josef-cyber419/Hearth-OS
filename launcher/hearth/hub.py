@@ -24,7 +24,7 @@ import pygame
 
 from . import config as cfg
 from . import input as input_
-from . import desktopguide, events, homebutton, library, logs, session, sounds, style, ui, updates
+from . import cast, desktopguide, events, homebutton, library, logs, session, sounds, style, ui, updates
 from .gamescope import HOME_APPID, Gamescope
 from .model import Home
 
@@ -538,6 +538,11 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     input_.set_deadzone(config.stick_deadzone)
     if overlay:
         overlay.ensure()
+    if gs is not None and not dev_mode:
+        try:
+            cast.ensure(config)  # AirPlay and Spotify receivers, as Settings → Casting says
+        except Exception:
+            log.exception("cast receivers")
 
     home = Home(config)
     if state["last_id"]:

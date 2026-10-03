@@ -1,0 +1,41 @@
+#!/usr/bin/bash
+# Install or update spotifyd (Spotify Connect) for the current user. It isn't
+# in Fedora or on Flathub; each GitHub release carries a tar.gz per platform
+# and its SHA-512. Runs from hearth-spotify-update.timer.
+set -euo pipefail
+
+repo=${HEARTH_SPOTIFYD_REPO:-Spotifyd/spotifyd}
+api=${HEARTH_GITHUB_API:-https://api.github.com}
+dest="$HOME/Applications/spotifyd"
+state="${XDG_STATE_HOME:-$HOME/.local/state}/hearth/spotifyd-version"
+asset="spotifyd-linux-x86_64-full.tar.gz"  # every audio backend (PulseAudio for PipeWire) and MPRIS
+
+release=$(curl -fsSL --retry 3 -H "Accept: application/vnd.github+json" "$api/repos/$repo/releases/latest") || {
+    echo "No spotifyd release found (yet); will try again later" >&2
+    exit 0
+}
+read -r version url sums < <(python3 -c '
+import json, sys
+r = json.load(sys.stdin)
+asset = sys.argv[1]
+assets = {a["name"]: a["browser_download_url"] for a in r.get("assets", [])}
+if asset not in assets or asset + ".sha512" not in assets:
+    sys.exit(f"the latest release has no {asset} and its .sha512")
+print(r["tag_name"], assets[asset], assets[asset + ".sha512"])' "$asset" <<<"$release")
+
+if [[ -x $dest && -f $state && $(<"$state") == "$version" ]]; then
+    exit 0
+fi
+
+mkdir -p "$(dirname "$dest")" "$(dirname "$state")"
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+curl -fsSL --retry 3 -o "$work/$asset" "$url"
+curl -fsSL --retry 3 -o "$work/$asset.sha512" "$sums"
+# Only a download matching the release's checksum is installed.
+(cd "$work" && sha512sum --check --quiet "$asset.sha512")
+tar -xzf "$work/$asset" -C "$work" spotifyd
+chmod 755 "$work/spotifyd"
+mv "$work/spotifyd" "$dest"
+echo "$version" > "$state"
+echo "Installed spotifyd $version"
