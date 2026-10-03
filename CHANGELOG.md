@@ -6,6 +6,20 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
+## 0.24.0 (in progress)
+
+- **Cast from your phone**: the PC shows up as "Hearth" for AirPlay (video,
+  photos, music and screen mirroring from an iPhone, iPad or Mac) and as a
+  Spotify Connect speaker; YouTube on your phone can drive the YouTube tile
+  with a TV code. Settings → Casting.
+- **Your phone as a remote**: Settings → Phone remote shows a code (and a QR
+  code); the page has a d-pad, the buttons and a keyboard, so Wi-Fi
+  passwords, searches and sign-ins are typed on the phone.
+- **Your photos in the screen saver**: a folder, or a USB stick's pictures,
+  on their own or mixed with your games' art (Settings → Home screen).
+- **Accessibility**: Settings → Accessibility: larger text (two sizes) and a
+  high-contrast colour scheme, each person's own.
+
 ## 0.23.0 (2026-10-01)
 
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a

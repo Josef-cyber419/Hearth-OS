@@ -149,9 +149,9 @@ state = "Holding Guide for 4 s always gets you home; the cause isn't known"
 needs = "hearthctl status and hearthctl logs right after it happens"
 
 [[issue]]
-what = "A few things from the field runs still need a look"
-state = "Two field runs on the PC (0.22.4 and the 0.23.0 build) found 25 problems; all but the Steam cold start above are fixed in 0.23.0"
-needs = "The field tests again on the released 0.23.0 (docs/FIELD_TESTS.md)"
+what = "0.24.0 not yet tried on the PC"
+state = "Casting, the phone remote, photos in the screen saver and accessibility are built and tested in a virtual display"
+needs = "Update to the staging build, then the field tests again (docs/FIELD_TESTS.md)"
 
 # Captions for screenshots in reports/<version>/screens/.
 [screens]
