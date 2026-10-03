@@ -42,6 +42,7 @@ CATEGORIES = [
     ("home", "Home screen", "Which tiles show, and what Game Mode starts in."),
     ("audio", "Audio", "Where sound plays and which microphone is used, for every app."),
     ("controllers", "Controllers", "Connected controllers, the Guide button, and the controller as a mouse."),
+    ("remote", "Phone remote", "Your phone as a remote with a keyboard: a page on your home network."),
     ("wii", "Wii Remote", "Wii Remotes on a DolphinBar: aiming, sensitivity and calibration."),
     ("emulation", "Emulation", "Emulator settings tuned for this PC and your TV."),
     ("bluetooth", "Bluetooth", "Pair controllers and headsets."),
@@ -332,6 +333,7 @@ class SettingsApp:
         self.keyboard: Keyboard | None = None
         self._keyboard_done: Callable[[str], None] | None = None
         self.calibrating: Calibration | None = None
+        self.pairing = False  # the phone remote's code and QR code, full screen
         self.launch: App | None = None  # an app to open on the way out (Desktop Mode)
         self.data: dict = {"net": None, "wifi": None, "networks": [], "bt_power": None, "bt": [],
                            "os": None, "drives": None, "ip": None, "audio": None, "tv": None, "loaded": set()}
@@ -435,7 +437,7 @@ class SettingsApp:
     def build(self) -> list[Tab]:
         pages = {"appearance": self._appearance, "accessibility": self._accessibility, "home": self._home,
                  "audio": self._audio,
-                 "controllers": self._controllers,
+                 "controllers": self._controllers, "remote": self._remote,
                  "wii": self._wii, "emulation": self._emulation, "bluetooth": self._bluetooth,
                  "network": self._network, "storage": self._storage, "people": self._people,
                  "family": self._family,
@@ -685,6 +687,50 @@ class SettingsApp:
         self.jobs.messages["boot"] = "Saved: restart to apply"
         self.refresh()
         return None
+
+    def _remote(self) -> list[Item]:
+        from . import remote
+
+        c = self.config
+        items = [Item("remote-on", "Phone remote", "toggle", value=c.remote_enabled,
+                      detail="A page on your home network: a d-pad, the buttons and a keyboard",
+                      on_change=lambda on: self.put("remote", "enabled", bool(on)))]
+        server = remote.active
+        if server is None:
+            items.append(Item("remote-none", "Not running", "info",
+                              detail="The page starts with Hearth in Game Mode"))
+            return items
+        info = server.info()
+        phones = info["phones"]
+
+        def show() -> None:
+            self.pairing = True
+            return None
+
+        def forget() -> None:
+            server.forget_phones()
+            self.jobs.messages["remote-forget"] = "Forgotten: each phone needs the code again"
+            self.refresh()
+            return None
+
+        def new_code() -> None:
+            server.new_code()
+            self.refresh()
+            return None
+
+        items += [
+            Item("remote-show", "Show the code on the TV", "action",
+                 detail=f"{info['url']} · code {info['code']}", on_select=show),
+            Item("remote-how", "How it works", "info",
+                 detail="On a phone on the same Wi-Fi, open the address and type the code once; "
+                        "then it's a remote, and anything you type on it lands on the TV"),
+            Item("remote-new", "New code", "action", detail="Phones already paired keep working",
+                 on_select=new_code),
+            Item("remote-forget", "Forget paired phones", "action", confirm=True,
+                 detail=self.note("remote-forget", f"{phones} paired; they'll need the code again" if phones
+                                  else "None paired yet"), on_select=forget),
+        ]
+        return items
 
     def _controllers(self) -> list[Item]:
         c = self.config
@@ -1595,6 +1641,10 @@ class SettingsApp:
                 if result == "done" and done:
                     done(kb.text)  # may open the next keyboard (People asks name, PIN, name)
             return None
+        if self.pairing:
+            if nav in (Nav.BACK, Nav.SELECT, Nav.MENU):
+                self.pairing = False
+            return None
         if self.calibrating is not None:
             if nav is Nav.BACK:
                 self._stop_calibration()
@@ -1734,6 +1784,8 @@ class SettingsView(QuickMenuView):
         self._draw_footer_hints(surf, app)
         if app.calibrating:
             self._draw_calibration(surf, app.calibrating)
+        if app.pairing:
+            self._draw_pairing(surf)
         if app.keyboard:
             self._draw_keyboard(surf, app.keyboard)
         if self.pointer and now - self.pointer_at < 2.5:
@@ -1789,6 +1841,8 @@ class SettingsView(QuickMenuView):
             hints = (("A", "Type"), ("B", "Delete"), ("START", "Done"))
         elif app.calibrating:
             hints = (("A", "Aimed at it"), ("B", "Cancel"))
+        elif app.pairing:
+            hints = (("B", "Close"),)
         elif app.zone == "nav":
             hints = (("A", "Open"), ("B", "Close settings"))
         else:
@@ -1796,6 +1850,53 @@ class SettingsView(QuickMenuView):
         x = self.margin
         for button, label in hints:
             x = style.button_hint(surf, x, cy, button, label, self.type, self.lv)
+
+    def _draw_pairing(self, surf: pygame.Surface) -> None:
+        """The phone remote's address, code and QR code, big enough to read from the sofa."""
+        from . import remote
+
+        lv, u = self.lv, self.u
+        shade = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        shade.fill((*lv.ink, 250))
+        surf.blit(shade, (0, 0))
+        info = remote.active.info() if remote.active else {"url": "", "name_url": "", "code": "------"}
+        x, y = self.margin, int(self.height * 0.2)
+        title = style.tracked(self.type(30, "cond", "semibold"), "PHONE REMOTE", lv.dim, 0.3)
+        surf.blit(title, (x, y))
+        y += title.get_height() + int(26 * u)
+        step = self.type(26, "text", "medium").render("On your phone, open", True, lv.text)
+        surf.blit(step, (x, y))
+        y += step.get_height() + int(8 * u)
+        for address in (info["name_url"], info["url"]):
+            if address:
+                line = self.type(40, "cond", "semibold").render(address, True, lv.second)
+                surf.blit(line, (x, y))
+                y += line.get_height() + int(4 * u)
+        y += int(30 * u)
+        step = self.type(26, "text", "medium").render("and type this code", True, lv.text)
+        surf.blit(step, (x, y))
+        y += step.get_height() + int(6 * u)
+        code = style.tracked(self.type(150, "cond", "bold"), info["code"], lv.accent, 0.18)
+        surf.blit(code, (x, y))
+        y += code.get_height() + int(16 * u)
+        note = self.type(21, "text", "medium").render(
+            "Same Wi-Fi as the PC. Once paired, the phone stays paired.", True, lv.dim)
+        surf.blit(note, (x, y))
+        matrix = remote.qr_matrix(info["url"]) if info["url"] else None
+        if matrix:
+            side = int(self.height * 0.42)
+            cell = max(2, side // len(matrix))
+            side = cell * len(matrix)
+            quiet = cell * 2
+            box = pygame.Rect(0, 0, side + quiet * 2, side + quiet * 2)
+            box.midright = (self.width - self.margin, self.height // 2)
+            pygame.draw.rect(surf, (255, 255, 255), box, border_radius=int(12 * u))
+            for r, row in enumerate(matrix):
+                for c, dark in enumerate(row):
+                    if dark:
+                        surf.fill((0, 0, 0), (box.x + quiet + c * cell, box.y + quiet + r * cell, cell, cell))
+            cap = style.tracked(self.type(18, "cond", "semibold"), "SCAN WITH THE CAMERA", lv.dim, 0.2)
+            surf.blit(cap, cap.get_rect(midtop=(box.centerx, box.bottom + int(14 * u))))
 
     def _draw_calibration(self, surf: pygame.Surface, cal: Calibration) -> None:
         lv, u = self.lv, self.u

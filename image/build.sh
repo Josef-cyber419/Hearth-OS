@@ -12,7 +12,8 @@ set -euxo pipefail
 #   mpv                low-latency full-screen view of an HDMI capture card
 #   gh                 GitHub's CLI: the field session files field reports with it
 #   tmux               keeps an SSH session (and Claude Code in it) running if the connection drops
-dnf5 -y install python3-pygame python3-evdev python3-xlib v4l-utils linuxconsoletools mpv gh tmux
+#   python3-qrcode     the QR code on Settings → Phone remote (the page works without it)
+dnf5 -y install python3-pygame python3-evdev python3-xlib v4l-utils linuxconsoletools mpv gh tmux python3-qrcode
 
 # --- check that Game Mode will actually start Hearth ------------------------
 # Hearth hooks in through /etc/gamescope-session-plus/sessions.d/<session>,

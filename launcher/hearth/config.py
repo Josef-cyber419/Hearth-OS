@@ -185,6 +185,7 @@ class Config:
     # "larger" (style.TEXT_SIZES), and the high-contrast look over the livery.
     text_size: str = "normal"
     contrast: bool = False
+    remote_enabled: bool = True  # the phone remote's page on the home network (remote.py)
 
     @property
     def scheme(self) -> str:
@@ -312,6 +313,7 @@ def parse(data: dict) -> Config:
         guide_hold_action=_choice(controllers, "controllers", "guide_hold", ("resume", "close")),
         text_size=_choice(access, "accessibility", "text_size", ("normal", "large", "larger")),
         contrast=bool(access.get("contrast", False)),
+        remote_enabled=bool(data.get("remote", {}).get("enabled", True)),
     )
 
 

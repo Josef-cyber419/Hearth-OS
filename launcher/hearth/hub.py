@@ -379,6 +379,9 @@ def main(argv: list[str] | None = None) -> int:
         k: v for k, v in s["background"].items() if session.background_alive(v)},
         suspended=[e for e in s.get("suspended", []) if session.entry_alive(e)]))
 
+    from . import remote, settings
+
+    remote.start(lambda: bool((settings.load().get("remote") or {}).get("enabled", True)))
     dev_mode = args.windowed or args.dry_run
     state = {"last_id": None, "message": None, "surface": None, "intro": "boot"}
     failures: list[float] = []

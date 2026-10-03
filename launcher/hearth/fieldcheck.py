@@ -255,6 +255,32 @@ def network() -> list[Result]:
     return out
 
 
+def phone_remote() -> list[Result]:
+    """The phone remote's page answers, and the firewall lets phones reach it."""
+    import urllib.request
+
+    from . import session
+
+    info = session.read().get("remote")
+    if not info:
+        return [Result("Phone remote", "info", "not running (starts with Hearth in Game Mode)")]
+    out = []
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{info['port']}/me", timeout=3) as resp:
+            body = resp.read(200).decode("utf-8", "replace")
+        out.append(Result("Phone remote", "ok" if '"front"' in body else "warn", f"{info['url']} answers"))
+    except OSError as e:
+        out.append(Result("Phone remote", "fail", f"{info['url']} doesn't answer: {e}"))
+    rc, zone = _run(["firewall-cmd", "--get-default-zone"], timeout=5)
+    if rc == 0 and zone and zone != "FedoraWorkstation":  # that zone opens every port above 1024
+        rc, ports = _run(["firewall-cmd", "--list-ports"], timeout=5)
+        if rc == 0 and f"{info['port']}/tcp" not in ports.split():
+            out.append(Result("Phone remote firewall", "warn",
+                              f"zone {zone} may block port {info['port']}: "
+                              f"sudo firewall-cmd --add-port={info['port']}/tcp --permanent && sudo firewall-cmd --reload"))
+    return out
+
+
 def devices() -> list[Result]:
     out = []
     try:
@@ -340,7 +366,7 @@ SECTIONS = [
     ("Apps", app_history),
     ("What's running", running),
     ("Resources", lambda: resources() + temperatures() + graphics()),
-    ("Network", network),
+    ("Network", lambda: network() + phone_remote()),
     ("Devices", lambda: devices() + audio()),
     ("Library", library),
 ]
