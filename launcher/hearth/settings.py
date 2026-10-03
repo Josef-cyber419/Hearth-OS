@@ -15,7 +15,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-TABLES = ("theme", "quick_menu", "controllers", "wii_remote", "home", "emulation")
+TABLES = ("theme", "quick_menu", "controllers", "wii_remote", "home", "emulation", "accessibility")
 
 
 def path() -> Path:

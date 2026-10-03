@@ -530,6 +530,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     """One round of: show the home screen, then run what was picked."""
     config = home_config(args, state)
     style.set_prompts(config.prompts, config.confirm)
+    style.set_text_scale(config.text_size)
     sounds.enable(config.sounds)
     input_.set_deadzone(config.stick_deadzone)
     if overlay:
@@ -549,7 +550,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     ready = (current.get("update") or {}).get("status") == "ready"
     stats = events.FrameStats()
     view, offset = style.inset(state["surface"], config.safe_area)
-    common = dict(input_blocked=lambda: session.read()["overlay_open"], livery=config.livery, motion=config.motion,
+    common = dict(input_blocked=lambda: session.read()["overlay_open"], livery=config.scheme, motion=config.motion,
                   clock=config.clock, swap_confirm=config.confirm == "east", offset=offset,
                   saver_after=config.screensaver_minutes * 60, saver_style=config.screensaver,
                   ask=lambda a: eviction_question(a, config))
@@ -635,7 +636,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
         # Keep a "Starting…" screen up; gamescope switches to the app as soon
         # as its window appears (see session.focus_order), instead of
         # showing black while it loads.
-        ui.draw_loading(state["surface"], app, config.livery)
+        ui.draw_loading(state["surface"], app, config.scheme)
         return foreground(state, gs, lambda: launch(app, dry_run=args.dry_run, gs=gs,
                                                     hold_seconds=config.guide_hold, config=config))
 

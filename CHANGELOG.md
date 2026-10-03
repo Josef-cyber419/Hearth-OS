@@ -6,7 +6,7 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
-## 0.24.0 (in progress)
+## 0.24.0 (2026-10-03)
 
 - **Cast from your phone**: the PC shows up as "Hearth" for AirPlay (video,
   photos, music and screen mirroring from an iPhone, iPad or Mac) and as a

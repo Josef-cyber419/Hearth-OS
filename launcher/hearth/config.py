@@ -178,6 +178,15 @@ class Config:
     # and whether holding Guide pauses the game ("resume") or closes it.
     quick_resume: int = 2
     guide_hold_action: str = "resume"
+    # Accessibility (each person's own): text size "normal", "large" or
+    # "larger" (style.TEXT_SIZES), and the high-contrast look over the livery.
+    text_size: str = "normal"
+    contrast: bool = False
+
+    @property
+    def scheme(self) -> str:
+        """The colours to draw with: the livery, or high contrast when it's on."""
+        return "contrast" if self.contrast else self.livery
 
     def app(self, app_id: str) -> App | None:
         return next((a for row in self.rows for a in row.apps if a.id == app_id), None)
@@ -260,6 +269,7 @@ def parse(data: dict) -> Config:
     controllers = data.get("controllers", {})
     home_table = data.get("home", {})
     wii_mouse = _choice(wii, "wii_remote", "mouse", ("apps", "always", "never"))
+    access = data.get("accessibility", {})
     calibration = wii.get("calibration")
     if calibration is not None and (not isinstance(calibration, (list, tuple)) or len(calibration) != 4):
         raise ConfigError("wii_remote.calibration must be 4 numbers (or left out)")
@@ -296,6 +306,8 @@ def parse(data: dict) -> Config:
                                      ("auto", "1080p", "1440p", "4k")),
         quick_resume=int(_number(home_table, "home", "quick_resume", 2, 0, 3)),
         guide_hold_action=_choice(controllers, "controllers", "guide_hold", ("resume", "close")),
+        text_size=_choice(access, "accessibility", "text_size", ("normal", "large", "larger")),
+        contrast=bool(access.get("contrast", False)),
     )
 
 

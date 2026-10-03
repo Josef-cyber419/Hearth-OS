@@ -225,7 +225,8 @@ class Overlay:
         self.size = size
         self.render_size = (int(size[0] * scale), int(size[1] * scale))
         self.surface = pygame.Surface(self.render_size, pygame.SRCALPHA)
-        self.view = QuickMenuView(self.render_size, config.livery, config.motion, config.clock)
+        style.set_text_scale(config.text_size)
+        self.view = QuickMenuView(self.render_size, config.scheme, config.motion, config.clock)
 
         self.open = False
         self.t = 0.0
@@ -262,7 +263,8 @@ class Overlay:
             self._wii_mouse_apps = dict(settings.load().get("wii_mouse_apps") or {})
         except (OSError, ValueError, AttributeError):
             self._wii_mouse_apps = {}
-        self.view.set_theme(c.livery, c.motion, c.clock)
+        style.set_text_scale(c.text_size)
+        self.view.set_theme(c.scheme, c.motion, c.clock)
         style.set_prompts(c.prompts, c.confirm)
         self.mapper.swap_confirm = c.confirm == "east"
         self.pointer.speed = c.mouse_speed / 100

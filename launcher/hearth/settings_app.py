@@ -38,6 +38,7 @@ log = logging.getLogger("hearth")
 
 CATEGORIES = [
     ("appearance", "Appearance", "Colours, motion and the clock."),
+    ("accessibility", "Accessibility", "Larger text and a high-contrast look, for whoever's playing."),
     ("home", "Home screen", "Which tiles show, and what Game Mode starts in."),
     ("audio", "Audio", "Where sound plays and which microphone is used, for every app."),
     ("controllers", "Controllers", "Connected controllers, the Guide button, and the controller as a mouse."),
@@ -432,7 +433,8 @@ class SettingsApp:
         self._refreshed = time.monotonic()
 
     def build(self) -> list[Tab]:
-        pages = {"appearance": self._appearance, "home": self._home, "audio": self._audio,
+        pages = {"appearance": self._appearance, "accessibility": self._accessibility, "home": self._home,
+                 "audio": self._audio,
                  "controllers": self._controllers,
                  "wii": self._wii, "emulation": self._emulation, "bluetooth": self._bluetooth,
                  "network": self._network, "storage": self._storage, "people": self._people,
@@ -451,7 +453,7 @@ class SettingsApp:
 
     def _appearance(self) -> list[Item]:
         c = self.config
-        names = list(style.LIVERIES)
+        names = style.liveries()
         return [
             Item("livery", "Livery", "choice", value=names.index(c.livery) if c.livery in names else 0,
                  options=tuple(style.LIVERIES[n].name for n in names), detail="The colour scheme, after a racing car",
@@ -466,6 +468,29 @@ class SettingsApp:
                  detail="Raise this if your TV cuts off the edges (overscan)",
                  on_change=lambda v: self.put("theme", "safe_area", int(v))),
         ]
+
+    def _accessibility(self) -> list[Item]:
+        from . import profiles
+
+        c = self.config
+        sizes = list(style.TEXT_SIZES)
+        whose = (f"For {profiles.current().name}; everyone else keeps theirs"
+                 if profiles.active() and profiles.current() else "")
+        items = [
+            Item("text-size", "Text size", "choice", value=sizes.index(c.text_size) if c.text_size in sizes else 0,
+                 options=("Standard", "Large", "Larger"),
+                 detail=whose or "Everywhere: the home screen, the Quick Menu and Settings",
+                 on_change=lambda i: self.put("accessibility", "text_size", sizes[i])),
+            Item("contrast", "High contrast", "toggle", value=c.contrast,
+                 detail="Black, white and yellow, a thick ring round what's chosen, no glow behind the rows",
+                 on_change=lambda on: self.put("accessibility", "contrast", bool(on))),
+            Item("motion-access", "Motion", "choice", value=0 if c.motion == "full" else 1,
+                 options=("Full", "Reduced"), detail="Reduced: nothing moves on its own (also in Appearance)",
+                 on_change=lambda i: self.put("theme", "motion", ("full", "reduced")[i])),
+            Item("prompts-access", "Button names on screen", "info",
+                 detail="Set in Controllers: Xbox, PlayStation or Nintendo names, or follow what's in your hand"),
+        ]
+        return items
 
     # -- Watch next: Jellyfin and Plex sign-in -------------------------------------
 
@@ -1297,7 +1322,7 @@ class SettingsApp:
                         "then sign in there",
                  on_change=lambda i: change(steam=steam_names[i - 1] if i else None)),
         ]
-        liveries = list(style.LIVERIES)
+        liveries = style.liveries()
         items.append(Item("person-livery", "Colour scheme", "choice",
                           value=(liveries.index(p.livery) + 1) if p.livery in liveries else 0,
                           options=("Household's", *(style.LIVERIES[k].name for k in liveries)),
@@ -1670,8 +1695,10 @@ class SettingsView(QuickMenuView):
         now = time.monotonic()
         self._dt, self._last = min(0.1, now - self._last), now
         c = app.config
-        if (self.lv.name, self.reduced, self.clock) != (style.livery(c.livery).name, c.motion == "reduced", c.clock):
-            self.set_theme(c.livery, c.motion, c.clock)  # live preview of Appearance changes
+        look = (style.livery(c.scheme).name, c.motion == "reduced", c.clock, style.TEXT_SIZES.get(c.text_size, 1.0))
+        if (self.lv.name, self.reduced, self.clock, style.TEXT_SCALE) != look:
+            style.set_text_scale(c.text_size)
+            self.set_theme(c.scheme, c.motion, c.clock)  # live preview of Appearance and Accessibility changes
         lv, u = self.lv, self.u
         surf.blit(self.background(), (0, 0))
         self.hits = []
@@ -1839,7 +1866,8 @@ def run(surface: pygame.Surface, config_path: Path | None = None, max_frames: in
     """Show the Settings app until it's closed. Returns an app to open next, if any."""
     app = SettingsApp(config_path)
     c = app.config
-    view = SettingsView(surface.get_size(), c.livery, c.motion, c.clock)
+    style.set_text_scale(c.text_size)
+    view = SettingsView(surface.get_size(), c.scheme, c.motion, c.clock)
     mapper = InputMapper()
     mapper.swap_confirm = c.confirm == "east"
     mapper.open_devices()

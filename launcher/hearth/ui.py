@@ -69,16 +69,20 @@ class Theme:
         w, h = size
         u = self.u = h / 1080
         self.lv: Livery = style.livery(livery)
+        self.contrast = self.lv.contrast
         self.type = Type(u)
         self.width, self.height = w, h
+        # Bigger text (Settings → Accessibility) gets taller header, footer and
+        # row titles; the tiles themselves stay, their names shrink to fit.
+        grow = 1 + (style.TEXT_SCALE - 1) * 0.6
         self.margin = int(104 * u)
-        self.header_h = int(176 * u)
-        self.footer_h = int(112 * u)
+        self.header_h = int(176 * u * grow)
+        self.footer_h = int(112 * u * grow)
         self.tile_w = int(344 * u)
         self.tile_h = int(204 * u)
         self.gap = int(34 * u)
-        self.row_title_h = int(62 * u)
-        self.row_h = self.row_title_h + self.tile_h + int(66 * u)
+        self.row_title_h = int(62 * u * style.TEXT_SCALE)
+        self.row_h = self.row_title_h + self.tile_h + int(66 * u * grow)
         self.radius = max(4, int(12 * u))
         self.focus_scale = 1.06
         t = self.type
@@ -258,9 +262,9 @@ def paint_game(size: tuple[int, int], app: App, th: Theme, lit: bool, art: pygam
         style.stripes(surf, 0, 0, h, max(3, int(h * 0.05)), (lv.accent, lv.second))
     _progress(surf, app, th)
     style.rounded(surf, th.radius)
-    if lit:
-        pygame.draw.rect(surf, (*lv.text, 225), surf.get_rect(), width=max(2, int(2 * th.u)),
-                         border_radius=th.radius)
+    if lit:  # high contrast: a thick ring in the accent, not a hairline in the text colour
+        pygame.draw.rect(surf, (*lv.accent, 255) if lv.contrast else (*lv.text, 225), surf.get_rect(),
+                         width=max(2, int((6 if lv.contrast else 2) * th.u)), border_radius=th.radius)
     return surf
 
 
@@ -300,9 +304,9 @@ def paint_tile(size: tuple[int, int], app: App, th: Theme, lit: bool, icon: pyga
             _badge(surf, app.platform, th, pad)
     _progress(surf, app, th)
     style.rounded(surf, th.radius)
-    if lit:
-        pygame.draw.rect(surf, (*lv.text, 225), surf.get_rect(), width=max(2, int(2 * th.u)),
-                         border_radius=th.radius)
+    if lit:  # high contrast: a thick ring in the accent, not a hairline in the text colour
+        pygame.draw.rect(surf, (*lv.accent, 255) if lv.contrast else (*lv.text, 225), surf.get_rect(),
+                         width=max(2, int((6 if lv.contrast else 2) * th.u)), border_radius=th.radius)
     return surf
 
 
@@ -432,6 +436,10 @@ class HomeScreen:
     def _make_background(self) -> pygame.Surface:
         th, lv = self.theme, self.theme.lv
         w, h = th.width, th.height
+        if th.contrast:  # plain: no gradient, glow or stripes behind the text
+            bg = pygame.Surface((w, h))
+            bg.fill(lv.ink)
+            return bg.convert() if pygame.display.get_surface() else bg
         bg = style.gradient((w, h), style.lighten(lv.ink, 0.035), mix(lv.ink, (0, 0, 0), 0.35), vertical=True)
         # A faint glow of the livery's stripe colour, top left, like light on paint.
         glow = pygame.Surface((w // 8, h // 8), pygame.SRCALPHA)
@@ -976,6 +984,8 @@ class HomeScreen:
         th, lv = self.theme, self.theme.lv
         w, h = th.width, th.height
         out = self.background.copy()
+        if th.contrast:
+            return out  # plain black behind the rows: the art's glow would cost legibility
         if app.id not in self._blurs:
             art = load_art(app.art)
             # Blurred right out (down to a few dozen pixels, then up in steps
@@ -1232,7 +1242,7 @@ class HomeScreen:
         img.set_alpha(None)
 
         # Now and then, light runs across the focused tile's paint.
-        if focused and not self.reduced and not self.settled and f >= 0.99:
+        if focused and not self.reduced and not th.contrast and not self.settled and f >= 0.99:
             since = time.monotonic() - self._focus_since - 0.5
             phase = (since % 5.0) / 1.1 if since > 0 else 0
             glint = style.sheen(rect.size, phase)

@@ -205,7 +205,7 @@ def test_navigation_and_live_changes(shipped_config, offline):
 
 def test_hiding_a_tile(shipped_config, offline):
     app = SettingsApp(shipped_config)
-    app.handle(Nav.DOWN)  # Home screen
+    app.menu.tab = [c[0] for c in settings_app.CATEGORIES].index("home")
     app.handle(Nav.RIGHT)
     app.menu.select(next(i.key for i in app.menu.current.items if i.key.startswith("tile-")))
     first = app.menu.selected

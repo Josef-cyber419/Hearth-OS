@@ -1,6 +1,6 @@
 # Hearth OS 0.24.0: progress report
 
-_ · made by `tools/progress_report.py`_
+_3 October 2026 · made by `tools/progress_report.py`_
 
 Hearth OS turns a living-room PC into a TV-style home screen for Steam, emulation, streaming apps and Quick Resume, driven by a controller, a TV remote or a Wii Remote. It's built on Bazzite and installs as a system image that updates itself and can always be rolled back. It runs on AMD and Intel graphics; NVIDIA is left for later.
 
@@ -10,8 +10,8 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.24.0 | Change since 0.23.0 |
 |---|--:|--:|
-| Lines of code | 17,261 | – |
-| Automated tests | 458 | – |
+| Lines of code | 17,333 | +72 |
+| Automated tests | 466 | +8 |
 | Lines of docs | 2,002 | +23 |
 | Guides in docs/ | 15 | – |
 | Pull requests merged | 28 | |
@@ -21,10 +21,10 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 14,665 |
+| Home screen, Quick Menu and settings (Python) | 14,737 |
 | System image (scripts, services, config) | 1,206 |
 | Build and tools | 1,390 |
-| Tests | 6,319 |
+| Tests | 6,403 |
 
 ## What's new in 0.24.0
 
@@ -80,7 +80,7 @@ Lines of code by part (blank lines not counted):
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| 0.24.0 |  | 17,261 | 458 | 2,002 | 15 | 28 |
+| [0.24.0](../0.24.0/report.md) | 2026-10-03 | 17,333 | 466 | 2,002 | 15 | 28 |
 | [0.23.0](../0.23.0/report.md) | 2026-10-01 | 17,261 | 458 | 1,979 | 15 | 28 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 27 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
