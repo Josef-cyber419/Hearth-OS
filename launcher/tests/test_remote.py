@@ -2,7 +2,6 @@
 
 import http.client
 import json
-import pathlib
 import types
 
 import pygame
@@ -107,8 +106,8 @@ def test_five_wrong_codes_pause_pairing_and_phones_are_remembered(served, tmp_pa
     assert client.call("GET", "/me")[0] == 503
 
 
-def test_pairing_lockout_is_timed():
-    r = remote.Remote(lambda: None, port=0, phones=pathlib.Path("/nonexistent/p.json"))
+def test_pairing_lockout_is_timed(tmp_path):
+    r = remote.Remote(lambda: None, port=0, phones=tmp_path / "p.json")
     for _ in range(remote.CODE_TRIES):
         assert r.pair("000000", now=100.0) is None
     assert r.locked_for(now=100.0) == remote.LOCKOUT_SECONDS and r.pair(r.code, now=130.0) is None
