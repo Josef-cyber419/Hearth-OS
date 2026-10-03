@@ -10,10 +10,10 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.24.0 | Change since 0.23.0 |
 |---|--:|--:|
-| Lines of code | 17,333 | +72 |
-| Automated tests | 466 | +8 |
-| Lines of docs | 2,002 | +23 |
-| Guides in docs/ | 15 | – |
+| Lines of code | 18,422 | +1,161 |
+| Automated tests | 495 | +37 |
+| Lines of docs | 2,100 | +121 |
+| Guides in docs/ | 16 | +1 |
 | Pull requests merged | 28 | |
 | Versions released | 27 | |
 
@@ -21,17 +21,17 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 14,737 |
-| System image (scripts, services, config) | 1,206 |
+| Home screen, Quick Menu and settings (Python) | 15,743 |
+| System image (scripts, services, config) | 1,289 |
 | Build and tools | 1,390 |
-| Tests | 6,403 |
+| Tests | 6,905 |
 
 ## What's new in 0.24.0
 
-- **Cast from your phone**: the PC shows up as "Hearth" for AirPlay (video, photos, music and screen mirroring from an iPhone, iPad or Mac) and as a Spotify Connect speaker; YouTube on your phone can drive the YouTube tile with a TV code. Settings → Casting.
-- **Your phone as a remote**: Settings → Phone remote shows a code (and a QR code); the page has a d-pad, the buttons and a keyboard, so Wi-Fi passwords, searches and sign-ins are typed on the phone.
-- **Your photos in the screen saver**: a folder, or a USB stick's pictures, on their own or mixed with your games' art (Settings → Home screen).
-- **Accessibility**: Settings → Accessibility: larger text (two sizes) and a high-contrast colour scheme, each person's own.
+- **Cast from your phone**: the PC shows up on your Wi-Fi as a screen and a speaker. AirPlay from an iPhone, iPad or Mac (a video, photos, music or the whole screen: it comes to the front, and goes away when you stop), Spotify Connect (pick the PC in the Spotify app; Premium), and YouTube with a TV code. Settings → Casting names it and turns each part on or off; Quick Menu → System → Stop casting drops the phone.
+- **Your phone as a remote**: Settings → Phone remote shows a code and a QR code; the page (nothing to install) has a d-pad, the buttons and a keyboard, so Wi-Fi passwords, searches and sign-ins are typed on the phone. `hearthctl type` types from a terminal the same way.
+- **Your photos in the screen saver**: a folder, or a plugged-in drive's pictures, on their own or mixed with your games' art, the right way up (Settings → Home screen).
+- **Accessibility**: Settings → Accessibility: larger text (two sizes) and a high-contrast look, each person's own.
 
 ## What's working
 
@@ -54,8 +54,10 @@ Lines of code by part (blank lines not counted):
 | TV control (CEC) | TV on and to the right input on wake and on Guide; standby with the PC | 🟡 Shipped |
 | Performance | Hearth idles under 2% of one core and about 300 MB; hearthctl footprint | ✅ Confirmed on the PC |
 | Updates | Automatic, versioned, with releases on GitHub, a what's-new card and rollback | ✅ Confirmed on the PC |
-| Phone as a remote | A web page with a d-pad and keyboard, paired with a code on the TV | ⚪ Not started |
 | People | Who's playing? (at start, after sleep, from the Quick Menu) with optional PINs; own favorites, colour scheme, Continue, Steam and Discord; limits set by an admin | 🟡 Shipped |
+| Casting **new** | AirPlay (video, photos, music, screen mirroring), Spotify Connect, YouTube with a TV code; Quick Menu → Stop casting | 🟡 Shipped |
+| Phone remote **new** | A page on the home network with a d-pad, the buttons and a keyboard, paired with a code and QR code on the TV | 🟡 Shipped |
+| Accessibility **new** | Larger text (two sizes) and a high-contrast look, each person's own; your own photos in the screen saver | 🟡 Shipped |
 | Folders | Groups of tiles | ⚪ Not started (deferred for now) |
 | NVIDIA graphics | A separate image with NVIDIA's driver | ⚪ Not started (deferred: AMD and Intel first) |
 | Netflix and similar | DRM limits these to low quality on any home-built PC | ⛔ Not possible |
@@ -72,15 +74,15 @@ Lines of code by part (blank lines not counted):
 
 ## Next
 
-- Your phone as a remote, with a keyboard for search and Wi-Fi passwords.
 - Fix what turns up on the real PC.
+- Spoken menus; picture and sound settings (frame-rate matching, night mode); RetroAchievements; save backups.
 - When wanted: groups of tiles; NVIDIA support.
 
 ## Every version
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.24.0](../0.24.0/report.md) | 2026-10-03 | 17,333 | 466 | 2,002 | 15 | 28 |
+| [0.24.0](../0.24.0/report.md) | 2026-10-03 | 18,422 | 495 | 2,100 | 16 | 28 |
 | [0.23.0](../0.23.0/report.md) | 2026-10-01 | 17,261 | 458 | 1,979 | 15 | 28 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 27 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |

@@ -111,7 +111,6 @@ what = "Automatic, versioned, with releases on GitHub, a what's-new card and rol
 status = "confirmed"
 
 [[area]]
-[[area]]
 name = "People"
 what = "Who's playing? (at start, after sleep, from the Quick Menu) with optional PINs; own favorites, colour scheme, Continue, Steam and Discord; limits set by an admin"
 status = "shipped"
