@@ -4,9 +4,11 @@ name: build
 # staging is for testing new work before it goes live: its image is tagged
 # :staging (switch a PC to it with `hearthctl channel staging`).
 #
-# For now staging mirrors main: every build of main also publishes :staging
-# and moves the staging branch to match. Set MIRROR_STAGING to "false" once
-# new work should land on staging first.
+# Between updates staging mirrors main: a build of main (a push, or the
+# nightly rebuild) also publishes :staging and moves the staging branch to
+# match, but only while the staging branch has no work of its own. Once a
+# batch lands on staging, :staging is that batch's until it ships, nightly
+# rebuilds included. Set MIRROR_STAGING to "false" to never mirror.
 env:
   MIRROR_STAGING: "true"
 
@@ -88,7 +90,15 @@ jobs:
           echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           if [[ "$GITHUB_REF" == refs/heads/main ]]; then
             channels=(latest "$VERSION")  # :0.20.0 stays pinned to that release
-            [[ "$MIRROR_STAGING" == true ]] && channels+=(staging)
+            # Mirror :staging only while the staging branch is exactly main:
+            # a batch in progress there must not be overwritten by a nightly
+            # rebuild of main (it was, 0.24.0's first field test).
+            staging_sha=$(git ls-remote origin refs/heads/staging | cut -f1)
+            if [[ "$MIRROR_STAGING" == true && "$staging_sha" == "$GITHUB_SHA" ]]; then
+              channels+=(staging)
+            else
+              echo "staging is at ${staging_sha:-?}, not $GITHUB_SHA: leaving :staging alone"
+            fi
           else
             channels=(staging)
           fi
