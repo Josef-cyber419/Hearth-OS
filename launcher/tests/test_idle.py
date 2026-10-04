@@ -27,6 +27,9 @@ def count_draws(monkeypatch):
 def test_a_settled_screen_stops_redrawing(surface, shipped_config, monkeypatch):
     draws = count_draws(monkeypatch)
     monkeypatch.setattr(ui, "SETTLE_SECONDS", 0.0)
+    # On a slow runner the first draw can come after BACKDROP_DELAY, which
+    # starts the backdrop's fade and keeps the screen busy for half a second.
+    monkeypatch.setattr(ui, "BACKDROP_DELAY", 1e9)
     config = cfg.load(shipped_config, hide=False)
     assert ui.run(surface, Home(config), config.title, max_frames=45) is None
     assert len(draws) <= 3  # once, then only when something shown changes
