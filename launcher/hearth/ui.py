@@ -79,7 +79,7 @@ class Theme:
         self.margin = int(104 * u)
         self.header_h = int(176 * u * grow)
         self.footer_h = int(112 * u * grow)
-        self.tile_w = int(344 * u)
+        self.tile_w = int(344 * u * self.lv.wide)
         self.tile_h = int(204 * u)
         self.gap = int(34 * u)
         self.row_title_h = int(62 * u * style.TEXT_SCALE)
@@ -1141,8 +1141,19 @@ class HomeScreen:
         cell = max(2, int(7 * th.u))
         style.checkered(layer, th.margin, top + int(9 * th.u), cell, 4, 3, lv.text)
         spacing = 0.32 + (0.5 * (1 - a) if self.intro == "boot" else 0)
-        brand = style.tracked(th.font_brand, self.title.upper(), lv.text, spacing)
-        layer.blit(brand, (th.margin + cell * 4 + int(20 * th.u), top))
+        brand_x = th.margin + cell * 4 + int(20 * th.u)
+        if lv.wordmark:  # the livery's own name: its last word in the accent colour
+            words = lv.wordmark.upper().split(" ")
+            brand = style.tracked(th.font_brand, " ".join(words[:-1]) + " ", lv.text, spacing)
+            last = style.tracked(th.font_brand, words[-1], lv.accent, spacing)
+            layer.blit(brand, (brand_x, top))
+            layer.blit(last, (brand_x + brand.get_width(), top))
+            if lv.tagline:
+                line = style.tracked(th.font_date, lv.tagline.upper(), lv.dim, 0.42)
+                layer.blit(line, (brand_x, top + brand.get_height() + int(2 * th.u)))
+        else:
+            brand = style.tracked(th.font_brand, self.title.upper(), lv.text, spacing)
+            layer.blit(brand, (brand_x, top))
 
         clock = th.font_clock.render(style.clock_text(self.clock), True, lv.text)
         clock_rect = clock.get_rect(topright=(th.width - th.margin, top - int(14 * th.u)))

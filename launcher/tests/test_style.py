@@ -166,3 +166,18 @@ def test_wrap_gives_two_lines_and_an_ellipsis_at_the_end(surface):
     assert lines[1].endswith("…") and "›" in " ".join(lines) and "→" not in " ".join(lines)
     assert style.wrap(f, "Short", 320) == ["Short"]
     assert len(style.wrap(f, text, 320, lines=3)) == 3
+
+
+def test_girth_os_is_wider_by_design(surface, shipped_config):
+    assert "girth" in style.liveries()
+    lv = style.LIVERIES["girth"]
+    assert lv.wordmark == "Girth OS" and lv.wide > 1.0
+    gulf, girth = ui.Theme(surface.get_size(), "gulf"), ui.Theme(surface.get_size(), "girth")
+    assert girth.tile_w > gulf.tile_w and girth.tile_h == gulf.tile_h
+    config = cfg.load(shipped_config)
+    screen = ui.HomeScreen(surface, Home(config), config.title, livery="girth")
+    screen.draw()
+    header = surface.subsurface((0, 0, girth.width, girth.header_h))
+    found = {header.get_at((x, y))[:3] for y in range(0, girth.header_h, 2) for x in range(0, girth.width // 2, 2)}
+    assert lv.accent in found  # "OS" in orange
+    assert lv.dim in found or any(abs(c[0] - lv.dim[0]) < 8 and abs(c[2] - lv.dim[2]) < 8 for c in found)  # the tagline

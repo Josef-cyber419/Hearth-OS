@@ -33,6 +33,11 @@ class Livery:
     accent: RGB  # the broad stripe: focus, values, highlights
     second: RGB  # the pinstripe beside it
     contrast: bool = False  # the high-contrast look (Settings → Accessibility): thick focus, no glow
+    # A livery can be a whole identity: its own name in the header (the last
+    # word in the accent colour), a line under it, and tiles a bit wider.
+    wordmark: str = ""
+    tagline: str = ""
+    wide: float = 1.0
 
 
 LIVERIES = {
@@ -46,6 +51,11 @@ LIVERIES = {
                     accent=(222, 28, 38), second=(246, 196, 0)),
     "silver": Livery("Silver Arrow", ink=(12, 13, 15), panel=(27, 29, 32), text=(236, 238, 240),
                      dim=(140, 146, 153), accent=(206, 211, 217), second=(0, 161, 150)),
+    # The parody: Girth OS, wider by design. Near-black, bone white, a hotter
+    # orange and brushed silver; the tiles are 12% wider, because of course.
+    "girth": Livery("Girth OS", ink=(14, 17, 22), panel=(23, 28, 36), text=(241, 239, 233), dim=(138, 148, 158),
+                    accent=(255, 95, 10), second=(201, 206, 212), wordmark="Girth OS", tagline="Wider by design",
+                    wide=1.12),
     # Not a livery to pick in Appearance: Settings → Accessibility → High
     # contrast puts it over whichever one is chosen. Pure black, pure white,
     # a yellow that reads for most colour vision, light grey for "dim".

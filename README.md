@@ -87,7 +87,8 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   resolution, stutter-free shaders ([docs/EMULATION.md](docs/EMULATION.md#tuned-for-your-pc)).
 - **Heritage racing look**: tiles painted like period race cars (deep enamel,
   twin stripes, a number roundel), condensed signwriter type, and a choice of
-  liveries: Gulf, Martini, British Racing Green, Rosso, Silver Arrow. Motion is
+  liveries: Gulf, Martini, British Racing Green, Rosso, Silver Arrow, and
+  Girth OS (wider by design). Motion is
   eased and frame-rate independent: a stripe sweep at power-on, tiles that
   cascade in, a focus stripe that glides between tiles, and a launch where the
   tile opens out to fill the screen. `motion = "reduced"` turns the decoration off.

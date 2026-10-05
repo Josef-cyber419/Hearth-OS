@@ -10,9 +10,9 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.24.0 | Change since 0.23.0 |
 |---|--:|--:|
-| Lines of code | 18,808 | +1,547 |
-| Automated tests | 517 | +59 |
-| Lines of docs | 2,121 | +142 |
+| Lines of code | 18,829 | +1,568 |
+| Automated tests | 518 | +60 |
+| Lines of docs | 2,124 | +145 |
 | Guides in docs/ | 16 | +1 |
 | Pull requests merged | 28 | |
 | Versions released | 27 | |
@@ -21,10 +21,10 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 16,042 |
+| Home screen, Quick Menu and settings (Python) | 16,063 |
 | System image (scripts, services, config) | 1,366 |
 | Build and tools | 1,400 |
-| Tests | 7,206 |
+| Tests | 7,219 |
 
 ## What's new in 0.24.0
 
@@ -32,6 +32,7 @@ Lines of code by part (blank lines not counted):
 - **Your phone as a remote**: Settings → Phone remote shows a code and a QR code; the page (nothing to install) has a d-pad, the buttons and a keyboard, so Wi-Fi passwords, searches and sign-ins are typed on the phone. `hearthctl type` types from a terminal the same way.
 - **Your photos in the screen saver**: a folder, or a plugged-in drive's pictures, on their own or mixed with your games' art, the right way up (Settings → Home screen).
 - **Accessibility**: Settings → Accessibility: larger text (two sizes) and a high-contrast look, each person's own.
+- **A new livery, Girth OS**: wider by design. Settings → Appearance; the header says so, and the tiles really are wider.
 - **Two icons on the desktop**: **Hearth** goes back to the TV, and **Steam Gaming Mode** starts Game Mode with Steam's own interface for that one session (Hearth is back the next time). Bazzite's "Return to Gaming Mode" stays and lands on Hearth too.
 - **Fixes from the third field run**: the system drive can no longer be offered for erasing when lsblk lists partitions flat (util-linux 2.41); spotifyd installs again (its checksum file is named after the build), and Settings says so when the install failed; `hearthctl type` and the phone keyboard no longer drop doubled letters; Home from the Quick Menu over Kodi or Heroic closes the menu at once; Search's delete hint names Backspace with a keyboard; long names are cut or wrapped instead of drawn under switches, values and percentages, also at the larger text sizes; arrows the font hasn't got draw as chevrons; a controller whose battery level is unknown no longer shows an empty outline.
 
@@ -84,7 +85,7 @@ Lines of code by part (blank lines not counted):
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.24.0](../0.24.0/report.md) | 2026-10-03 | 18,808 | 517 | 2,121 | 16 | 28 |
+| [0.24.0](../0.24.0/report.md) | 2026-10-03 | 18,829 | 518 | 2,124 | 16 | 28 |
 | [0.23.0](../0.23.0/report.md) | 2026-10-01 | 17,261 | 458 | 1,979 | 15 | 28 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 27 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
