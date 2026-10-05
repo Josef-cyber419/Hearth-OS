@@ -141,3 +141,28 @@ def test_keys_switch_hints_unless_a_wii_remote_sent_them(monkeypatch):
     mapper.translate(pygame.event.Event(pygame.KEYDOWN, key=pygame.K_RETURN))
     assert style.prompt_style() == "wii"
     style.note_input("xbox")
+
+
+def test_arrows_become_chevrons_barlow_can_draw():
+    assert style.plain("Settings → Home ← back") == "Settings › Home ‹ back"
+
+
+def test_clip_cuts_with_an_ellipsis_instead_of_squeezing(surface):
+    f = style.Type(1.0)(27, "text", "semibold")
+    long = "Built-in Audio Analog Stereo (Family 17h/19h HD Audio Controller)"
+    whole = style.clip(f, long, 5000, (255, 255, 255))
+    assert whole.get_width() == f.size(long)[0]
+    cut = style.clip(f, long, 300, (255, 255, 255))
+    assert cut.get_width() <= 300 and cut.get_height() == whole.get_height()  # same size type, less of it
+    assert style.clip(f, long, 4, (255, 255, 255)).get_width() <= f.size("…")[0]
+    assert style.clip(f, "Settings → Audio", 5000, (255, 255, 255)).get_width() == f.size("Settings › Audio")[0]
+
+
+def test_wrap_gives_two_lines_and_an_ellipsis_at_the_end(surface):
+    f = style.Type(1.0)(19, "text", "medium")
+    text = "Hidden tiles → Settings → Home screen brings them back for the person who hid them, whenever they like"
+    lines = style.wrap(f, text, 320)
+    assert len(lines) == 2 and all(f.size(line)[0] <= 320 for line in lines)
+    assert lines[1].endswith("…") and "›" in " ".join(lines) and "→" not in " ".join(lines)
+    assert style.wrap(f, "Short", 320) == ["Short"]
+    assert len(style.wrap(f, text, 320, lines=3)) == 3

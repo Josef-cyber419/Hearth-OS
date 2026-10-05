@@ -123,14 +123,53 @@ def _all_mounts(dev: dict) -> set[str]:
     return found
 
 
-def drives(run: Runner = _lsblk, fstab: Path = FSTAB, include_system: bool = False) -> list[Drive]:
-    """Whole drives, the system's own marked (and left out unless asked for)."""
-    out = run(["-J", "-b", "-o", "PATH,TYPE,SIZE,MODEL,TRAN,RM,RO,FSTYPE,LABEL,UUID,MOUNTPOINTS"])
+MOUNTS = Path("/proc/self/mounts")
+
+
+def _nest(devices: list[dict]) -> list[dict]:
+    """lsblk's tree. Newer lsblk (util-linux 2.41) prints a flat list unless
+    NAME is among the columns, so partitions are hung back under their disk
+    by PKNAME either way (field report #60: the system drive read as empty
+    and was offered for erasing)."""
+    by_name = {d.get("name"): d for d in devices if d.get("name")}
+    by_name.update({d.get("path"): d for d in devices if d.get("path")})  # PKNAME is "sda", the path "/dev/sda"
+    for d in devices:
+        d.setdefault("children", [])
+    top = []
+    for d in devices:
+        parent = by_name.get(d.get("pkname")) if d.get("pkname") else None
+        if parent is not None and parent is not d:
+            if d not in parent["children"]:
+                parent["children"].append(d)
+        elif d.get("type") != "part" or not d.get("pkname"):
+            top.append(d)
+    return top
+
+
+def system_devices(mounts: Path = MOUNTS) -> set[str]:
+    """Device paths mounted where the system lives (/, /var, /boot...)."""
+    out = set()
     try:
-        devices = json.loads(out or "{}").get("blockdevices", [])
-    except ValueError:
+        lines = mounts.read_text().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        fields = line.split()
+        if len(fields) >= 2 and fields[0].startswith("/dev/") and fields[1] in SYSTEM_MOUNTS:
+            out.add(fields[0])
+    return out
+
+
+def drives(run: Runner = _lsblk, fstab: Path = FSTAB, include_system: bool = False,
+           mounts: Path = MOUNTS) -> list[Drive]:
+    """Whole drives, the system's own marked (and left out unless asked for)."""
+    out = run(["-J", "-b", "-o", "NAME,PKNAME,PATH,TYPE,SIZE,MODEL,TRAN,RM,RO,FSTYPE,LABEL,UUID,MOUNTPOINTS"])
+    try:
+        devices = _nest(json.loads(out or "{}").get("blockdevices", []))
+    except (ValueError, AttributeError, TypeError):
         return []
     ours = hearth_mounts(fstab)
+    held = system_devices(mounts)  # what the system is really mounted from, whatever lsblk says
     found = []
     for dev in devices:
         path = dev.get("path") or ""
@@ -139,7 +178,8 @@ def drives(run: Runner = _lsblk, fstab: Path = FSTAB, include_system: bool = Fal
         size = int(dev.get("size") or 0)
         if size < MIN_SIZE:
             continue
-        system = bool(_all_mounts(dev) & SYSTEM_MOUNTS)
+        paths = {path} | {c.get("path") for c in dev.get("children") or () if c.get("path")}
+        system = bool(_all_mounts(dev) & SYSTEM_MOUNTS) or bool(paths & held)
         if system and not include_system:
             continue
         parts = tuple(Part(c.get("path", ""), int(c.get("size") or 0), c.get("fstype") or "", c.get("label") or "",

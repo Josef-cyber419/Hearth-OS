@@ -14,14 +14,17 @@ release=$(curl -fsSL --retry 3 -H "Accept: application/vnd.github+json" "$api/re
     echo "No spotifyd release found (yet); will try again later" >&2
     exit 0
 }
+# The checksum is named after the build, without .tar.gz ("spotifyd-linux-x86_64-full.sha512",
+# field report #57); older releases may carry the tarball's name. Either is taken.
 read -r version url sums < <(python3 -c '
 import json, sys
 r = json.load(sys.stdin)
 asset = sys.argv[1]
 assets = {a["name"]: a["browser_download_url"] for a in r.get("assets", [])}
-if asset not in assets or asset + ".sha512" not in assets:
-    sys.exit(f"the latest release has no {asset} and its .sha512")
-print(r["tag_name"], assets[asset], assets[asset + ".sha512"])' "$asset" <<<"$release")
+sums = next((n for n in (asset.removesuffix(".tar.gz") + ".sha512", asset + ".sha512") if n in assets), None)
+if asset not in assets or sums is None:
+    sys.exit(f"the latest release has no {asset} with a .sha512")
+print(r["tag_name"], assets[asset], assets[sums])' "$asset" <<<"$release")
 
 if [[ -x $dest && -f $state && $(<"$state") == "$version" ]]; then
     exit 0
@@ -31,9 +34,15 @@ mkdir -p "$(dirname "$dest")" "$(dirname "$state")"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 curl -fsSL --retry 3 -o "$work/$asset" "$url"
-curl -fsSL --retry 3 -o "$work/$asset.sha512" "$sums"
-# Only a download matching the release's checksum is installed.
-(cd "$work" && sha512sum --check --quiet "$asset.sha512")
+curl -fsSL --retry 3 -o "$work/sums" "$sums"
+# Only a download matching the release's checksum is installed. The file
+# may name the tarball or the build, so just its hash is compared.
+expected=$(awk 'NR == 1 {print $1}' "$work/sums")
+actual=$(sha512sum "$work/$asset" | awk '{print $1}')
+if [[ -z $expected || $expected != "$actual" ]]; then
+    echo "hearth-spotify-update: $asset doesn't match its checksum; not installed" >&2
+    exit 1
+fi
 tar -xzf "$work/$asset" -C "$work" spotifyd
 chmod 755 "$work/spotifyd"
 mv "$work/spotifyd" "$dest"

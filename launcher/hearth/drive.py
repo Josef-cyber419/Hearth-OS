@@ -48,6 +48,7 @@ def target(gs, state: dict):
 
 
 HOLD = 0.06  # a real key is held for a moment; back-to-back down/up can be missed or read as held
+GAP = 0.03  # and lifted for a moment: a release and a press of the same key with no gap read as auto-repeat (#64)
 
 # Characters whose X keysym isn't just the character (for typing from the phone remote).
 KEYSYM_NAMES = {
@@ -109,6 +110,7 @@ class Keys:
         if shift:
             xtest.fake_input(d, X.KeyRelease, shift)
         d.sync()
+        self.sleep(GAP)
 
     def press(self, name: str) -> str | None:
         """Press one button; a problem, or None when it was sent."""

@@ -59,7 +59,10 @@ class Actions:
         state = session.read()
         if state["foreground"]:
             self.o.thaw()
-            session.stop_entry(state["foreground"])
+            # Stopping waits for the app (a few seconds for Kodi, Heroic,
+            # Dolphin): in the background, so the menu closes at once (#65).
+            threading.Thread(target=session.stop_entry, args=(state["foreground"],), daemon=True,
+                             name="close-app").start()
         elif state["focus"] != "home":  # e.g. Discord in front of the home screen
             self.show("home")
         elif state.get("screen"):  # Settings: the hub closes it

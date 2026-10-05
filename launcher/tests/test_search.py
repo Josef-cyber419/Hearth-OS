@@ -118,3 +118,26 @@ def test_a_real_keyboard_types_straight_in(screen):
     finally:
         pygame.event.get = real_get
     assert app is not None and app.id == "game:steam:620"
+
+
+def test_the_delete_hint_names_backspace_with_a_keyboard(screen, monkeypatch):
+    import time
+
+    from hearth import search, style
+
+    screen.search = search.Search(screen.search_catalog())
+    screen._search_t0 = time.monotonic()
+    hints = []
+    real = style.button_hint
+    monkeypatch.setattr(style, "button_hint", lambda s, x, cy, b, label, t, lv, size=1.0: hints.append(b) or
+                        real(s, x, cy, b, label, t, lv, size))
+    try:
+        style.set_prompts("keyboard")
+        screen._draw_search()
+        assert "BACKSPACE" in hints and "X" not in hints
+        hints.clear()
+        style.set_prompts("xbox")
+        screen._draw_search()
+        assert "X" in hints and "BACKSPACE" not in hints
+    finally:
+        style.set_prompts("auto")

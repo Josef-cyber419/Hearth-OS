@@ -23,6 +23,16 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
   (Settings → Home screen).
 - **Accessibility**: Settings → Accessibility: larger text (two sizes) and a
   high-contrast look, each person's own.
+- **Fixes from the third field run**: the system drive can no longer be
+  offered for erasing when lsblk lists partitions flat (util-linux 2.41);
+  spotifyd installs again (its checksum file is named after the build), and
+  Settings says so when the install failed; `hearthctl type` and the phone
+  keyboard no longer drop doubled letters; Home from the Quick Menu over
+  Kodi or Heroic closes the menu at once; Search's delete hint names
+  Backspace with a keyboard; long names are cut or wrapped instead of drawn
+  under switches, values and percentages, also at the larger text sizes;
+  arrows the font hasn't got draw as chevrons; a controller whose battery
+  level is unknown no longer shows an empty outline.
 
 ## 0.23.0 (2026-10-01)
 

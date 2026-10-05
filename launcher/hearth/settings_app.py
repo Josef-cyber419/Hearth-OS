@@ -1874,9 +1874,12 @@ class SettingsView(QuickMenuView):
         heading = style.tracked(self.type(52, "cond", "semibold"), title.upper(), lv.text, 0.05)
         surf.blit(heading, (x, y))
         y += heading.get_height()
-        sub = self.type(21, "text", "medium").render(description, True, lv.dim)
-        surf.blit(sub, (x, y))
-        y += sub.get_height() + int(20 * u)
+        f_sub = self.type(21, "text", "medium")
+        for line in style.wrap(f_sub, description, w, 2):
+            sub = f_sub.render(line, True, lv.dim)
+            surf.blit(sub, (x, y))
+            y += sub.get_height()
+        y += int(20 * u)
         area_h = self.height - self.footer_h - y
         pane = pygame.Surface((w, area_h), pygame.SRCALPHA)
         self._draw_items(pane, app.menu, pygame.Rect(0, 0, w, area_h), 1.0,
@@ -1897,9 +1900,7 @@ class SettingsView(QuickMenuView):
             hints = (("A", "Open"), ("B", "Close settings"))
         else:
             hints = (("A", "Select"), ("‹ ›", "Change"), ("B", "Back"))
-        x = self.margin
-        for button, label in hints:
-            x = style.button_hint(surf, x, cy, button, label, self.type, self.lv)
+        self.draw_hints(surf, self.margin, cy, self.width - self.margin, hints, size=1.0)
 
     def _draw_pairing(self, surf: pygame.Surface) -> None:
         """The phone remote's address, code and QR code, big enough to read from the sofa."""

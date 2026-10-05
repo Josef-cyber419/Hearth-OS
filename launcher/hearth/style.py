@@ -199,6 +199,46 @@ def clock_text(clock: str = "24h") -> str:
     return time.strftime("%H:%M")
 
 
+def plain(text: str) -> str:
+    """Text with the characters Barlow hasn't got swapped for ones it has
+    (an arrow drew as a box, field report #61)."""
+    return text.replace("→", "›").replace("←", "‹")
+
+
+def clip(font: pygame.font.Font, text: str, width: int, color) -> pygame.Surface:
+    """Text rendered no wider than `width`: cut with an ellipsis rather than
+    squeezed (a shrunk line can't be read from a sofa)."""
+    text = plain(text)
+    if width <= 0 or font.size(text)[0] <= width:
+        return font.render(text, True, color)
+    while len(text) > 1 and font.size(text[:-1].rstrip() + "…")[0] > width:
+        text = text[:-1]
+    return font.render(text[:-1].rstrip() + "…" if len(text) > 1 else "…", True, color)
+
+
+def wrap(font: pygame.font.Font, text: str, width: int, lines: int = 2) -> list[str]:
+    """Text broken into at most `lines` lines of `width`; the last one is
+    cut with an ellipsis if there's more."""
+    text = plain(text)
+    words, out, line = text.split(), [], ""
+    for word in words:
+        trial = f"{line} {word}".strip()
+        if line and font.size(trial)[0] > width:
+            out.append(line)
+            line = word
+        else:
+            line = trial
+    if line:
+        out.append(line)
+    if len(out) > lines:
+        out = out[:lines]
+        rest = " ".join(out[-1:]) + "…"
+        while len(rest) > 2 and font.size(rest)[0] > width:
+            rest = rest[:-2].rstrip() + "…"
+        out[-1] = rest
+    return out
+
+
 def fit(surf: pygame.Surface, max_w: int) -> pygame.Surface:
     if surf.get_width() <= max_w or max_w <= 0:
         return surf

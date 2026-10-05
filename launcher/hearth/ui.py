@@ -567,7 +567,7 @@ class HomeScreen:
                 choices.append(("Remove from Continue", lambda: settings.toggle_in("hide_recent", key, True)))
             if not key and row != layout.FAVORITES and app.id not in ("settings", "library"):
                 choices.append(("Hide this tile", lambda: settings.set_hidden(app.id, True)))
-                choices.append(("Bring hidden tiles back: Settings → Home screen", lambda: None))
+                choices.append(("Bring hidden tiles back: Settings › Home screen", lambda: None))
         if not choices:
             return
         choices.append(("Cancel", lambda: None))
@@ -1082,6 +1082,8 @@ class HomeScreen:
         x = right
         f = th.font_date
         for b in reversed(self._batteries):
+            if b.percent is None and not b.charging:
+                continue  # a pad asleep says nothing about its level: an empty outline would read as flat
             color = lv.accent if b.low else lv.dim
             label = style.tracked(f, "CHARGING" if b.charging and b.percent is None else
                                   f"{b.percent}%" if b.percent is not None else "", color, 0.14)
@@ -1460,7 +1462,9 @@ class HomeScreen:
         # Hints.
         cy = th.height - th.footer_h // 2
         x = m
-        for button, text_ in (("A", "Open" if sr.zone == "results" else "Type"), ("X", "Delete"),
+        # With a keyboard, X's key (F) types an f: the delete key is Backspace (#58).
+        delete = "BACKSPACE" if style.prompt_style() == "keyboard" else "X"
+        for button, text_ in (("A", "Open" if sr.zone == "results" else "Type"), (delete, "Delete"),
                               ("B", "Close")):
             x = style.button_hint(s, x, cy, button, text_, th.type, lv)
 
@@ -1636,7 +1640,7 @@ class HomeScreen:
             if not g.items:
                 msg = style.tracked(th.font_row, "NO SCREENSHOTS YET", lv.text, 0.2)
                 s.blit(msg, msg.get_rect(center=(th.width // 2, th.height // 2 - int(20 * u))))
-                how = th.font_date.render("Take one from the Quick Menu (Guide) → System → Take a screenshot",
+                how = th.font_date.render("Take one from the Quick Menu (Guide) › System › Take a screenshot",
                                           True, lv.dim)
                 s.blit(how, how.get_rect(center=(th.width // 2, th.height // 2 + int(30 * u))))
             gap = int(24 * u)

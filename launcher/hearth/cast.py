@@ -42,6 +42,7 @@ class Receiver:
     requires: tuple[str, ...] = ()
     requires_files: tuple[str, ...] = ()
     needs: str = ""  # what's missing when it can't run, in plain words
+    installer: str = ""  # the user service that fetches the program, if one does
 
     def app(self, name: str) -> App:
         return App(id=self.id, name=self.name, command=(self.script, name), background=True,
@@ -53,8 +54,22 @@ RECEIVERS = (
              needs="UxPlay isn't installed in this build"),
     Receiver(SPOTIFY, "Spotify", "spotify", "/usr/libexec/hearth/hearth-spotify",
              requires_files=("~/Applications/spotifyd",),
-             needs="spotifyd is still being installed (needs the network once)"),
+             needs="spotifyd is still being installed (needs the network once)",
+             installer="hearth-spotify-update.service"),
 )
+
+
+def installer_failed(unit: str) -> bool:
+    """Whether the service that installs a receiver's program gave up (a
+    checksum that didn't match, no release): then "still being installed"
+    would be a lie (field report #57)."""
+    import subprocess
+
+    try:
+        return subprocess.run(["systemctl", "--user", "is-failed", "--quiet", unit], capture_output=True,
+                              timeout=5).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
 
 
 def is_receiver(app_id: str | None) -> bool:
@@ -90,7 +105,10 @@ def status(config: Config, background: dict) -> list[tuple[Receiver, str, str]]:
         if not on:
             out.append((receiver, "off", "Off"))
         elif missing:
-            out.append((receiver, "missing", f"{receiver.needs} ({missing})"))
+            failed = receiver.installer and installer_failed(receiver.installer)
+            words = f"{receiver.needs} ({missing})" if not failed else \
+                f"{receiver.name}'s program couldn't be installed: hearthctl logs, or journalctl --user -u {receiver.installer}"
+            out.append((receiver, "missing", words))
         elif app.id in background:
             out.append((receiver, "running", f'Ready: look for "{name}"'))
         else:

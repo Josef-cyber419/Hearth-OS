@@ -226,9 +226,11 @@ def github(tmp_path):
     def serve(url, data):
         (served / url.replace("/", "_").replace(":", "_")).write_bytes(data)
 
-    def release(tag, binary=b"\x7fELF spotifyd", digest=None):
+    def release(tag, binary=b"\x7fELF spotifyd", digest=None, sums=None):
         base = f"https://github.com/Spotifyd/spotifyd/releases/download/{tag}"
         name = "spotifyd-linux-x86_64-full.tar.gz"
+        # The release's checksum file is named after the build, not the tarball (field report #57).
+        sums = sums or name.removesuffix(".tar.gz") + ".sha512"
         buf = io.BytesIO()
         with tarfile.open(fileobj=buf, mode="w:gz") as tar:
             info = tarfile.TarInfo("spotifyd")
@@ -236,10 +238,10 @@ def github(tmp_path):
             tar.addfile(info, io.BytesIO(binary))
         data = buf.getvalue()
         serve(f"{base}/{name}", data)
-        serve(f"{base}/{name}.sha512", f"{digest or hashlib.sha512(data).hexdigest()}  {name}\n".encode())
+        serve(f"{base}/{sums}", f"{digest or hashlib.sha512(data).hexdigest()}  {name}\n".encode())
         serve("https://api.github.com/repos/Spotifyd/spotifyd/releases/latest", json.dumps(
             {"tag_name": tag, "assets": [{"name": n, "browser_download_url": f"{base}/{n}"}
-                                         for n in (name, name + ".sha512", "spotifyd-macos-aarch64-default.tar.gz")]}
+                                         for n in (name, sums, "spotifyd-macos-aarch64-default.tar.gz")]}
         ).encode())
 
     def run():
@@ -260,6 +262,28 @@ def test_spotifyd_installs_and_updates(github):
     github["release"]("v0.5.0", binary=b"\x7fELF newer")
     github["run"]()
     assert app.read_bytes() == b"\x7fELF newer"
+
+
+def test_an_older_release_naming_the_checksum_after_the_tarball_installs_too(github):
+    github["release"]("v0.3.5", sums="spotifyd-linux-x86_64-full.tar.gz.sha512")
+    r = github["run"]()
+    assert r.returncode == 0, r.stderr
+    assert (github["home"] / "Applications/spotifyd").exists()
+
+
+def test_a_failed_install_is_said_plainly(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setattr("shutil.which", lambda name: None)
+    asked = []
+    monkeypatch.setattr(cast, "installer_failed", lambda unit: asked.append(unit) or True)
+    by = {r.id: words for r, how, words in cast.status(cfg.parse({}), {})}
+    assert asked == ["hearth-spotify-update.service"]
+    assert "couldn't be installed" in by[cast.SPOTIFY] and "journalctl --user -u hearth-spotify-update" in by[cast.SPOTIFY]
+    assert "isn't installed in this build" in by[cast.AIRPLAY]  # no installer to ask about
+    monkeypatch.setattr(cast, "installer_failed", lambda unit: False)
+    by = {r.id: words for r, how, words in cast.status(cfg.parse({}), {})}
+    assert "still being installed" in by[cast.SPOTIFY]
+    assert cast.installer_failed("hearth-nothing-of-the-sort.service") is False  # for real: not failed, or no systemd
 
 
 def test_spotifyd_download_that_fails_its_checksum_is_refused(github):

@@ -171,6 +171,23 @@ def test_typing_holds_shift_for_capitals_and_symbols(monkeypatch):
     assert presses.count(10) == 2 and presses.count(50) == 2  # "1" plain, "!" shifted
 
 
+def test_doubled_letters_are_lifted_between_presses(monkeypatch):
+    """"hello": the second l must be released, and a moment pass, before
+    the next press, or X reads it as one held key (field report #64)."""
+    from Xlib import X
+    from Xlib.ext import xtest
+
+    log = []
+    monkeypatch.setattr(xtest, "fake_input", lambda d, kind, code=0, **kw: log.append(("down" if kind == X.KeyPress
+                                                                                       else "up", code)))
+    d = types.SimpleNamespace(keysym_to_keycode=lambda keysym: 46, keycode_to_keysym=lambda code, index: 0x6C,
+                              sync=lambda: None)
+    monkeypatch.setattr(drive, "target", lambda gs, state: types.SimpleNamespace(id=7, set_input_focus=lambda *a: None))
+    keys = drive.Keys(types.SimpleNamespace(d=d), sleep=lambda s: log.append(("wait", s)))
+    assert keys.type("ll") is None
+    assert log == [("down", 46), ("wait", drive.HOLD), ("up", 46), ("wait", drive.GAP)] * 2
+
+
 def test_settings_page_and_the_pairing_card(shipped_config, tmp_path):
     pygame.display.init()
     pygame.font.init()
