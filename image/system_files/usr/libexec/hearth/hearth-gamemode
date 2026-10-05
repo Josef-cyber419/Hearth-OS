@@ -1,6 +1,19 @@
 #!/usr/bin/bash
 # Leave the desktop for Game Mode, which starts Hearth (the same as the
-# desktop's "Return to Gaming Mode" shortcut). Used by hearth-desktop-guide.
+# desktop's "Return to Gaming Mode" shortcut). Used by hearth-desktop-guide
+# and the Hearth icon on the desktop.
+#
+#   hearth-gamemode          Game Mode with Hearth
+#   hearth-gamemode --steam  Game Mode with Steam's own interface, this once:
+#                            the next Game Mode session is Hearth again
+#                            (the "Steam Gaming Mode" icon on the desktop).
+#                            For every time: hearthctl disable.
+once=${XDG_CONFIG_HOME:-$HOME/.config}/hearth/steam-once
+case "${1:-}" in
+    --steam) mkdir -p "$(dirname "$once")" && touch "$once" ;;
+    "") rm -f "$once" ;;
+    *) echo "usage: hearth-gamemode [--steam]" >&2; exit 2 ;;
+esac
 for select in /usr/libexec/os-session-select /usr/bin/steamos-session-select; do
     [[ -x $select ]] && exec "$select" gamescope
 done

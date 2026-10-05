@@ -54,6 +54,7 @@ EDGE_ZONE = 0.12  # fraction of the screen's height at each edge
 # screen stops redrawing 60 times a second: an unchanging
 # picture shouldn't cost CPU. It redraws when what it shows changes (the clock,
 # batteries, network, a message). Input is still read 30 times a second.
+BUSY_SECONDS = 10.0  # how often, past the saver or sleep time, to ask whether the PC is in use after all
 SETTLE_SECONDS = 3.0
 SETTLED_FPS = 2  # how often a settled screen checks whether anything changed
 SETTLED_REDRAW = 10.0  # and redraws anyway, just in case
@@ -69,16 +70,20 @@ class Theme:
         w, h = size
         u = self.u = h / 1080
         self.lv: Livery = style.livery(livery)
+        self.contrast = self.lv.contrast
         self.type = Type(u)
         self.width, self.height = w, h
+        # Bigger text (Settings → Accessibility) gets taller header, footer and
+        # row titles; the tiles themselves stay, their names shrink to fit.
+        grow = 1 + (style.TEXT_SCALE - 1) * 0.6
         self.margin = int(104 * u)
-        self.header_h = int(176 * u)
-        self.footer_h = int(112 * u)
-        self.tile_w = int(344 * u)
+        self.header_h = int(176 * u * grow)
+        self.footer_h = int(112 * u * grow)
+        self.tile_w = int(344 * u * self.lv.wide)
         self.tile_h = int(204 * u)
         self.gap = int(34 * u)
-        self.row_title_h = int(62 * u)
-        self.row_h = self.row_title_h + self.tile_h + int(66 * u)
+        self.row_title_h = int(62 * u * style.TEXT_SCALE)
+        self.row_h = self.row_title_h + self.tile_h + int(66 * u * grow)
         self.radius = max(4, int(12 * u))
         self.focus_scale = 1.06
         t = self.type
@@ -258,9 +263,9 @@ def paint_game(size: tuple[int, int], app: App, th: Theme, lit: bool, art: pygam
         style.stripes(surf, 0, 0, h, max(3, int(h * 0.05)), (lv.accent, lv.second))
     _progress(surf, app, th)
     style.rounded(surf, th.radius)
-    if lit:
-        pygame.draw.rect(surf, (*lv.text, 225), surf.get_rect(), width=max(2, int(2 * th.u)),
-                         border_radius=th.radius)
+    if lit:  # high contrast: a thick ring in the accent, not a hairline in the text colour
+        pygame.draw.rect(surf, (*lv.accent, 255) if lv.contrast else (*lv.text, 225), surf.get_rect(),
+                         width=max(2, int((6 if lv.contrast else 2) * th.u)), border_radius=th.radius)
     return surf
 
 
@@ -300,9 +305,9 @@ def paint_tile(size: tuple[int, int], app: App, th: Theme, lit: bool, icon: pyga
             _badge(surf, app.platform, th, pad)
     _progress(surf, app, th)
     style.rounded(surf, th.radius)
-    if lit:
-        pygame.draw.rect(surf, (*lv.text, 225), surf.get_rect(), width=max(2, int(2 * th.u)),
-                         border_radius=th.radius)
+    if lit:  # high contrast: a thick ring in the accent, not a hairline in the text colour
+        pygame.draw.rect(surf, (*lv.accent, 255) if lv.contrast else (*lv.text, 225), surf.get_rect(),
+                         width=max(2, int((6 if lv.contrast else 2) * th.u)), border_radius=th.radius)
     return surf
 
 
@@ -397,8 +402,10 @@ class HomeScreen:
         self.back_exits = False  # the Library: B leaves it
         self.exit = False
         self.saver = False  # the screen saver is showing
-        self.saver_style = "ambient"  # or "clock" (Settings → Home screen)
+        self.saver_style = "ambient"  # "photos", "both" or "clock" (Settings → Home screen)
+        self.saver_photos = ""  # the photos folder ("" = ~/Pictures)
         self._slides: list[tuple[str, str | None, str]] = []  # (title, platform, art) for ambient
+        self._photo_paths: set[str] = set()  # slides that are photos (loaded their own way)
         self._slide_cache: dict[int, pygame.Surface] = {}
         self._saver_t0 = 0.0
         self.hints = (("A", "Open"), ("X", "Favorite"), ("Y", "Options"), ("VIEW", "Search"), ("GUIDE", "Quick Menu"))
@@ -432,6 +439,10 @@ class HomeScreen:
     def _make_background(self) -> pygame.Surface:
         th, lv = self.theme, self.theme.lv
         w, h = th.width, th.height
+        if th.contrast:  # plain: no gradient, glow or stripes behind the text
+            bg = pygame.Surface((w, h))
+            bg.fill(lv.ink)
+            return bg.convert() if pygame.display.get_surface() else bg
         bg = style.gradient((w, h), style.lighten(lv.ink, 0.035), mix(lv.ink, (0, 0, 0), 0.35), vertical=True)
         # A faint glow of the livery's stripe colour, top left, like light on paint.
         glow = pygame.Surface((w // 8, h // 8), pygame.SRCALPHA)
@@ -556,7 +567,7 @@ class HomeScreen:
                 choices.append(("Remove from Continue", lambda: settings.toggle_in("hide_recent", key, True)))
             if not key and row != layout.FAVORITES and app.id not in ("settings", "library"):
                 choices.append(("Hide this tile", lambda: settings.set_hidden(app.id, True)))
-                choices.append(("Bring hidden tiles back: Settings → Home screen", lambda: None))
+                choices.append(("Bring hidden tiles back: Settings › Home screen", lambda: None))
         if not choices:
             return
         choices.append(("Cancel", lambda: None))
@@ -976,6 +987,8 @@ class HomeScreen:
         th, lv = self.theme, self.theme.lv
         w, h = th.width, th.height
         out = self.background.copy()
+        if th.contrast:
+            return out  # plain black behind the rows: the art's glow would cost legibility
         if app.id not in self._blurs:
             art = load_art(app.art)
             # Blurred right out (down to a few dozen pixels, then up in steps
@@ -1069,6 +1082,8 @@ class HomeScreen:
         x = right
         f = th.font_date
         for b in reversed(self._batteries):
+            if b.percent is None and not b.charging:
+                continue  # a pad asleep says nothing about its level: an empty outline would read as flat
             color = lv.accent if b.low else lv.dim
             label = style.tracked(f, "CHARGING" if b.charging and b.percent is None else
                                   f"{b.percent}%" if b.percent is not None else "", color, 0.14)
@@ -1126,8 +1141,19 @@ class HomeScreen:
         cell = max(2, int(7 * th.u))
         style.checkered(layer, th.margin, top + int(9 * th.u), cell, 4, 3, lv.text)
         spacing = 0.32 + (0.5 * (1 - a) if self.intro == "boot" else 0)
-        brand = style.tracked(th.font_brand, self.title.upper(), lv.text, spacing)
-        layer.blit(brand, (th.margin + cell * 4 + int(20 * th.u), top))
+        brand_x = th.margin + cell * 4 + int(20 * th.u)
+        if lv.wordmark:  # the livery's own name: its last word in the accent colour
+            words = lv.wordmark.upper().split(" ")
+            brand = style.tracked(th.font_brand, " ".join(words[:-1]) + " ", lv.text, spacing)
+            last = style.tracked(th.font_brand, words[-1], lv.accent, spacing)
+            layer.blit(brand, (brand_x, top))
+            layer.blit(last, (brand_x + brand.get_width(), top))
+            if lv.tagline:
+                line = style.tracked(th.font_date, lv.tagline.upper(), lv.dim, 0.42)
+                layer.blit(line, (brand_x, top + brand.get_height() + int(2 * th.u)))
+        else:
+            brand = style.tracked(th.font_brand, self.title.upper(), lv.text, spacing)
+            layer.blit(brand, (brand_x, top))
 
         clock = th.font_clock.render(style.clock_text(self.clock), True, lv.text)
         clock_rect = clock.get_rect(topright=(th.width - th.margin, top - int(14 * th.u)))
@@ -1232,7 +1258,7 @@ class HomeScreen:
         img.set_alpha(None)
 
         # Now and then, light runs across the focused tile's paint.
-        if focused and not self.reduced and not self.settled and f >= 0.99:
+        if focused and not self.reduced and not th.contrast and not self.settled and f >= 0.99:
             since = time.monotonic() - self._focus_since - 0.5
             phase = (since % 5.0) / 1.1 if since > 0 else 0
             glint = style.sheen(rect.size, phase)
@@ -1447,7 +1473,9 @@ class HomeScreen:
         # Hints.
         cy = th.height - th.footer_h // 2
         x = m
-        for button, text_ in (("A", "Open" if sr.zone == "results" else "Type"), ("X", "Delete"),
+        # With a keyboard, X's key (F) types an f: the delete key is Backspace (#58).
+        delete = "BACKSPACE" if style.prompt_style() == "keyboard" else "X"
+        for button, text_ in (("A", "Open" if sr.zone == "results" else "Type"), (delete, "Delete"),
                               ("B", "Close")):
             x = style.button_hint(s, x, cy, button, text_, th.type, lv)
 
@@ -1623,7 +1651,7 @@ class HomeScreen:
             if not g.items:
                 msg = style.tracked(th.font_row, "NO SCREENSHOTS YET", lv.text, 0.2)
                 s.blit(msg, msg.get_rect(center=(th.width // 2, th.height // 2 - int(20 * u))))
-                how = th.font_date.render("Take one from the Quick Menu (Guide) → System → Take a screenshot",
+                how = th.font_date.render("Take one from the Quick Menu (Guide) › System › Take a screenshot",
                                           True, lv.dim)
                 s.blit(how, how.get_rect(center=(th.width // 2, th.height // 2 + int(30 * u))))
             gap = int(24 * u)
@@ -1675,31 +1703,52 @@ class HomeScreen:
 
     def start_saver(self) -> None:
         """The screen saver begins: gather the artwork to show (ambient)."""
+        import random
+
         self.saver = True
         self._slides = []
         self._slide_cache = {}
+        self._photo_paths = set()
         self._saver_t0 = time.monotonic()
-        if self.saver_style != "ambient":
+        rng = random.Random(int(self._saver_t0))
+        style_ = self.saver_style
+        if style_ not in ("ambient", "photos", "both"):
             return
-        try:
-            seen = set()
-            for game in self.games():
-                # Only checked here; each picture loads when its turn comes.
-                if game.art and game.art not in seen and os.path.isfile(game.art):
-                    seen.add(game.art)
-                    self._slides.append((game.title, game.platform, game.art))
-        except Exception:  # no art is fine: the clock saver then
-            log.exception("screen saver art")
-        try:
-            from . import captures
+        art: list[tuple[str, str | None, str]] = []
+        shots: list[tuple[str, str | None, str]] = []
+        if style_ in ("ambient", "both"):
+            try:
+                seen = set()
+                for game in self.games():
+                    # Only checked here; each picture loads when its turn comes.
+                    if game.art and game.art not in seen and os.path.isfile(game.art):
+                        seen.add(game.art)
+                        art.append((game.title, game.platform, game.art))
+            except Exception:  # no art is fine: the clock saver then
+                log.exception("screen saver art")
+            try:
+                from . import captures
 
-            for cap in captures.all_captures()[:SAVER_CAPTURES]:  # your latest screenshots too
-                self._slides.append((cap.title, "Screenshot", str(cap.path)))
-        except Exception:
-            log.exception("screen saver captures")
-        import random
+                for cap in captures.all_captures()[:SAVER_CAPTURES]:  # your latest screenshots too
+                    art.append((cap.title, "Screenshot", str(cap.path)))
+            except Exception:
+                log.exception("screen saver captures")
+        if style_ in ("photos", "both"):
+            try:
+                from . import photos
 
-        random.Random(int(self._saver_t0)).shuffle(self._slides)
+                folder = self.saver_photos or str(photos.home_pictures())
+                for path in photos.find(folder):
+                    shots.append((photos.caption(path, folder), None, str(path)))
+            except Exception:
+                log.exception("screen saver photos")
+        rng.shuffle(art)
+        rng.shuffle(shots)
+        if art and shots:  # both: half and half, however many photos there are
+            art, shots = art[:SLIDE_MAX // 2], shots[:SLIDE_MAX - min(len(art), SLIDE_MAX // 2)]
+        self._photo_paths = {path for _, _, path in shots}
+        self._slides = art + shots
+        rng.shuffle(self._slides)
         del self._slides[SLIDE_MAX:]
 
     def _slide(self, i: int) -> pygame.Surface | None:
@@ -1710,8 +1759,14 @@ class HomeScreen:
             key = i % len(self._slides)
             if key in self._slide_cache:
                 return self._slide_cache[key]
-            art = load_art(self._slides[key][2])
-            _art.pop(self._slides[key][2], None)  # keep only the scaled slide (#49: a 4K capture is 33 MB)
+            path = self._slides[key][2]
+            if path in self._photo_paths:
+                from . import photos
+
+                art = photos.load(path, (th.width, th.height))  # the right way up, decoded small; not cached
+            else:
+                art = load_art(path)
+                _art.pop(path, None)  # keep only the scaled slide (#49: a 4K capture is 33 MB)
             if art is None:
                 del self._slides[key]
                 self._slide_cache.clear()  # keyed by position, which just moved
@@ -1894,6 +1949,7 @@ def run(
     back_exits: bool = False,
     saver_after: float = 0,
     saver_style: str = "ambient",
+    saver_photos: str = "",
     sleep_after: float = 0,
     swap_confirm: bool = False,
     offset: tuple[int, int] = (0, 0),
@@ -1902,6 +1958,7 @@ def run(
     whats_new: tuple[str, list[str]] | None = None,
     interrupt: Callable[[], str | None] | None = None,
     running_now: Callable[[], set[str]] | None = None,
+    busy: Callable[[], str | None] | None = None,
 ) -> App | None:
     """Show the home screen until the user picks an app.
 
@@ -1912,13 +1969,16 @@ def run(
     `stats` (events.FrameStats) collects frame times. `rebuild` gives fresh
     contents after a change in the Options popup; `back_exits` makes B leave
     (the Library). After `saver_after` seconds without input the screen saver
-    shows; after `sleep_after` the PC sleeps (0 = never). `offset` is where
+    shows (`saver_style`: games' art, photos from `saver_photos`, both, or
+    the clock); after `sleep_after` the PC sleeps (0 = never). `offset` is where
     this surface sits on the screen (a safe-area inset), for the pointer.
     `ask` may return a question to confirm before a tile opens. `whats_new`
     (version, notes) is shown once, after an update. `interrupt` is polled a
     few times a second; a reason from it ends the run with an INTERRUPTED app
     (the hub asks who's playing again after sleep, or when the Quick Menu
-    asks).
+    asks). While `busy` says something is going on (another window in front,
+    music playing), the PC doesn't sleep; while a window is in front the saver
+    waits too.
     """
     screen = HomeScreen(surface, home, title, livery=livery, motion=motion, intro=intro)
     screen.message = message
@@ -1926,6 +1986,7 @@ def run(
     screen.rebuild = rebuild
     screen.back_exits = back_exits
     screen.saver_style = saver_style
+    screen.saver_photos = saver_photos
     screen.ask = ask
     screen.whats_new = whats_new
     if hints:
@@ -1938,7 +1999,8 @@ def run(
     clock = pygame.time.Clock()
     frames = 0
     blocked = False
-    idle_since = time.monotonic()
+    idle_since = active_at = time.monotonic()
+    busy_asked = -1e9
     last_draw = last_look = 0.0
     drawn_looks = None
     while max_frames is None or frames < max_frames:
@@ -2018,11 +2080,23 @@ def run(
             return chosen
         if blocked:
             idle_since = time.monotonic()
-        idle = time.monotonic() - idle_since
-        if sleep_after and idle > sleep_after:
+        now_s = time.monotonic()
+        idle = now_s - idle_since
+        # Past a threshold, ask (every few seconds: it runs busctl) whether
+        # the PC is in use after all: another window in front means nothing
+        # counts as idle; music playing means no sleep, but the saver may run.
+        if busy and now_s - busy_asked > BUSY_SECONDS and (idle > sleep_after > 0 or idle > saver_after > 0):
+            busy_asked = now_s
+            doing = busy()
+            if doing == "shown":
+                idle_since = now_s
+                idle = 0.0
+            elif doing:
+                active_at = now_s
+        if sleep_after and idle > sleep_after and now_s - active_at > sleep_after:
             events.record("idle_sleep", minutes=round(idle / 60))
             subprocess.Popen(["systemctl", "suspend"])
-            idle_since = time.monotonic()
+            idle_since = active_at = now_s
         if saver_after and idle > saver_after and not screen.saver:
             screen.start_saver()
             events.record("screen_saver", style=screen.saver_style, slides=len(screen._slides))

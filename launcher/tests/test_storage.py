@@ -58,6 +58,43 @@ def test_finds_added_drives_not_the_system(fstab):
     assert system.system and system.path == "/dev/nvme0n1"
 
 
+def lsblk_flat():
+    """The same PC as util-linux 2.41 prints it: one flat list, partitions
+    naming their disk in PKNAME, and nothing in children (field report #60)."""
+    devs = []
+    for d in json.loads(lsblk())["blockdevices"]:
+        name = d["path"].rsplit("/", 1)[1]
+        devs.append({"name": name, "pkname": None, **{k: v for k, v in d.items() if k != "children"}})
+        for c in d.get("children", []):
+            devs.append({"name": c["path"].rsplit("/", 1)[1], "pkname": name, **c})
+    return json.dumps({"blockdevices": devs})
+
+
+def test_a_flat_lsblk_still_knows_the_system_drive_and_the_partitions(fstab):
+    found = storage.drives(lambda args: lsblk_flat(), fstab)
+    assert [d.path for d in found] == ["/dev/sda", "/dev/sdb"]
+    assert found[0].contents == "Games (255 GB)" and found[1].mounted_part.path == "/dev/sdb1"
+    system = storage.drives(lambda args: lsblk_flat(), fstab, include_system=True)[0]
+    assert system.system and system.path == "/dev/nvme0n1" and len(system.parts) == 2
+
+
+def test_the_drive_the_system_is_mounted_from_is_never_offered(fstab, tmp_path):
+    """Even with lsblk saying nothing about mount points, /proc/self/mounts does."""
+    bare = json.loads(lsblk())
+    for d in bare["blockdevices"]:
+        d.pop("mountpoints", None)
+        for c in d.get("children", []):
+            c["mountpoints"] = [None]
+    mounts = tmp_path / "mounts"
+    mounts.write_text("/dev/nvme0n1p2 /sysroot btrfs rw 0 0\n/dev/nvme0n1p2 /var btrfs rw 0 0\n"
+                      "/dev/nvme0n1p1 /boot/efi vfat rw 0 0\ntmpfs /tmp tmpfs rw 0 0\n")
+    assert storage.system_devices(mounts) == {"/dev/nvme0n1p2", "/dev/nvme0n1p1"}
+    assert storage.system_devices(tmp_path / "missing") == set()
+    found = storage.drives(lambda args: json.dumps(bare), fstab, mounts=mounts)
+    assert [d.path for d in found] == ["/dev/sda", "/dev/sdb"]
+    assert storage.drives(lambda args: json.dumps(bare), fstab, include_system=True, mounts=mounts)[0].system
+
+
 def test_a_drive_with_a_linux_filesystem_can_be_used_as_it_is(fstab):
     stick = storage.drives(lambda args: lsblk(fstab_uuid="other"), fstab)[1]
     assert stick.mounted_at is None and stick.usable_part.path == "/dev/sdb1"

@@ -103,6 +103,30 @@ this run: gather what it asks for and comment with it.
 Read the top entry of CHANGELOG.md and try each item, one line per item in
 the run's report. Things to know:
 
+- **Casting** (0.24.0): `hearthctl check` → Network says whether the AirPlay
+  and Spotify receivers run, avahi is up and an H.264 decoder exists;
+  `hearthctl status` shows "Casting: …" while a phone's picture is on screen.
+  Trying it needs the owner's phone (tier 3): AirPlay a video and a photo,
+  mirror the screen, then stop on the phone (Hearth should go back by
+  itself); cast while a game runs; hold Guide during a cast; Quick Menu →
+  System → Stop casting. Spotify: pick the PC in the Spotify app (Premium),
+  check the Quick Menu's Now playing and volume. YouTube: link with the TV
+  code, then cast from the phone with the tile open. Screenshot each.
+- **Phone remote** (0.24.0): `hearthctl status` prints the address and code
+  (so does Settings → Phone remote, with a QR code). From any phone on the
+  Wi-Fi: open the address, type the code, then try every button and type into
+  Search and into a Wi-Fi password box. `hearthctl type "text"` uses the same
+  path from SSH. Five wrong codes should make a new one.
+- **Photos in the screen saver**: put a few JPEGs from a phone (some taken
+  sideways) in `~/Pictures/<folder>` (or plug in a USB stick with a DCIM
+  folder), choose *Your photos* or *Games and photos* in Settings → Home
+  screen, set the saver to 5 minutes, wait: upright pictures, the folder
+  name as the caption, the time drifting.
+- **Accessibility**: Settings → Accessibility → text size *Larger* and
+  *High contrast*: screenshot the home screen, the Quick Menu and Settings;
+  nothing should overlap or run off the screen. With People set up, check a
+  second person keeps the standard look.
+
 - **People** (Settings → People): adding a second person makes the owner the
   admin and Hearth starts on "Who's playing?". Test with the owner present:
   add a person, set their PIN, pick them on the picker, check Steam signs in
@@ -163,8 +187,12 @@ Steam, then `~/steam-<appid>.log`) and attach the last 100 lines of each.
 
 - **Updates**: `hearthctl update` when one is due: output ends with
   "ready: restart to finish" or "already up to date"; never a lock error.
-- **Desktop Mode round trip**: Settings → Desktop Mode, then back to Game Mode:
-  lands on Hearth.
+- **Desktop Mode round trip**: Settings → Desktop Mode, then the **Hearth**
+  icon on the desktop: lands on Hearth. Again with the **Steam Gaming Mode**
+  icon: lands in Steam's interface; when Steam exits (Power → Exit), Game
+  Mode comes back with Hearth, not Steam. Both icons are on the desktop
+  (`~/Desktop`) after the first desktop login; Bazzite's own "Return to
+  Gaming Mode" is still there and lands on Hearth too.
 - Never roll back, reset settings, reformat drives or change the network
   without the owner asking.
 

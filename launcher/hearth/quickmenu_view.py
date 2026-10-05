@@ -96,15 +96,7 @@ class QuickMenuView:
         w, h = size
         self.u = h / 1080
         self.type = Type(self.u)
-        t = self.type
-        self.f_caption = t(17, "cond", "semibold")
-        self.f_title = t(48, "cond", "semibold")
-        self.f_clock = t(32, "cond", "semibold")
-        self.f_tab = t(18, "cond", "semibold")
-        self.f_label = t(27, "text", "semibold")
-        self.f_detail = t(19, "text", "medium")
-        self.f_value = t(28, "cond", "semibold")
-        self.f_avatar = t(26, "cond", "bold")
+        self._make_fonts()
         self.panel_w = int(640 * self.u)
         self.margin = int(28 * self.u)
         self.pad = int(58 * self.u)
@@ -126,6 +118,20 @@ class QuickMenuView:
         self.lv = style.livery(livery)
         self.reduced = motion == "reduced"
         self.smooth = Smooth(rate=16.0, instant=self.reduced)
+        self._make_fonts()  # the text size may have changed too (Settings → Accessibility)
+
+    def _make_fonts(self) -> None:
+        t = self.type
+        self.f_caption = t(17, "cond", "semibold")
+        self.f_title = t(48, "cond", "semibold")
+        self.f_clock = t(32, "cond", "semibold")
+        self.f_tab = t(18, "cond", "semibold")
+        self.f_label = t(27, "text", "semibold")
+        self.f_detail = t(19, "text", "medium")
+        self.f_value = t(28, "cond", "semibold")
+        self.f_avatar = t(26, "cond", "bold")
+        # Rows grow with the text (most of the way: the padding needn't).
+        self.row_scale = 1 + (style.TEXT_SCALE - 1) * 0.8
 
     def _make_backdrop(self) -> pygame.Surface:
         """Darken the game towards the right, where the panel sits."""
@@ -226,7 +232,7 @@ class QuickMenuView:
         clock = self.f_clock.render(style.clock_text(self.clock), True, lv.text)
         head.blit(clock, (r.w - self.pad_r - clock.get_width(), y - self.px(10)))
         y += cap.get_height() + self.px(4)
-        chip_w = self.px(140) if paused else 0
+        chip_w = (self.f_caption.size("PAUSED")[0] + self.px(90)) if paused else 0
         name = style.fit(style.tracked(self.f_title, title.upper(), lv.text, 0.04), r.w - pad - self.pad_r - chip_w)
         head.blit(name, (pad, y))
         if paused:
@@ -280,6 +286,10 @@ class QuickMenuView:
             color = mix(lv.dim, lv.text, glow)
             Icons.draw(layer, tab.icon, (int(x + tab_w / 2), self.px(22)), self.px(28), color, bg=lv.panel)
             label = style.tracked(self.f_tab, tab.title.upper(), color, 0.22)
+            if label.get_width() > tab_w - self.px(10):  # larger text: closer letters, then a smaller face
+                label = style.tracked(self.f_tab, tab.title.upper(), color, 0.06)
+                if label.get_width() > tab_w - self.px(10):
+                    label = style.fit(label, int(tab_w - self.px(10)))
             layer.blit(label, label.get_rect(midtop=(int(x + tab_w / 2), self.px(44))))
         # The livery stripe under the active tab glides to the next one.
         target = pad + menu.tab * tab_w + tab_w * 0.22
@@ -293,7 +303,7 @@ class QuickMenuView:
     def _draw_items(self, s: pygame.Surface, menu: QuickMenu, area: pygame.Rect, t: float,
                     highlight: float = 1.0) -> None:
         lv, pad = self.lv, self.pad
-        row_h, gap = self.px(98), self.px(6)
+        row_h, gap = self.px(98 * self.row_scale), self.px(6)
         items = menu.current.items
         sel = menu.selected
         idx = items.index(sel) if sel in items else 0
@@ -341,49 +351,70 @@ class QuickMenuView:
             x += self.px(68)
 
         label_color = (lv.accent if item.alert else lv.dim) if item.kind == "info" else lv.text
+        # What's left of the row once its control (switch, value, chevron)
+        # has its space: text is clipped or wrapped to it, never drawn under
+        # it (field reports #59, #62, #63).
+        if item.kind == "toggle":
+            room = inner.right - x - self.px(78 + 24)
+        elif item.kind == "choice" and item.options:
+            room = inner.right - x - self._choice_width(item) - self.px(24)
+        elif item.kind == "action":
+            room = inner.right - x - self.px(40)
+        else:
+            room = inner.right - x
+        room = max(self.px(80), room)
         if confirming:
             label = style.fit(style.tracked(self.f_value, (item.confirm_label or "Press A again to confirm").upper(),
                                             lv.accent, 0.08), max(1, inner.right - x))
         else:
-            label = self.f_label.render(item.label, True, label_color)
-        detail = self.f_detail.render(item.detail, True, lv.dim) if item.detail and not confirming else None
+            label = style.clip(self.f_label, item.label, room, label_color)
         if item.kind == "meter":  # a live reading: value on the right, a bar under it
             top = rect.y + self.px(14)
-            s.blit(label, (x, top))
-            shown = self.smooth.get((item.key, "value"), max(0.0, min(100.0, item.value or 0)), self._dt)
             value = style.tracked(self.f_value, item.unit, lv.accent if item.alert else lv.text, 0.06)
             s.blit(value, (inner.right - value.get_width(), top - self.px(2)))
-            if detail:
+            label = style.clip(self.f_label, item.label, inner.right - value.get_width() - self.px(20) - x,
+                               label_color)
+            s.blit(label, (x, top))
+            shown = self.smooth.get((item.key, "value"), max(0.0, min(100.0, item.value or 0)), self._dt)
+            if item.detail:
                 room = inner.right - value.get_width() - self.px(20) - (x + label.get_width() + self.px(14))
-                s.blit(style.fit(detail, max(1, room)), (x + label.get_width() + self.px(14), top + self.px(6)))
+                if room < self.px(120):  # no space beside the label: under it, at full size
+                    s.blit(style.clip(self.f_detail, item.detail, inner.right - x, lv.dim),
+                           (x, top + label.get_height()))
+                else:
+                    s.blit(style.clip(self.f_detail, item.detail, room, lv.dim),
+                           (x + label.get_width() + self.px(14), top + self.px(6)))
             self._gauge(s, pygame.Rect(x, rect.bottom - self.px(26), inner.right - x, max(2, self.px(5))),
                         shown, False, False)
             return
         if item.kind == "slider":
             top = rect.y + self.px(14)
-            s.blit(label, (x, top))
             shown = self.smooth.get((item.key, "value"), item.fraction * 100, self._dt)
             text = "MUTED" if item.muted else item.shows(item.value)
             value = style.tracked(self.f_value, text, lv.dim if item.muted else (lv.accent if selected else lv.text),
                                   0.06)
             s.blit(value, (inner.right - value.get_width(), top - self.px(2)))
-            if detail:
-                s.blit(detail, (x + label.get_width() + self.px(14), top + self.px(6)))
+            s.blit(label, (x, top))
+            if item.detail:  # the output's name: cut before the percentage (#59)
+                room = inner.right - value.get_width() - self.px(20) - (x + label.get_width() + self.px(14))
+                s.blit(style.clip(self.f_detail, item.detail, room, lv.dim),
+                       (x + label.get_width() + self.px(14), top + self.px(6)))
             self._gauge(s, pygame.Rect(x, rect.bottom - self.px(26), inner.right - x, max(2, self.px(5))),
                         shown, item.muted, selected)
             return
 
-        text_h = label.get_height() + (detail.get_height() if detail else 0)
+        lines = style.wrap(self.f_detail, item.detail, room, 2) if item.detail and not confirming else []
+        text_h = label.get_height() + self.f_detail.get_height() * len(lines)
         top = rect.centery - text_h // 2
         s.blit(label, (x, top))
-        if detail:
-            s.blit(detail, (x, top + label.get_height()))
+        for i, line in enumerate(lines):
+            s.blit(self.f_detail.render(line, True, lv.dim), (x, top + label.get_height() + i * self.f_detail.get_height()))
 
         if item.kind == "toggle":
             self._switch(s, item.key, pygame.Rect(0, 0, self.px(78), self.px(40)), inner.right, rect.centery,
                          bool(item.value))
         elif item.kind == "choice" and item.options:
-            self._choice(s, item, inner.right, rect.centery, selected, x + label.get_width() + self.px(20))
+            self._choice(s, item, inner.right, rect.centery, selected, x + room + self.px(8))
         elif item.kind == "action":
             chev = self.type(44, "cond", "medium").render("›", True, lv.accent if selected else lv.dim)
             s.blit(chev, chev.get_rect(midright=(inner.right, rect.centery - self.px(2))))
@@ -426,16 +457,18 @@ class QuickMenuView:
         knob_x = rect.x + rect.h // 2 + (rect.w - rect.h) * k
         style.circle(s, mix(lv.dim, lv.text, k), (knob_x, rect.centery), r)
 
+    def _choice_width(self, item: Item) -> int:
+        """How wide a choice's value and arrows get: what the value needs, up
+        to a little under half the row (a long output name is cut)."""
+        natural = self.f_value.size(str(item.options[item.value]))[0]
+        return min(natural, int((self.panel_w - self.pad - self.pad_r) * 0.45)) + self.px(70)
+
     def _choice(self, s: pygame.Surface, item: Item, right: int, cy: int, selected: bool, min_x: int) -> None:
         lv = self.lv
         arrow_color = lv.accent if selected else lv.dim
-        text = item.options[item.value]
-        value = self.f_value.render(text, True, lv.text)
+        text = str(item.options[item.value])
         avail = right - min_x - self.px(70)
-        if value.get_width() > avail > 0:
-            while len(text) > 3 and self.f_value.size(text + "…")[0] > avail:
-                text = text[:-1]
-            value = self.f_value.render(text + "…", True, lv.text)
+        value = style.clip(self.f_value, text, avail, lv.text) if avail > 0 else self.f_value.render(text, True, lv.text)
         a = self.px(9)
         rx = right - a
         pygame.draw.polygon(s, arrow_color, [(rx - a, cy - a), (rx + a // 2, cy), (rx - a, cy + a)])
@@ -445,6 +478,19 @@ class QuickMenuView:
         pygame.draw.polygon(s, arrow_color, [(lx + a, cy - a), (lx - a // 2, cy), (lx + a, cy + a)])
 
     def _draw_footer(self, s: pygame.Surface, area: pygame.Rect) -> None:
-        x = self.pad
-        for button, text in (("LB RB", "Tabs"), ("A", "Select"), ("‹ ›", "Adjust"), ("B", "Close")):
-            x = style.button_hint(s, x, area.centery, button, text, self.type, self.lv, size=0.9)
+        self.draw_hints(s, self.pad, area.centery, s.get_width() - self.pad_r,
+                        (("LB RB", "Tabs"), ("A", "Select"), ("‹ ›", "Adjust"), ("B", "Close")))
+
+    def draw_hints(self, s: pygame.Surface, x: int, cy: int, right: int, hints, size: float = 0.9) -> None:
+        """Button hints along a line; at a larger text size they shrink a
+        little rather than lose the last one (field report #63)."""
+        for scale in (size, size * 0.85, size * 0.72):
+            probe = pygame.Surface((max(1, right + self.px(600)), self.px(60)), pygame.SRCALPHA)
+            end = x
+            for button, text in hints:
+                end = style.button_hint(probe, end, probe.get_height() // 2, button, text, self.type, self.lv, size=scale)
+            if end <= right or scale == size * 0.72:
+                break
+        at = x
+        for button, text in hints:
+            at = style.button_hint(s, at, cy, button, text, self.type, self.lv, size=scale)

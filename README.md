@@ -53,6 +53,16 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   you watch or play. Settings → Privacy shows how to turn off your **TV's own
   tracking**, for its make. Hearth itself idles at under 2% of one processor
   core and about 300 MB ([PERFORMANCE.md](docs/PERFORMANCE.md)).
+- **Cast from your phone**: the PC shows up as a screen and a speaker on the
+  home network, for AirPlay (video, photos, music, screen mirroring from an
+  iPhone, iPad or Mac), Spotify Connect, and YouTube with a TV code
+  ([CASTING.md](docs/CASTING.md)).
+- **Your phone as a remote**: a page on your network with a d-pad, the
+  buttons and a keyboard, paired once with a code (and a QR code) on the TV:
+  Wi-Fi passwords, searches and sign-ins typed on the phone (Settings →
+  Phone remote).
+- **Accessibility**: larger text and a high-contrast look, each person's own
+  (Settings → Accessibility); the screen saver can show your own photos.
 - **Captures**: take a screenshot over any game from the Quick Menu; the
   **Captures** tile shows them all (full screen, flip through, delete), and
   they appear in the screen saver. Kept in `~/Pictures/Hearth`.
@@ -77,7 +87,8 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   resolution, stutter-free shaders ([docs/EMULATION.md](docs/EMULATION.md#tuned-for-your-pc)).
 - **Heritage racing look**: tiles painted like period race cars (deep enamel,
   twin stripes, a number roundel), condensed signwriter type, and a choice of
-  liveries: Gulf, Martini, British Racing Green, Rosso, Silver Arrow. Motion is
+  liveries: Gulf, Martini, British Racing Green, Rosso, Silver Arrow, and
+  Girth OS (wider by design). Motion is
   eased and frame-rate independent: a stripe sweep at power-on, tiles that
   cascade in, a focus stripe that glides between tiles, and a launch where the
   tile opens out to fill the screen. `motion = "reduced"` turns the decoration off.
@@ -105,7 +116,9 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   it: Settings → Controllers). In Steam, use *Power → Switch to Desktop*, which
   Hearth turns into "back to home", or hold **Guide for 4 s**, which closes
   Steam whatever state it's in. In Desktop Mode, holding Guide goes back to
-  Hearth too.
+  Hearth too, as does the **Hearth** icon on the desktop; the **Steam Gaming
+  Mode** icon next to it starts Game Mode with Steam's own interface, for
+  that one session.
 - **PC ports and AppImages as tiles**: drop an AppImage (e.g. a decompiled
   Twilight Princess port) in `~/Games` and it gets a tile in a **PC games**
   row. See [EMULATION.md](docs/EMULATION.md#pc-ports-appimages-straight-on-the-home-screen).

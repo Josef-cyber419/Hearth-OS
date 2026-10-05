@@ -27,6 +27,9 @@ def count_draws(monkeypatch):
 def test_a_settled_screen_stops_redrawing(surface, shipped_config, monkeypatch):
     draws = count_draws(monkeypatch)
     monkeypatch.setattr(ui, "SETTLE_SECONDS", 0.0)
+    # On a slow runner the first draw can come after BACKDROP_DELAY, which
+    # starts the backdrop's fade and keeps the screen busy for half a second.
+    monkeypatch.setattr(ui, "BACKDROP_DELAY", 1e9)
     config = cfg.load(shipped_config, hide=False)
     assert ui.run(surface, Home(config), config.title, max_frames=45) is None
     assert len(draws) <= 3  # once, then only when something shown changes
@@ -60,3 +63,22 @@ def test_only_a_few_full_screen_backdrops_are_kept(surface, shipped_config, monk
         seen.add(screen.home.selected.id)
     assert len(screen._backdrops) <= ui.BACKDROPS_KEPT < len(seen)
     assert len(screen._blurs) == len(seen)  # the small blurs stay, to rebuild them quickly
+
+
+def test_no_sleep_or_saver_while_something_else_is_on(surface, shipped_config, monkeypatch):
+    """Discord or a phone casting in front, or music playing: the home screen
+    behind them mustn't put the PC to sleep (sleep_minutes) or start the saver."""
+    suspends = []
+    monkeypatch.setattr(ui.subprocess, "Popen", lambda argv: suspends.append(argv))
+    monkeypatch.setattr(ui, "BUSY_SECONDS", 0.0)
+    config = cfg.load(shipped_config, hide=False)
+    ui.run(surface, Home(config), config.title, max_frames=40, sleep_after=0.05, saver_after=0.05,
+           busy=lambda: "shown")
+    assert suspends == []
+    saved = []
+    monkeypatch.setattr(ui.HomeScreen, "start_saver", lambda self: saved.append(1))
+    ui.run(surface, Home(config), config.title, max_frames=40, sleep_after=0.05, saver_after=0.05,
+           busy=lambda: "playing")
+    assert suspends == [] and saved  # music: the saver still looks after the TV
+    ui.run(surface, Home(config), config.title, max_frames=40, sleep_after=0.05, busy=lambda: None)
+    assert suspends and all(s == ["systemctl", "suspend"] for s in suspends)  # (a real PC sleeps at the first)

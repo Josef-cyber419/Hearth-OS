@@ -6,6 +6,40 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
+## 0.24.0 (2026-10-03)
+
+- **Cast from your phone**: the PC shows up on your Wi-Fi as a screen and a
+  speaker. AirPlay from an iPhone, iPad or Mac (a video, photos, music or
+  the whole screen: it comes to the front, and goes away when you stop),
+  Spotify Connect (pick the PC in the Spotify app; Premium), and YouTube
+  with a TV code. Settings → Casting names it and turns each part on or
+  off; Quick Menu → System → Stop casting drops the phone.
+- **Your phone as a remote**: Settings → Phone remote shows a code and a QR
+  code; the page (nothing to install) has a d-pad, the buttons and a
+  keyboard, so Wi-Fi passwords, searches and sign-ins are typed on the phone.
+  `hearthctl type` types from a terminal the same way.
+- **Your photos in the screen saver**: a folder, or a plugged-in drive's
+  pictures, on their own or mixed with your games' art, the right way up
+  (Settings → Home screen).
+- **Accessibility**: Settings → Accessibility: larger text (two sizes) and a
+  high-contrast look, each person's own.
+- **A new livery, Girth OS**: wider by design. Settings → Appearance; the
+  header says so, and the tiles really are wider.
+- **Two icons on the desktop**: **Hearth** goes back to the TV, and **Steam
+  Gaming Mode** starts Game Mode with Steam's own interface for that one
+  session (Hearth is back the next time). Bazzite's "Return to Gaming Mode"
+  stays and lands on Hearth too.
+- **Fixes from the third field run**: the system drive can no longer be
+  offered for erasing when lsblk lists partitions flat (util-linux 2.41);
+  spotifyd installs again (its checksum file is named after the build), and
+  Settings says so when the install failed; `hearthctl type` and the phone
+  keyboard no longer drop doubled letters; Home from the Quick Menu over
+  Kodi or Heroic closes the menu at once; Search's delete hint names
+  Backspace with a keyboard; long names are cut or wrapped instead of drawn
+  under switches, values and percentages, also at the larger text sizes;
+  arrows the font hasn't got draw as chevrons; a controller whose battery
+  level is unknown no longer shows an empty outline.
+
 ## 0.23.0 (2026-10-01)
 
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a

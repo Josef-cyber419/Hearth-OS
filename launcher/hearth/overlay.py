@@ -25,7 +25,7 @@ from pathlib import Path
 
 from . import config as cfg
 from . import input as input_
-from . import events, homebutton, logs, session, settings, style, updates
+from . import cast, events, homebutton, logs, session, settings, style, updates
 from .audio import Audio, Snapshot, reset_restored_discord_mutes
 from . import family
 from .gamescope import Gamescope, appid_for
@@ -59,7 +59,10 @@ class Actions:
         state = session.read()
         if state["foreground"]:
             self.o.thaw()
-            session.stop_entry(state["foreground"])
+            # Stopping waits for the app (a few seconds for Kodi, Heroic,
+            # Dolphin): in the background, so the menu closes at once (#65).
+            threading.Thread(target=session.stop_entry, args=(state["foreground"],), daemon=True,
+                             name="close-app").start()
         elif state["focus"] != "home":  # e.g. Discord in front of the home screen
             self.show("home")
         elif state.get("screen"):  # Settings: the hub closes it
@@ -150,6 +153,29 @@ class Actions:
         threading.Thread(target=self.o.take_screenshot, args=(title,), daemon=True).start()
         return "close"
 
+    def stop_cast(self):
+        """Drop the phone that's casting: the receiver restarts (off the UI
+        thread: stopping it waits for it to exit), and the screen goes back."""
+        state = session.read()
+        info = state.get("cast") or {}
+        app_id = info.get("id") or (state["focus"] if cast.is_receiver(state["focus"]) else None)
+        if not app_id:
+            return "close"
+        self.o.cast_watch.windows = {w: a for w, a in self.o.cast_watch.windows.items() if a != app_id}
+        self.o.apply_focus(session.update(lambda s: cast.give_back(s, app_id)))
+        events.record("cast_stop", id=app_id)
+        config = self.o.config
+
+        def work() -> None:
+            try:
+                cast.restart(app_id, config)
+            except Exception:
+                log.exception("stop casting")
+            self.o.apply_focus(session.read())
+
+        threading.Thread(target=work, daemon=True, name="stop-cast").start()
+        return "close"
+
     def report(self):
         if (session.read().get("report") or {}).get("status") != "running":
             session.update(lambda s: s.__setitem__("report", {"status": "running"}))
@@ -225,7 +251,8 @@ class Overlay:
         self.size = size
         self.render_size = (int(size[0] * scale), int(size[1] * scale))
         self.surface = pygame.Surface(self.render_size, pygame.SRCALPHA)
-        self.view = QuickMenuView(self.render_size, config.livery, config.motion, config.clock)
+        style.set_text_scale(config.text_size)
+        self.view = QuickMenuView(self.render_size, config.scheme, config.motion, config.clock)
 
         self.open = False
         self.t = 0.0
@@ -237,6 +264,7 @@ class Overlay:
         self._seen: set[int] = set()
         self._first_window: set[tuple] = set()  # launches whose first window we've timed
         self._slow_warned: set[tuple] = set()  # launches told "still starting" (#40)
+        self.cast_watch = cast.Watch()  # receivers' windows: a new one takes the screen (cast.py)
         self._opened_at = 0.0
         self.frames = events.FrameStats()
         self._tries: dict[int, int] = {}
@@ -262,7 +290,8 @@ class Overlay:
             self._wii_mouse_apps = dict(settings.load().get("wii_mouse_apps") or {})
         except (OSError, ValueError, AttributeError):
             self._wii_mouse_apps = {}
-        self.view.set_theme(c.livery, c.motion, c.clock)
+        style.set_text_scale(c.text_size)
+        self.view.set_theme(c.scheme, c.motion, c.clock)
         style.set_prompts(c.prompts, c.confirm)
         self.mapper.swap_confirm = c.confirm == "east"
         self.pointer.speed = c.mouse_speed / 100
@@ -322,7 +351,7 @@ class Overlay:
         ctx = Context(self.audio, snapshot, self.state, self.actions,
                       discord_available=bool(discord and discord.available()), wii=wii,
                       frontend=game[0] if game else None, perf=self._perf_reading,
-                      media=self.media.poll(), people=_people_active())
+                      media=self.media.poll(), people=_people_active(), casting=cast.on_screen(self.state))
         self.menu.set_tabs(build_tabs(ctx))
 
     # -- updates ---------------------------------------------------------------
@@ -476,6 +505,7 @@ class Overlay:
             def drop(s):
                 for k in dead:
                     s["background"].pop(k, None)
+                    cast.give_back(s, k)  # a receiver that died mid-cast
                 if s["focus"] in dead:
                     s["focus"] = "foreground" if s["foreground"] else "home"
 
@@ -522,6 +552,11 @@ class Overlay:
                     continue
                 if self.gs.is_tagged(win):
                     self._seen.add(win.id)
+                    # A receiver's window from before this overlay started
+                    # (it was restarted mid-cast): still give the screen back when it goes.
+                    tagged = self._receiver_for(self.gs.get_cardinal(win, "STEAM_GAME"))
+                    if tagged:
+                        self.cast_watch.windows.setdefault(win.id, tagged)
                     continue
                 appid = self.owner_appid(win)
             except XError:
@@ -535,9 +570,26 @@ class Overlay:
             self.gs.tag(win, appid)
             self._seen.add(win.id)
             self._time_first_window(appid)
+            self._cast_window(win.id, appid)
         self._seen &= present
         self._tries = {k: v for k, v in self._tries.items() if k in present}
+        for app_id in self.cast_watch.prune(present):  # the phone stopped: back to what was there
+            events.record("cast_end", id=app_id)
+            self.apply_focus(session.update(lambda s, a=app_id: cast.give_back(s, a)))
         self._time_steam_window()
+
+    def _receiver_for(self, appid: int | None) -> str | None:
+        """The running receiver whose windows carry this app id, if any."""
+        if not appid:
+            return None
+        return next((i for i in self.state["background"] if cast.is_receiver(i) and appid_for(i) == appid), None)
+
+    def _cast_window(self, win_id: int, appid: int) -> None:
+        """A receiver (AirPlay) just opened a window: a phone is casting, show it."""
+        app_id = self._receiver_for(appid)
+        if self.cast_watch.seen(win_id, app_id) == "take":
+            events.record("cast_start", id=app_id)
+            self.apply_focus(session.update(lambda s: cast.take_screen(s, app_id)))
 
     STEAM_APPID = 769  # what gamescope calls Steam's own interface
 

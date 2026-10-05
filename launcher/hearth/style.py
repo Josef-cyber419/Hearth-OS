@@ -32,6 +32,12 @@ class Livery:
     dim: RGB
     accent: RGB  # the broad stripe: focus, values, highlights
     second: RGB  # the pinstripe beside it
+    contrast: bool = False  # the high-contrast look (Settings → Accessibility): thick focus, no glow
+    # A livery can be a whole identity: its own name in the header (the last
+    # word in the accent colour), a line under it, and tiles a bit wider.
+    wordmark: str = ""
+    tagline: str = ""
+    wide: float = 1.0
 
 
 LIVERIES = {
@@ -45,6 +51,16 @@ LIVERIES = {
                     accent=(222, 28, 38), second=(246, 196, 0)),
     "silver": Livery("Silver Arrow", ink=(12, 13, 15), panel=(27, 29, 32), text=(236, 238, 240),
                      dim=(140, 146, 153), accent=(206, 211, 217), second=(0, 161, 150)),
+    # The parody: Girth OS, wider by design. Near-black, bone white, a hotter
+    # orange and brushed silver; the tiles are 12% wider, because of course.
+    "girth": Livery("Girth OS", ink=(14, 17, 22), panel=(23, 28, 36), text=(241, 239, 233), dim=(138, 148, 158),
+                    accent=(255, 95, 10), second=(201, 206, 212), wordmark="Girth OS", tagline="Wider by design",
+                    wide=1.12),
+    # Not a livery to pick in Appearance: Settings → Accessibility → High
+    # contrast puts it over whichever one is chosen. Pure black, pure white,
+    # a yellow that reads for most colour vision, light grey for "dim".
+    "contrast": Livery("High contrast", ink=(0, 0, 0), panel=(14, 14, 14), text=(255, 255, 255),
+                       dim=(212, 212, 212), accent=(255, 214, 0), second=(255, 255, 255), contrast=True),
 }
 
 
@@ -52,6 +68,24 @@ def livery(name: str) -> Livery:
     if name not in LIVERIES:
         log.warning("unknown livery %r; using gulf (choices: %s)", name, ", ".join(LIVERIES))
     return LIVERIES.get(name, LIVERIES["gulf"])
+
+
+def liveries() -> list[str]:
+    """The liveries to choose from (the high-contrast look isn't one: it's a switch)."""
+    return [n for n, lv in LIVERIES.items() if not lv.contrast]
+
+
+# -- text size (Settings → Accessibility) -------------------------------------
+
+TEXT_SIZES = {"normal": 1.0, "large": 1.18, "larger": 1.36}
+TEXT_SCALE = 1.0  # every font is this much bigger than the design size
+
+
+def set_text_scale(size: str | float) -> None:
+    """Set the text size for every screen drawn from now on (fonts are made
+    as they're needed, so a screen built afterwards is all at the new size)."""
+    global TEXT_SCALE
+    TEXT_SCALE = TEXT_SIZES.get(size, 1.0) if isinstance(size, str) else float(size)
 
 
 # -- colour -------------------------------------------------------------------
@@ -139,7 +173,7 @@ class Type:
         self._fonts: dict[tuple, pygame.font.Font] = {}
 
     def __call__(self, px: float, family: str = "cond", weight: str = "semibold") -> pygame.font.Font:
-        key = (family, weight, max(8, int(px * self.scale)))
+        key = (family, weight, max(8, int(px * self.scale * TEXT_SCALE)))
         if key not in self._fonts:
             path = FONT_DIR / self.FILES.get((family, weight), "BarlowCondensed-SemiBold.ttf")
             try:
@@ -173,6 +207,46 @@ def clock_text(clock: str = "24h") -> str:
     if clock == "12h":
         return time.strftime("%I:%M").lstrip("0") + time.strftime(" %p").lower()
     return time.strftime("%H:%M")
+
+
+def plain(text: str) -> str:
+    """Text with the characters Barlow hasn't got swapped for ones it has
+    (an arrow drew as a box, field report #61)."""
+    return text.replace("→", "›").replace("←", "‹")
+
+
+def clip(font: pygame.font.Font, text: str, width: int, color) -> pygame.Surface:
+    """Text rendered no wider than `width`: cut with an ellipsis rather than
+    squeezed (a shrunk line can't be read from a sofa)."""
+    text = plain(text)
+    if width <= 0 or font.size(text)[0] <= width:
+        return font.render(text, True, color)
+    while len(text) > 1 and font.size(text[:-1].rstrip() + "…")[0] > width:
+        text = text[:-1]
+    return font.render(text[:-1].rstrip() + "…" if len(text) > 1 else "…", True, color)
+
+
+def wrap(font: pygame.font.Font, text: str, width: int, lines: int = 2) -> list[str]:
+    """Text broken into at most `lines` lines of `width`; the last one is
+    cut with an ellipsis if there's more."""
+    text = plain(text)
+    words, out, line = text.split(), [], ""
+    for word in words:
+        trial = f"{line} {word}".strip()
+        if line and font.size(trial)[0] > width:
+            out.append(line)
+            line = word
+        else:
+            line = trial
+    if line:
+        out.append(line)
+    if len(out) > lines:
+        out = out[:lines]
+        rest = " ".join(out[-1:]) + "…"
+        while len(rest) > 2 and font.size(rest)[0] > width:
+            rest = rest[:-2].rstrip() + "…"
+        out[-1] = rest
+    return out
 
 
 def fit(surf: pygame.Surface, max_w: int) -> pygame.Surface:
@@ -351,7 +425,7 @@ def button_hint(surf: pygame.Surface, x: int, cy: int, button: str, label: str, 
     name = glyph_for(button)
     shape = name in ("cross", "circle", "square", "triangle")
     glyph = None if shape else f_btn.render(name, True, lv.ink)
-    h = int(30 * size * t.scale)
+    h = int(30 * size * t.scale * TEXT_SCALE)
     w = h if shape else max(h, glyph.get_width() + h // 2)
     chip = pygame.Rect(x, cy - h // 2, w, h)
     if w == h:
