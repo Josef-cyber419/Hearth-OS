@@ -65,6 +65,20 @@ else
     systemctl enable bootc-fetch-apply-updates.timer
 fi
 
+# --- desktop icons ------------------------------------------------------------
+# Two shortcuts on the desktop: "Hearth" (Game Mode with Hearth) and "Steam
+# Gaming Mode" (Steam's interface, once). New users get them from skel; for
+# existing users hearth-desktop-guide puts them there on the next desktop
+# login (desktopguide.desktop_icons). Bazzite's own "Return to Gaming Mode"
+# stays and lands in Hearth too.
+mkdir -p /etc/skel/Desktop
+for entry in hearth-gamemode hearth-steam-gamemode; do
+    install -m 755 "/usr/share/applications/$entry.desktop" "/etc/skel/Desktop/$entry.desktop"
+done
+if command -v gtk-update-icon-cache >/dev/null; then
+    gtk-update-icon-cache -q -f /usr/share/icons/hicolor || true
+fi
+
 # --- version ------------------------------------------------------------------
 cat > /usr/share/hearth/version.json <<JSON
 {"version": "${HEARTH_VERSION:-dev}", "built": "$(date -u +%Y-%m-%dT%H:%MZ)"}

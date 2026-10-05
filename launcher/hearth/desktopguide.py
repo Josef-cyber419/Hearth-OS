@@ -1,7 +1,9 @@
 """In Desktop Mode, hold the controller's Guide button to go back to Hearth.
 
 Also: if the desktop was reached through Steam's "Switch to Desktop" while
-Steam ran inside Hearth, go straight back (see hearth-steam's marker).
+Steam ran inside Hearth, go straight back (see hearth-steam's marker). And
+the first time, put the "Hearth" and "Steam Gaming Mode" shortcuts on the
+desktop (desktop_icons).
 
 Started by the desktop's autostart (/etc/xdg/autostart/hearth-desktop-guide.desktop).
 Inside Game Mode Hearth handles Guide itself, so this exits there. Holding
@@ -53,6 +55,55 @@ def in_game_mode() -> bool:
     return bool(os.environ.get("GAMESCOPE_WAYLAND_DISPLAY"))
 
 
+# The two shortcuts on the desktop: back to Hearth, and Game Mode with
+# Steam's own interface for one session. New users get them from /etc/skel;
+# this puts them on an existing user's desktop once (a stamp remembers, so
+# one that's been deleted on purpose stays deleted).
+DESKTOP_ICONS = ("hearth-gamemode.desktop", "hearth-steam-gamemode.desktop")
+APPLICATIONS = Path("/usr/share/applications")
+
+
+def desktop_folder(home: Path | None = None) -> Path:
+    """~/Desktop, or wherever the desktop keeps its files (user-dirs.dirs)."""
+    home = home or Path(os.environ.get("HOME") or Path.home())
+    folder = home / "Desktop"
+    try:
+        for line in (home / ".config/user-dirs.dirs").read_text().splitlines():
+            if line.startswith("XDG_DESKTOP_DIR="):
+                value = line.split("=", 1)[1].strip().strip('"')
+                folder = Path(value.replace("$HOME", str(home)))
+    except OSError:
+        pass
+    return folder
+
+
+def desktop_icons(home: Path | None = None, source: Path = APPLICATIONS, stamp: Path | None = None) -> list[Path]:
+    """Copy the shortcuts to the desktop if they aren't there, once per
+    user. Returns what was added."""
+    home = home or Path(os.environ.get("HOME") or Path.home())
+    stamp = stamp or Path(os.environ.get("XDG_CONFIG_HOME") or home / ".config") / "hearth" / "desktop-icons"
+    if stamp.exists():
+        return []
+    folder = desktop_folder(home)
+    added = []
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+        for name in DESKTOP_ICONS:
+            target = folder / name
+            if target.exists() or not (source / name).exists():
+                continue
+            target.write_bytes((source / name).read_bytes())
+            target.chmod(0o755)  # a launcher the desktop trusts (KDE); GNOME also wants its mark
+            subprocess.call(["gio", "set", str(target), "metadata::trusted", "true"],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            added.append(target)
+        stamp.parent.mkdir(parents=True, exist_ok=True)
+        stamp.write_text("\n".join(p.name for p in added) + "\n")
+    except OSError as e:
+        log.info("desktop icons: %s", e)
+    return added
+
+
 def hold_seconds() -> float:
     from . import config as cfg
 
@@ -86,6 +137,8 @@ def main() -> int:
     logs.setup("desktop-guide")
     if in_game_mode():
         return 0
+    for path in desktop_icons():
+        log.info("desktop guide: put %s on the desktop", path.name)
     if came_from_steam():
         events.record("desktop_from_steam")
         log.info("desktop guide: came from Steam's Switch to Desktop in Hearth; going back")

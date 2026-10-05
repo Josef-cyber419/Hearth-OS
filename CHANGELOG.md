@@ -23,6 +23,10 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
   (Settings → Home screen).
 - **Accessibility**: Settings → Accessibility: larger text (two sizes) and a
   high-contrast look, each person's own.
+- **Two icons on the desktop**: **Hearth** goes back to the TV, and **Steam
+  Gaming Mode** starts Game Mode with Steam's own interface for that one
+  session (Hearth is back the next time). Bazzite's "Return to Gaming Mode"
+  stays and lands on Hearth too.
 - **Fixes from the third field run**: the system drive can no longer be
   offered for erasing when lsblk lists partitions flat (util-linux 2.41);
   spotifyd installs again (its checksum file is named after the build), and

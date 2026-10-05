@@ -187,8 +187,12 @@ Steam, then `~/steam-<appid>.log`) and attach the last 100 lines of each.
 
 - **Updates**: `hearthctl update` when one is due: output ends with
   "ready: restart to finish" or "already up to date"; never a lock error.
-- **Desktop Mode round trip**: Settings → Desktop Mode, then back to Game Mode:
-  lands on Hearth.
+- **Desktop Mode round trip**: Settings → Desktop Mode, then the **Hearth**
+  icon on the desktop: lands on Hearth. Again with the **Steam Gaming Mode**
+  icon: lands in Steam's interface; when Steam exits (Power → Exit), Game
+  Mode comes back with Hearth, not Steam. Both icons are on the desktop
+  (`~/Desktop`) after the first desktop login; Bazzite's own "Return to
+  Gaming Mode" is still there and lands on Hearth too.
 - Never roll back, reset settings, reformat drives or change the network
   without the owner asking.
 

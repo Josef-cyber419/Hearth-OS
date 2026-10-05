@@ -115,7 +115,9 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
   it: Settings → Controllers). In Steam, use *Power → Switch to Desktop*, which
   Hearth turns into "back to home", or hold **Guide for 4 s**, which closes
   Steam whatever state it's in. In Desktop Mode, holding Guide goes back to
-  Hearth too.
+  Hearth too, as does the **Hearth** icon on the desktop; the **Steam Gaming
+  Mode** icon next to it starts Game Mode with Steam's own interface, for
+  that one session.
 - **PC ports and AppImages as tiles**: drop an AppImage (e.g. a decompiled
   Twilight Princess port) in `~/Games` and it gets a tile in a **PC games**
   row. See [EMULATION.md](docs/EMULATION.md#pc-ports-appimages-straight-on-the-home-screen).

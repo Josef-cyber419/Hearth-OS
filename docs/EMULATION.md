@@ -26,7 +26,7 @@ The plan: use the desktop for maintenance, and the TV screen for playing.
    - `BIOS/`: BIOS, firmware and key files that some consoles need.
 3. Copy games into the matching console folder, e.g. `ROMs/ps2/`,
    `ROMs/gc/`, `ROMs/switch/`.
-4. Click **Return to Gaming Mode** on the desktop. The console appears in the
+4. Click the **Hearth** icon on the desktop. The console appears in the
    Emulation menu.
 5. **Artwork**: Hearth finds a picture for each game by itself, from
    libretro's free thumbnail library (the one RetroArch uses), a little at a
