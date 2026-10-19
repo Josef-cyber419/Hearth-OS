@@ -17,17 +17,23 @@ from pathlib import Path
 NAME = re.compile(r"^(?P<title>.*?) (?P<date>\d{4}-\d{2}-\d{2}) (?P<time>\d{2}\.\d{2}\.\d{2})(?: \d+)?\.png$")
 
 
-def folder(home: Path | None = None) -> Path:
-    """~/Pictures/Hearth (the Pictures folder the desktop uses, if set)."""
+def xdg_user_dir(key: str, default: str, home: Path | None = None) -> Path:
+    """One of the desktop's folders (~/.config/user-dirs.dirs: PICTURES,
+    DESKTOP, ...), or `default` under the home folder when it isn't set."""
     home = home or Path(os.environ.get("HOME") or Path.home())
-    pictures = home / "Pictures"
+    folder = home / default
     try:
         for line in (home / ".config/user-dirs.dirs").read_text().splitlines():
-            if line.startswith("XDG_PICTURES_DIR="):
-                pictures = Path(line.split("=", 1)[1].strip().strip('"').replace("$HOME", str(home)))
+            if line.startswith(f"XDG_{key}_DIR="):
+                folder = Path(line.split("=", 1)[1].strip().strip('"').replace("$HOME", str(home)))
     except OSError:
         pass
-    return pictures / "Hearth"
+    return folder
+
+
+def folder(home: Path | None = None) -> Path:
+    """~/Pictures/Hearth (the Pictures folder the desktop uses, if set)."""
+    return xdg_user_dir("PICTURES", "Pictures", home) / "Hearth"
 
 
 @dataclass(frozen=True)

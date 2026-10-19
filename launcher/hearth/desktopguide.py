@@ -65,16 +65,9 @@ APPLICATIONS = Path("/usr/share/applications")
 
 def desktop_folder(home: Path | None = None) -> Path:
     """~/Desktop, or wherever the desktop keeps its files (user-dirs.dirs)."""
-    home = home or Path(os.environ.get("HOME") or Path.home())
-    folder = home / "Desktop"
-    try:
-        for line in (home / ".config/user-dirs.dirs").read_text().splitlines():
-            if line.startswith("XDG_DESKTOP_DIR="):
-                value = line.split("=", 1)[1].strip().strip('"')
-                folder = Path(value.replace("$HOME", str(home)))
-    except OSError:
-        pass
-    return folder
+    from .captures import xdg_user_dir
+
+    return xdg_user_dir("DESKTOP", "Desktop", home)
 
 
 def desktop_icons(home: Path | None = None, source: Path = APPLICATIONS, stamp: Path | None = None) -> list[Path]:
@@ -94,8 +87,11 @@ def desktop_icons(home: Path | None = None, source: Path = APPLICATIONS, stamp: 
                 continue
             target.write_bytes((source / name).read_bytes())
             target.chmod(0o755)  # a launcher the desktop trusts (KDE); GNOME also wants its mark
-            subprocess.call(["gio", "set", str(target), "metadata::trusted", "true"],
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            try:
+                subprocess.call(["gio", "set", str(target), "metadata::trusted", "true"],
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+            except (OSError, subprocess.TimeoutExpired):
+                pass  # no gio (no GNOME): KDE goes by the executable bit
             added.append(target)
         stamp.parent.mkdir(parents=True, exist_ok=True)
         stamp.write_text("\n".join(p.name for p in added) + "\n")

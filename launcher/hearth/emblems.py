@@ -110,10 +110,10 @@ def gears(pen: Pen) -> None:
         x, y = centres[-1]
         centres.append((x + dist * math.cos(math.radians(ang)), y + dist * math.sin(math.radians(ang))))
     # Centre the set on the canvas.
-    left = min(x - r for (x, _), r in zip(centres, radii))
-    right = max(x + r for (x, _), r in zip(centres, radii))
-    top = min(y - r for (_, y), r in zip(centres, radii))
-    bottom = max(y + r for (_, y), r in zip(centres, radii))
+    left = min(x - r for (x, _), r in zip(centres, radii, strict=True))
+    right = max(x + r for (x, _), r in zip(centres, radii, strict=True))
+    top = min(y - r for (_, y), r in zip(centres, radii, strict=True))
+    bottom = max(y + r for (_, y), r in zip(centres, radii, strict=True))
     dx, dy = 0.5 - (left + right) / 2, 0.5 - (top + bottom) / 2
     c1, c2, c3 = ((x + dx, y + dy) for x, y in centres)
     _gear(pen, c1, radii[0], 14, 0.0, pen.fg, 5)

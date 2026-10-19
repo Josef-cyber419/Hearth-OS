@@ -21,12 +21,16 @@ Menu's app lists.
 
 from __future__ import annotations
 
+import logging
 import socket
+import threading
 import time
 from dataclasses import dataclass
 
 from . import session
 from .config import App, Config
+
+log = logging.getLogger("hearth")
 
 AIRPLAY = "cast:airplay"
 SPOTIFY = "cast:spotify"
@@ -63,13 +67,14 @@ def installer_failed(unit: str) -> bool:
     """Whether the service that installs a receiver's program gave up (a
     checksum that didn't match, no release): then "still being installed"
     would be a lie (field report #57)."""
-    import subprocess
+    return session.systemctl("is-failed", "--quiet", unit)
 
-    try:
-        return subprocess.run(["systemctl", "--user", "is-failed", "--quiet", unit], capture_output=True,
-                              timeout=5).returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        return False
+
+def probe(config: Config) -> dict[str, tuple[str, bool]]:
+    """For each receiver: what's missing for it to run ("" if nothing), and
+    whether its installer failed. Runs commands: not for the UI thread."""
+    return {r.id: (app.missing() or "", bool(r.installer) and app.missing() is not None
+                   and installer_failed(r.installer)) for r, app, _ in receivers(config)}
 
 
 def is_receiver(app_id: str | None) -> bool:
@@ -95,19 +100,21 @@ def receivers(config: Config) -> list[tuple[Receiver, App, bool]]:
     return [(r, r.app(name), on[r.id]) for r in RECEIVERS]
 
 
-def status(config: Config, background: dict) -> list[tuple[Receiver, str, str]]:
+def status(config: Config, background: dict, probed: dict[str, tuple[str, bool]] | None = None
+           ) -> list[tuple[Receiver, str, str]]:
     """(receiver, state, words) for each: "off", "missing", "running" or
-    "stopped", with what to say about it; shared by Settings and hearthctl."""
+    "stopped", in plain words for the sofa; shared by Settings and hearthctl.
+    `probed` is probe()'s answer, taken beforehand off the UI thread."""
     out = []
     name = device_name(config)
+    probed = probe(config) if probed is None else probed
     for receiver, app, on in receivers(config):
-        missing = app.missing()
+        missing, failed = probed.get(receiver.id, ("", False))
         if not on:
             out.append((receiver, "off", "Off"))
         elif missing:
-            failed = receiver.installer and installer_failed(receiver.installer)
-            words = f"{receiver.needs} ({missing})" if not failed else \
-                f"{receiver.name}'s program couldn't be installed: hearthctl logs, or journalctl --user -u {receiver.installer}"
+            words = f"{receiver.name}'s program couldn't be installed; hearthctl check says why" if failed \
+                else receiver.needs
             out.append((receiver, "missing", words))
         elif app.id in background:
             out.append((receiver, "running", f'Ready: look for "{name}"'))
@@ -116,28 +123,72 @@ def status(config: Config, background: dict) -> list[tuple[Receiver, str, str]]:
     return out
 
 
-def ensure(config: Config) -> None:
-    """Start the receivers that are on and can run; stop the ones turned off.
-    The hub does this with each visit to the home screen."""
-    state = session.read()
-    for receiver, app, on in receivers(config):
-        running = app.id in state["background"]
-        if on and app.available():
-            if running and state["background"][app.id].get("name_arg") != app.command[1]:
-                stop(app.id)  # renamed in Settings: restart under the new name
-                running = False
-            if not running:
-                session.start_background(app)
-                session.update(lambda s, i=app.id, n=app.command[1]: s["background"].get(i, {}).__setitem__(
-                    "name_arg", n))
-        elif running:
-            stop(app.id)
+def ensure(config: Config, wait: bool = False) -> None:
+    """Start the receivers that are on and can run; stop the ones turned off
+    (in the background: stopping waits for the program). The hub does this
+    with each visit to the home screen and once a minute (keep()); the
+    overlay after Stop casting. One at a time, across processes, so a
+    receiver is never started twice."""
+    to_stop = []
+    with session.held("cast"):
+        state = session.read()
+        for _receiver, app, on in receivers(config):
+            info = state["background"].get(app.id)
+            running = bool(info) and session.background_alive(info)
+            if info and not running:  # died (or was killed): forget it, then start it again below
+                session.update(lambda s, i=app.id: (s["background"].pop(i, None), give_back(s, i)))
+            if on and app.available():
+                if running and info.get("name_arg") != app.command[1]:
+                    to_stop.append(app.id)  # renamed in Settings: restart under the new name
+                    continue
+                if not running:
+                    session.start_background(app)
+                    session.update(lambda s, i=app.id, n=app.command[1]: s["background"].get(i, {}).__setitem__(
+                        "name_arg", n))
+            elif running:
+                to_stop.append(app.id)
+    threads = [session.in_background(f"stop-{app_id}", stop, app_id) for app_id in to_stop]
+    if wait:
+        for t in threads:
+            t.join()
+
+
+_keeper: dict = {}
+
+
+def keep(load_config, every: float = 60.0) -> None:
+    """Keep the receivers as Settings says while the home screen is up: one
+    that crashed, or whose program was installed after boot (spotifyd
+    arrives a minute after the first login), comes back within `every`
+    seconds. `load_config` is called each round; None stops the keeper."""
+    _keeper["load"] = load_config
+    if load_config is None or _keeper.get("thread"):
+        return
+
+    def work() -> None:
+        while _keeper.get("load") is not None:
+            time.sleep(every)
+            load = _keeper.get("load")
+            if load is None:
+                break
+            try:
+                state = session.read()
+                if state["focus"] == "home" and not state["foreground"]:
+                    ensure(load())
+            except Exception:  # noqa: BLE001 - keep keeping
+                log.exception("cast keeper")
+
+    _keeper["thread"] = threading.Thread(target=work, daemon=True, name="cast-keeper")
+    _keeper["thread"].start()
 
 
 def stop(app_id: str) -> None:
     """Stop a receiver (the phone sees it vanish) and forget it."""
-    state = session.read()
-    info = state["background"].get(app_id)
+    with session.held("cast"):
+        state = session.read()
+        info = state["background"].pop(app_id, None)
+        if info:
+            session.update(lambda s: s["background"].pop(app_id, None))  # claimed: nobody else stops or restarts it
     if info:
         session.stop_entry(info)
 
@@ -154,7 +205,7 @@ def restart(app_id: str, config: Config) -> None:
     """Drop the phone that's casting (Quick Menu → Stop casting): the receiver
     comes straight back, ready for the next one."""
     stop(app_id)
-    ensure(config)
+    ensure(config, wait=True)
 
 
 # -- who's on screen -------------------------------------------------------------

@@ -8,8 +8,12 @@ thing. Buttons and typed text go to whatever is in front through
 gamescope's X server (drive.Keys), exactly like a keyboard plugged into the
 PC, so sign-ins inside apps work too, not only Hearth's own screens.
 
-Five wrong codes in a row make a new one. Nothing about the home is sent
-anywhere: the page is plain HTML, served by Hearth, on your network only.
+Five wrong codes in a row pause pairing for a minute (the code stays
+readable on the TV); after three such pauses the code changes. Requests
+have to name this PC (its address or name): a web page elsewhere can't
+reach the remote by pointing a name of its own at it. Nothing about the
+home is sent anywhere: the page is plain HTML, served by Hearth, on your
+network only.
 """
 
 from __future__ import annotations
@@ -33,6 +37,8 @@ log = logging.getLogger("hearth")
 PORT = 8420
 CODE_TRIES = 5  # wrong codes in a row before pairing pauses
 LOCKOUT_SECONDS = 60  # how long it pauses
+LOCKOUTS_FOR_NEW_CODE = 3  # pauses in a row before the code changes (a device guessing gets a new target)
+KEYS_RETRY_SECONDS = 10  # how long a failed connection to the display is taken for granted
 TOKEN_NAME = "hearth"
 COOKIE_DAYS = 365
 ADDRESS_SECONDS = 30  # how long a looked-up address is reused
@@ -58,6 +64,28 @@ def local_address() -> str | None:
 
 def hostname() -> str:
     return (socket.gethostname() or "hearth").split(".")[0]
+
+
+def host_allowed(host: str | None) -> bool:
+    """Whether a request's Host header names this PC: an address, or its
+    name (plain, .local, localhost). A web page elsewhere pointing a name of
+    its own at the PC's address (DNS rebinding) is turned away."""
+    import ipaddress
+
+    name = (host or "").strip().lower()
+    if name.startswith("["):  # [v6]:port
+        name = name[1:].split("]")[0]
+    elif name.count(":") == 1:
+        name = name.split(":")[0]
+    if not name:
+        return False
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    mine = hostname().lower()
+    return name in {mine, f"{mine}.local", "localhost", "localhost.localdomain"}
 
 
 def qr_matrix(text: str) -> list[list[bool]] | None:
@@ -89,8 +117,11 @@ class Remote:
         self.tokens: set[str] = self._load_phones()
         self.code = ""
         self.failures = 0
+        self.lockouts = 0
         self.locked_until = 0.0  # pairing paused after too many wrong codes
         self._address: tuple[float, str | None] | None = None
+        self._lock = threading.Lock()  # the server answers on several threads
+        self._keys_failed_at = 0.0
         self.new_code()
 
     # -- pairing ---------------------------------------------------------------
@@ -98,6 +129,7 @@ class Remote:
     def new_code(self) -> str:
         self.code = f"{secrets.randbelow(900000) + 100000}"
         self.failures = 0
+        self.lockouts = 0
         self.locked_until = 0.0
         self.publish()
         return self.code
@@ -112,25 +144,34 @@ class Remote:
         so the person on the sofa can still read and type it, and a device
         guessing gets nowhere (a million codes at five a minute)."""
         now = time.monotonic() if now is None else now
-        if now < self.locked_until:
+        with self._lock:
+            if now < self.locked_until:
+                return None
+            if code.strip() == self.code:
+                token = secrets.token_hex(16)
+                self.tokens.add(token)
+                self._save_phones()
+                self.failures = self.lockouts = 0
+                self.publish()  # hearthctl status and Settings show how many phones are paired
+                return token
+            self.failures += 1
+            if self.failures >= CODE_TRIES:
+                self.failures = 0
+                self.lockouts += 1
+                if self.lockouts >= LOCKOUTS_FOR_NEW_CODE:
+                    log.warning("phone remote: %d pauses in a row: a new code", self.lockouts)
+                    self.code = f"{secrets.randbelow(900000) + 100000}"
+                    self.lockouts = 0
+                    self.publish()
+                else:
+                    log.info("phone remote: %d wrong codes, pairing paused for %ds", CODE_TRIES, LOCKOUT_SECONDS)
+                self.locked_until = now + LOCKOUT_SECONDS
             return None
-        if code.strip() == self.code:
-            token = secrets.token_hex(16)
-            self.tokens.add(token)
-            self._save_phones()
-            self.failures = 0
-            self.publish()  # hearthctl status and Settings show how many phones are paired
-            return token
-        self.failures += 1
-        if self.failures >= CODE_TRIES:
-            log.info("phone remote: %d wrong codes, pairing paused for %ds", self.failures, LOCKOUT_SECONDS)
-            self.locked_until = now + LOCKOUT_SECONDS
-            self.failures = 0
-        return None
 
     def forget_phones(self) -> None:
-        self.tokens.clear()
-        self._save_phones()
+        with self._lock:
+            self.tokens.clear()
+            self._save_phones()
         self.publish()
 
     def paired(self, cookie_header: str | None) -> bool:
@@ -182,12 +223,17 @@ class Remote:
     # -- doing things ---------------------------------------------------------------
 
     def keys(self):
-        if self._keys is None:
+        """The way into the TV's display, opened on first use. A failure is
+        remembered for a few seconds (and logged once), not retried and
+        logged on every tap."""
+        if self._keys is None and time.monotonic() - self._keys_failed_at > KEYS_RETRY_SECONDS:
             try:
                 self._keys = self._keys_factory()
-            except Exception:  # noqa: BLE001 - a display that can't be opened is "not in Game Mode"
-                log.exception("phone remote: keys")
+            except Exception as e:  # noqa: BLE001 - a display that can't be opened is "not in Game Mode"
+                log.warning("phone remote: can't reach the display: %s", e)
                 self._keys = None
+            if self._keys is None:
+                self._keys_failed_at = time.monotonic()
         return self._keys
 
     def press(self, name: str) -> str | None:
@@ -348,10 +394,26 @@ class Handler(BaseHTTPRequestHandler):
         raw = self.rfile.read(length).decode("utf-8", "replace") if length else ""
         return {k: v[0] for k, v in parse_qs(raw, keep_blank_values=True).items()}
 
+    def _welcome(self) -> bool:
+        """Whether the request is for this PC by name or address, and the
+        remote is on; otherwise it has been answered."""
+        if not host_allowed(self.headers.get("Host")):
+            self._json(HTTPStatus.MISDIRECTED_REQUEST, {"error": "Open the remote by the PC's address or name"})
+            return False
+        try:
+            on = self.remote.enabled()
+        except Exception as e:  # noqa: BLE001 - the page must answer
+            log.warning("phone remote: enabled check failed: %s", e)
+            on = False
+        if not on:
+            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "The phone remote is turned off in Settings"})
+            return False
+        return True
+
     def do_GET(self) -> None:  # noqa: N802 (http.server's naming)
         remote = self.remote
         path = urlsplit(self.path).path
-        if not remote.enabled():
+        if not self._welcome():
             self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "The phone remote is turned off in Settings"})
             return
         if path == "/":
@@ -364,8 +426,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:  # noqa: N802
         remote = self.remote
         path = urlsplit(self.path).path
-        if not remote.enabled():
-            self._json(HTTPStatus.SERVICE_UNAVAILABLE, {"error": "The phone remote is turned off in Settings"})
+        if not self._welcome():
             return
         form = self._form()
         if path == "/pair":

@@ -208,3 +208,23 @@ def test_a_steam_game_that_never_shows_gets_a_notice():
     fake.state = fresh
     Overlay.notice_slow_start(fake)
     assert len(posted) == 1  # not yet
+
+
+def test_hearthctl_type_uses_the_display_and_says_why_not(monkeypatch, capsys):
+    from hearth import ctl, drive
+
+    typed = []
+    monkeypatch.setattr(drive.Keys, "connect", classmethod(lambda cls: type("K", (), {"type": lambda self, t: typed.append(t)})()))
+    assert ctl.main(["type", "hello"]) == 0 and typed == ["hello"]
+    monkeypatch.setattr(drive.Keys, "connect", classmethod(lambda cls: None))
+    assert ctl.main(["type", "hello"]) == 1
+    assert drive.last_problem() in capsys.readouterr().out
+
+
+def test_the_remote_check_knows_when_hearth_is_not_running(monkeypatch):
+    from hearth import fieldcheck, session
+
+    session.update(lambda s: s.__setitem__("remote", {"url": "http://10.0.0.5:8420", "port": 1, "code": "1"}))
+    monkeypatch.setattr(fieldcheck, "_run", lambda cmd, timeout=15: (1, "") if cmd[0] == "pgrep" else (0, ""))
+    results = fieldcheck.phone_remote()
+    assert results[0].status == "info" and "not running" in results[0].detail  # stale state, hub gone: not a failure

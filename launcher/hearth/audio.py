@@ -43,6 +43,18 @@ def run_pactl(args: Sequence[str]) -> str:
     return result.stdout
 
 
+def playing_now(run=None) -> bool:
+    """Whether any app has sound going to an output right now (a stream
+    that isn't paused or muted): music from a phone, a video, a game."""
+    import json
+
+    try:
+        streams = json.loads((run or run_pactl)(["-f", "json", "list", "sink-inputs"]) or "[]")
+        return any(not s.get("corked") and not s.get("mute") for s in streams if isinstance(s, dict))
+    except (RuntimeError, ValueError, TypeError):
+        return False
+
+
 def _percent(volume: dict) -> int:
     """Average of the per-channel volumes, as a percentage."""
     values = []

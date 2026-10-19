@@ -187,7 +187,7 @@ def test_the_g_roundel_is_the_mark_in_the_header_and_at_boot(surface, shipped_co
     lv = style.LIVERIES["girth"]
     mark = style.roundel_g(100, lv)
     assert mark.get_size() == (100, 100)
-    close = lambda a, b: sum(abs(x - y) for x, y in zip(a[:3], b[:3])) < 12  # noqa: E731
+    close = lambda a, b: sum(abs(x - y) for x, y in zip(a[:3], b[:3])) < 30  # noqa: E731 - scaled, faded a touch
 
     assert mark.get_at((50, 50))[3] == 0 and mark.get_at((75, 30))[3] == 0  # the hole and the opening: see-through
     assert close(mark.get_at((70, 61)), lv.accent)  # the crossbar
@@ -198,3 +198,23 @@ def test_the_g_roundel_is_the_mark_in_the_header_and_at_boot(surface, shipped_co
     w, h = surface.get_size()
     assert any(close(surface.get_at((w // 2 + dx, h // 2 + int(h * 0.05))), lv.accent) for dx in range(10, 60, 4))
     assert style.roundel_g(100, lv) is mark  # cached
+
+
+def test_a_word_wider_than_the_room_is_broken_not_drawn_past_it(surface):
+    f = style.Type(1.0)(19, "text", "medium")
+    node = "alsa_output.pci-0000_0a_00.4.analog-stereo.monitor"
+    lines = style.wrap(f, node, 200, lines=3)
+    assert len(lines) >= 2 and all(f.size(line)[0] <= 200 for line in lines)
+    assert "".join(lines).replace("…", "") in node  # the pieces are the word
+    assert style.wrap(f, f"Output {node}", 200, lines=2)[0] == "Output"
+
+
+def test_hint_width_matches_what_button_hint_draws(surface):
+    t = style.Type(1.0)
+    lv = style.LIVERIES["gulf"]
+    for prompts in ("xbox", "playstation", "keyboard"):
+        style.set_prompts(prompts)
+        for button, label in (("A", "Select"), ("LB", "Tabs"), ("GUIDE", "Quick Menu")):
+            drawn = style.button_hint(surface, 10, 50, button, label, t, lv, size=0.9) - 10
+            assert style.hint_width(button, label, t, 0.9) == drawn
+    style.set_prompts("auto")

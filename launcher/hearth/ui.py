@@ -263,10 +263,17 @@ def paint_game(size: tuple[int, int], app: App, th: Theme, lit: bool, art: pygam
         style.stripes(surf, 0, 0, h, max(3, int(h * 0.05)), (lv.accent, lv.second))
     _progress(surf, app, th)
     style.rounded(surf, th.radius)
-    if lit:  # high contrast: a thick ring in the accent, not a hairline in the text colour
-        pygame.draw.rect(surf, (*lv.accent, 255) if lv.contrast else (*lv.text, 225), surf.get_rect(),
-                         width=max(2, int((6 if lv.contrast else 2) * th.u)), border_radius=th.radius)
+    if lit:
+        _focus_ring(surf, th)
     return surf
+
+
+def _focus_ring(surf: pygame.Surface, th: Theme) -> None:
+    """The ring round the focused tile: a hairline in the text colour, or a
+    thick one in the accent for high contrast."""
+    lv = th.lv
+    pygame.draw.rect(surf, (*lv.accent, 255) if lv.contrast else (*lv.text, 225), surf.get_rect(),
+                     width=max(2, int((6 if lv.contrast else 2) * th.u)), border_radius=th.radius)
 
 
 def paint_tile(size: tuple[int, int], app: App, th: Theme, lit: bool, icon: pygame.Surface | None = None,
@@ -305,9 +312,8 @@ def paint_tile(size: tuple[int, int], app: App, th: Theme, lit: bool, icon: pyga
             _badge(surf, app.platform, th, pad)
     _progress(surf, app, th)
     style.rounded(surf, th.radius)
-    if lit:  # high contrast: a thick ring in the accent, not a hairline in the text colour
-        pygame.draw.rect(surf, (*lv.accent, 255) if lv.contrast else (*lv.text, 225), surf.get_rect(),
-                         width=max(2, int((6 if lv.contrast else 2) * th.u)), border_radius=th.radius)
+    if lit:
+        _focus_ring(surf, th)
     return surf
 
 
@@ -1338,10 +1344,11 @@ class HomeScreen:
         slant = h * SLANT
         layer = pygame.Surface((w, h), pygame.SRCALPHA)
         if lv.wordmark:  # the boot logo: the mark, growing a touch, until the stripes have passed
-            mark = style.roundel_g(int(h * (0.30 + 0.03 * p)), lv)
+            full = style.roundel_g(int(h * 0.33), lv)  # drawn once; scaled per frame
+            size = int(h * (0.30 + 0.03 * p))
+            mark = pygame.transform.smoothscale(full, (size, size))
             mark.set_alpha(int(255 * (1 - p) ** 0.6))
             layer.blit(mark, mark.get_rect(center=(w // 2, h // 2)))
-            mark.set_alpha(255)
         broad = int(h * 0.16)
         bands = ((lv.accent, broad), (lv.second, broad // 3), (lv.text, broad // 8))
         total = sum(b for _, b in bands) + broad // 4 * 2 + slant
@@ -1461,7 +1468,7 @@ class HomeScreen:
                     pygame.draw.rect(s, lv.accent, rect, border_radius=int(10 * u))
                 else:
                     style.blend_rect(s, rect, (*lv.text, 20), int(10 * u))
-                label = k.upper() if not actions else k.upper()
+                label = k.upper()
                 glyph = style.tracked(f_key, label, lv.ink if focus else lv.text, 0.1 if actions else 0)
                 s.blit(glyph, glyph.get_rect(center=rect.center))
         kb_bottom = y + (len(KEY_ROWS) + 1) * (key + gap)

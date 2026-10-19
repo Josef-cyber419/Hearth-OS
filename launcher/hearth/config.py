@@ -269,16 +269,17 @@ def parse(data: dict) -> Config:
             seen.add(app.id)
             apps.append(app)
         rows.append(Row(title, tuple(apps)))
-    quick_menu = data.get("quick_menu", {})
-    theme = data.get("theme", {})
+    quick_menu = _table(data, "quick_menu")
+    theme = _table(data, "theme")
     motion = theme.get("motion", "full")
     if motion not in ("full", "reduced"):
         raise ConfigError("theme.motion must be \"full\" or \"reduced\"")
-    wii = data.get("wii_remote", {})
-    controllers = data.get("controllers", {})
-    home_table = data.get("home", {})
+    wii = _table(data, "wii_remote")
+    controllers = _table(data, "controllers")
+    home_table = _table(data, "home")
     wii_mouse = _choice(wii, "wii_remote", "mouse", ("apps", "always", "never"))
-    access = data.get("accessibility", {})
+    access = _table(data, "accessibility")
+    remote_table, cast_table = _table(data, "remote"), _table(data, "cast")
     calibration = wii.get("calibration")
     if calibration is not None and (not isinstance(calibration, (list, tuple)) or len(calibration) != 4):
         raise ConfigError("wii_remote.calibration must be 4 numbers (or left out)")
@@ -312,17 +313,26 @@ def parse(data: dict) -> Config:
         screensaver=_choice(home_table, "home", "screensaver", ("ambient", "photos", "both", "clock")),
         photos_folder=str(home_table.get("photos_folder") or ""),
         sleep_minutes=int(_number(home_table, "home", "sleep_minutes", 0, 0, 1440)),
-        emulation_resolution=_choice(data.get("emulation", {}), "emulation", "resolution",
+        emulation_resolution=_choice(_table(data, "emulation"), "emulation", "resolution",
                                      ("auto", "1080p", "1440p", "4k")),
         quick_resume=int(_number(home_table, "home", "quick_resume", 2, 0, 3)),
         guide_hold_action=_choice(controllers, "controllers", "guide_hold", ("resume", "close")),
         text_size=_choice(access, "accessibility", "text_size", ("normal", "large", "larger")),
         contrast=bool(access.get("contrast", False)),
-        remote_enabled=bool(data.get("remote", {}).get("enabled", True)),
-        cast_airplay=bool(data.get("cast", {}).get("airplay", True)),
-        cast_spotify=bool(data.get("cast", {}).get("spotify", True)),
-        cast_name=str(data.get("cast", {}).get("name") or "")[:40],
+        remote_enabled=bool(remote_table.get("enabled", True)),
+        cast_airplay=bool(cast_table.get("airplay", True)),
+        cast_spotify=bool(cast_table.get("spotify", True)),
+        cast_name=str(cast_table.get("name") or "")[:40],
     )
+
+
+def _table(data: dict, name: str) -> dict:
+    """A [section] of the config, or {} when it's absent; something else
+    there (`remote = false`) is a config error, said plainly, not a crash."""
+    table = data.get(name, {})
+    if not isinstance(table, dict):
+        raise ConfigError(f"[{name}] must be a table of settings, not {type(table).__name__}")
+    return table
 
 
 def _choice(table: dict, name: str, key: str, options: tuple[str, ...]) -> str:

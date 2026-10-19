@@ -31,9 +31,11 @@ class Client:
     def __init__(self, port):
         self.port, self.cookie = port, None
 
-    def call(self, method, path, data=None):
+    def call(self, method, path, data=None, host=None):
         conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
+        if host:
+            headers["Host"] = host
         if self.cookie:
             headers["Cookie"] = self.cookie
         from urllib.parse import urlencode
@@ -238,3 +240,72 @@ def test_status_and_check_mention_the_remote(served, capsys, monkeypatch):
 
 def test_check_without_a_remote_is_informational():
     assert fieldcheck.phone_remote()[0].status == "info"
+
+
+def test_only_this_pcs_name_or_address_reaches_the_remote(served, monkeypatch):
+    r, keys, _, client = served
+    assert client.call("GET", "/me")[0] == 200  # 127.0.0.1:port
+    status, body = client.call("GET", "/me", host="evil.example")
+    assert status == 421 and "address or name" in json.loads(body)["error"]
+    assert client.call("POST", "/pair", {"code": r.code}, host="evil.example:8420")[0] == 421
+    monkeypatch.setattr(remote, "hostname", lambda: "Lounge-PC")
+    assert remote.host_allowed("lounge-pc.local:8420") and remote.host_allowed("LOUNGE-PC")
+    assert remote.host_allowed("192.168.1.20:8420") and remote.host_allowed("[fe80::1]:8420")
+    assert remote.host_allowed("localhost") and not remote.host_allowed("") and not remote.host_allowed("tv.example")
+
+
+def test_three_pauses_in_a_row_change_the_code(tmp_path):
+    r = remote.Remote(lambda: None, port=0, phones=tmp_path / "p.json")
+    first = r.code
+    now = 100.0
+    for pause in range(remote.LOCKOUTS_FOR_NEW_CODE):
+        for _ in range(remote.CODE_TRIES):
+            assert r.pair("000000", now=now) is None
+        now += remote.LOCKOUT_SECONDS + 1
+        if pause < remote.LOCKOUTS_FOR_NEW_CODE - 1:
+            assert r.code == first
+    assert r.code != first and len(r.code) == 6  # a device guessing has to start over
+    assert r.pair(r.code, now=now) is not None  # the new one works, and resets the count
+    assert r.lockouts == 0
+
+
+def test_a_display_that_cannot_be_opened_is_not_retried_per_tap(tmp_path, monkeypatch):
+    tries = []
+
+    def factory():
+        tries.append(1)
+        raise OSError("no display")
+
+    r = remote.Remote(factory, port=0, phones=tmp_path / "p.json")
+    assert r.press("up") == "The TV isn't in Game Mode"
+    assert r.press("down") == "The TV isn't in Game Mode"
+    assert len(tries) == 1  # remembered for a while
+    r._keys_failed_at -= remote.KEYS_RETRY_SECONDS + 1
+    r.press("up")
+    assert len(tries) == 2
+
+
+def test_connect_says_which_part_failed(monkeypatch):
+    from hearth import gamescope
+
+    monkeypatch.setattr(gamescope, "adopt_session_display", lambda: False)
+    assert drive.Keys.connect() is None and drive.last_problem() == drive.NO_DISPLAY
+    monkeypatch.setattr(gamescope, "adopt_session_display", lambda: True)
+    monkeypatch.setattr(gamescope.Gamescope, "connect", staticmethod(lambda: None))
+    assert drive.Keys.connect() is None and drive.last_problem() == drive.NO_CONNECTION
+    assert drive.press(["up"]) == [drive.NO_CONNECTION]
+
+
+def test_typing_is_capped_and_lets_other_presses_in(monkeypatch):
+    from Xlib import X
+    from Xlib.ext import xtest
+
+    sent = []
+    monkeypatch.setattr(xtest, "fake_input", lambda d, kind, code=0, **kw: sent.append(kind))
+    d = types.SimpleNamespace(keysym_to_keycode=lambda keysym: 38, keycode_to_keysym=lambda code, index: 0x61,
+                              sync=lambda: None)
+    monkeypatch.setattr(drive, "target", lambda gs, state: types.SimpleNamespace(id=7, set_input_focus=lambda *a: None))
+    keys = drive.Keys(types.SimpleNamespace(d=d), sleep=lambda s: None)
+    assert keys.type("a" * 1000) is None
+    assert sent.count(X.KeyPress) == drive.MAX_TYPED
+    assert not keys._lock.locked()  # the lock is taken per key, never for the whole text

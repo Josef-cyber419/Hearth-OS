@@ -74,7 +74,12 @@ jobs:
           # The release version (VERSION) on main; anything else is a build of
           # work towards it.
           version=$(cat VERSION)
-          if [[ "$GITHUB_REF" != refs/heads/main ]]; then version="$version-dev.${GITHUB_SHA::7}"; fi
+          # A commit that is main's tip (staging just synced after a release)
+          # is the release itself, wherever it's built from.
+          main_sha=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [[ "$GITHUB_REF" != refs/heads/main && "$main_sha" != "$GITHUB_SHA" ]]; then
+            version="$version-dev.${GITHUB_SHA::7}"
+          fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
           podman build \
             --build-arg HEARTH_VERSION="$version" \

@@ -176,7 +176,7 @@ def discover_jellyfin(timeout: float = 2.0, port: int = DISCOVERY_PORT) -> list[
         while time.monotonic() < end:
             try:
                 data, _ = s.recvfrom(4096)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 break

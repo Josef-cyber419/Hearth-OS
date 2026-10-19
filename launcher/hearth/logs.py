@@ -55,7 +55,7 @@ def setup(role: str, level: int | None = None) -> Path:
     # exception handling; this still leaves a stack trace behind.
     global _crash_file
     try:
-        _crash_file = open(path.parent / f"crash-{role}.txt", "a")
+        _crash_file = open(path.parent / f"crash-{role}.txt", "a")  # noqa: SIM115 - stays open for faulthandler
         faulthandler.enable(_crash_file)
     except OSError:
         pass

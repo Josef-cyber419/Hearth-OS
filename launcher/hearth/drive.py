@@ -20,6 +20,13 @@ BUTTONS = {
     "lb": "q", "rb": "e", "backspace": "BackSpace",
 }
 NO_DISPLAY = "no Game Mode display found: is Hearth running on the TV?"
+NO_CONNECTION = "couldn't open Game Mode's display: run this as the session user (over SSH: the same account)"
+_last_problem = NO_DISPLAY
+
+
+def last_problem() -> str:
+    """Why Keys.connect() last returned None."""
+    return _last_problem
 REQUESTS = {"guide": "menu", "home": "home"}
 
 
@@ -49,6 +56,7 @@ def target(gs, state: dict):
 
 HOLD = 0.06  # a real key is held for a moment; back-to-back down/up can be missed or read as held
 GAP = 0.03  # and lifted for a moment: a release and a press of the same key with no gap read as auto-repeat (#64)
+MAX_TYPED = 256  # characters typed in one go (a password, a search, an address; not a document)
 
 # Characters whose X keysym isn't just the character (for typing from the phone remote).
 KEYSYM_NAMES = {
@@ -79,10 +87,15 @@ class Keys:
     def connect(cls) -> "Keys | None":
         from .gamescope import Gamescope, adopt_session_display
 
+        global _last_problem
         if not adopt_session_display():
+            _last_problem = NO_DISPLAY
             return None
         gs = Gamescope.connect()
-        return cls(gs) if gs is not None else None
+        if gs is None:
+            _last_problem = NO_CONNECTION
+            return None
+        return cls(gs)
 
     def _focus(self) -> bool:
         from Xlib import X
@@ -133,18 +146,18 @@ class Keys:
         Characters the keyboard map hasn't got are left out."""
         from Xlib import XK
 
-        with self._lock:
-            if not self._focus():
-                return "nothing in front to type into"
-            d = self.gs.d
-            shift = d.keysym_to_keycode(XK.string_to_keysym("Shift_L"))
-            for ch in text:
-                keysym = XK.string_to_keysym(KEYSYM_NAMES.get(ch, ch))
-                code = d.keysym_to_keycode(keysym) if keysym else 0
-                if not code:
-                    continue
-                # The key's plain keysym is something else (e.g. "a" for "A"): hold Shift.
-                shifted = d.keycode_to_keysym(code, 0) != keysym
+        d = self.gs.d
+        shift = d.keysym_to_keycode(XK.string_to_keysym("Shift_L"))
+        for ch in text[:MAX_TYPED]:
+            keysym = XK.string_to_keysym(KEYSYM_NAMES.get(ch, ch))
+            code = d.keysym_to_keycode(keysym) if keysym else 0
+            if not code:
+                continue
+            # The key's plain keysym is something else (e.g. "a" for "A"): hold Shift.
+            shifted = d.keycode_to_keysym(code, 0) != keysym
+            with self._lock:  # per key, so a button press from another phone isn't held up for the whole text
+                if not self._focus():
+                    return "nothing in front to type into"
                 self._tap(code, shift if shifted else None)
         return None
 
@@ -156,7 +169,7 @@ def press(names: list[str], delay: float = 0.6, sleep=time.sleep) -> list[str]:
         return [f"unknown button {n!r}: use {', '.join([*BUTTONS, *REQUESTS])}" for n in unknown]
     keys = Keys.connect()
     if keys is None:
-        return [NO_DISPLAY]
+        return [last_problem()]
     keys.sleep = sleep
     for name in names:
         problem = keys.press(name)

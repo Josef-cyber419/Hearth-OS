@@ -23,9 +23,9 @@ MAX_DEPTH = 4
 
 def home_pictures(home: Path | None = None) -> Path:
     """~/Pictures (the folder the desktop uses, if it's been moved)."""
-    from .captures import folder
+    from .captures import xdg_user_dir
 
-    return folder(home).parent
+    return xdg_user_dir("PICTURES", "Pictures", home)
 
 
 def _mounted(media: Path = Path("/run/media"), var_mnt: Path = Path("/var/mnt")) -> list[Path]:
@@ -175,7 +175,9 @@ def _load_small(path: str | Path, size: tuple[int, int]) -> pygame.Surface | Non
         return None
     try:
         with Image.open(path) as im:
-            im.draft("RGB", (size[0] * 2, size[1] * 2))  # JPEG: decode at a fraction of the size
+            # JPEG: decoded at a fraction of its size, no smaller than the
+            # screen (with room for the saver's slow drift).
+            im.draft("RGB", (int(size[0] * 1.15), int(size[1] * 1.15)))
             im = ImageOps.exif_transpose(im).convert("RGB")
             return pygame.image.frombytes(im.tobytes(), im.size, "RGB")
     except Exception:  # noqa: BLE001 - whatever Pillow dislikes, pygame may still read
@@ -186,8 +188,12 @@ def caption(path: Path, root: Path) -> str:
     """What to call a photo on screen: its folder ("Holiday 2025"), or
     nothing for one straight in the chosen folder (file names like
     IMG_2041 say nothing)."""
+    root = Path(root).expanduser()
     try:
-        rel = path.resolve().relative_to(Path(root).expanduser().resolve())
-    except (ValueError, OSError):
-        return ""
+        rel = path.relative_to(root)  # as find() names them: no filesystem walk per photo
+    except ValueError:
+        try:
+            rel = path.resolve().relative_to(root.resolve())
+        except (ValueError, OSError):
+            return ""
     return rel.parent.name if len(rel.parts) > 1 else ""

@@ -263,7 +263,7 @@ def phone_remote() -> list[Result]:
     from . import session
 
     info = session.read().get("remote")
-    if not info:
+    if not info or _run(["pgrep", "-f", "python3 -m hearth( |$)"], timeout=5)[0] != 0:
         return [Result("Phone remote", "info", "not running (starts with Hearth in Game Mode)")]
     out = []
     try:
@@ -300,9 +300,15 @@ def casting() -> list[Result]:
     except Exception as e:  # noqa: BLE001
         return [Result("Casting", "info", f"couldn't read the settings: {e}")]
     marks = {"off": "info", "missing": "warn", "running": "ok", "stopped": "warn"}
-    for receiver, how, words in cast.status(config, state["background"]):
+    probed = cast.probe(config)
+    for receiver, how, words in cast.status(config, state["background"], probed):
         if how == "stopped":
             words = "on, but not running: hearthctl logs"
+        elif how == "missing":  # the details Settings leaves out
+            missing, failed = probed[receiver.id]
+            words += f" ({missing})"
+            if failed and receiver.installer:
+                words += f"; journalctl --user -u {receiver.installer}"
         out.append(Result(f"{receiver.name} receiver", marks[how], words))
     if config.cast_airplay and shutil.which("uxplay"):
         rc, _ = _run(["systemctl", "is-active", "--quiet", "avahi-daemon"], timeout=5)

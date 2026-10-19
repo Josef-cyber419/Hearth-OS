@@ -95,6 +95,24 @@ def test_the_drive_the_system_is_mounted_from_is_never_offered(fstab, tmp_path):
     assert storage.drives(lambda args: json.dumps(bare), fstab, include_system=True, mounts=mounts)[0].system
 
 
+def test_an_encrypted_system_drive_is_known_by_what_sits_on_its_partition(fstab, tmp_path):
+    """LUKS: the system is mounted from /dev/mapper/luks-… under a partition,
+    and lsblk says nothing about mount points (field report #60's family)."""
+    bare = json.loads(lsblk())
+    nvme = bare["blockdevices"][0]
+    for c in nvme["children"]:
+        c["mountpoints"] = [None]
+    nvme["children"][1]["children"] = [{"path": "/dev/mapper/luks-abc", "type": "crypt", "size": 998 * GB,
+                                       "mountpoints": [None]}]
+    bare["blockdevices"][1]["children"] = None  # lsblk can print null here
+    mounts = tmp_path / "mounts"
+    mounts.write_text("/dev/mapper/luks-abc /sysroot btrfs rw 0 0\n")
+    found = storage.drives(lambda args: json.dumps(bare), fstab, mounts=mounts)
+    assert [d.path for d in found] == ["/dev/sda", "/dev/sdb"]
+    assert storage.drives(lambda args: json.dumps(bare), fstab, include_system=True, mounts=mounts)[0].system
+    assert storage.drives(lambda args: '{"blockdevices": [{"path": "/dev/sda", "children": 7}]}', fstab) == []
+
+
 def test_a_drive_with_a_linux_filesystem_can_be_used_as_it_is(fstab):
     stick = storage.drives(lambda args: lsblk(fstab_uuid="other"), fstab)[1]
     assert stick.mounted_at is None and stick.usable_part.path == "/dev/sdb1"

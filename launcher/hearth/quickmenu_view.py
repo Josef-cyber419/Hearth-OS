@@ -93,10 +93,8 @@ class QuickMenuView:
     def __init__(self, size: tuple[int, int], livery: str = "gulf", motion: str = "full",
                  clock: str = "24h") -> None:
         self.size = size
-        w, h = size
-        self.u = h / 1080
+        self.u = size[1] / 1080
         self.type = Type(self.u)
-        self._make_fonts()
         self.panel_w = int(640 * self.u)
         self.margin = int(28 * self.u)
         self.pad = int(58 * self.u)
@@ -107,6 +105,8 @@ class QuickMenuView:
         self._dt = 0.0
         self._backdrop = self._make_backdrop()
         self._shadow: pygame.Surface | None = None
+        self._still: tuple | None = None  # the surface the backdrop was last drawn whole on, once settled
+        self._pointer_at: tuple[int, int] | None = None
         # Where each option and tab is on screen (for a mouse or pointer).
         self.item_hits: list[tuple[pygame.Rect, str]] = []
         self.tab_hits: list[tuple[pygame.Rect, int]] = []
@@ -118,6 +118,7 @@ class QuickMenuView:
         self.lv = style.livery(livery)
         self.reduced = motion == "reduced"
         self.smooth = Smooth(rate=16.0, instant=self.reduced)
+        self._still = None
         self._make_fonts()  # the text size may have changed too (Settings → Accessibility)
 
     def _make_fonts(self) -> None:
@@ -155,27 +156,44 @@ class QuickMenuView:
              pointer: tuple[int, int] | None = None) -> None:
         now = time.monotonic()
         self._dt, self._last = min(0.1, now - self._last), now
-        surf.fill((0, 0, 0, 0))
         t = max(0.0, min(1.0, t))
         e = ease_out(t)
-        backdrop = self._backdrop.copy()
-        backdrop.set_alpha(int(255 * e))
-        surf.blit(backdrop, (0, 0))
-
         w, h = self.size
         panel = pygame.Rect(0, self.margin, self.panel_w, h - 2 * self.margin)
         panel.right = int(w - self.margin + (1 - e) * (self.panel_w + self.margin * 2))
+        if self._shadow is None:
+            self._shadow = style.soft_shadow(panel.size, self.radius, self.px(40), 170)
+        shadow_at = (panel.x - self.px(40), panel.y - self.px(40) + self.px(10))
+        pointer = pointer if t >= 1.0 else None
+
+        # Once the panel has slid in, the backdrop outside it doesn't change:
+        # only the panel's own patch (and where the pointer was) is cleared and
+        # redrawn, not the whole screen (a full-screen alpha blit per frame).
+        stale = (id(surf), surf.get_size())
+        if e >= 1.0 and self._still == stale:
+            patch = panel.union(pygame.Rect(shadow_at, self._shadow.get_size()))
+            for at in (self._pointer_at, pointer):
+                if at is not None:
+                    patch.union_ip(pygame.Rect(at[0] - self.px(40), at[1] - self.px(40), self.px(80), self.px(80)))
+            patch = patch.clip(surf.get_rect())
+            surf.fill((0, 0, 0, 0), patch)
+            surf.blit(self._backdrop, patch.topleft, patch)
+        else:
+            surf.fill((0, 0, 0, 0))
+            self._backdrop.set_alpha(int(255 * e))  # no full-screen copy per frame
+            surf.blit(self._backdrop, (0, 0))
+            self._backdrop.set_alpha(255)
+            self._still = stale if e >= 1.0 else None
 
         layer = pygame.Surface(panel.size, pygame.SRCALPHA)
         self._draw_panel(layer, menu, title, paused, 1.0 if self.reduced else t)
         layer.set_alpha(int(255 * e))
-        if self._shadow is None:
-            self._shadow = style.soft_shadow(panel.size, self.radius, self.px(40), 170)
         self._shadow.set_alpha(int(255 * e))
-        surf.blit(self._shadow, (panel.x - self.px(40), panel.y - self.px(40) + self.px(10)))
+        surf.blit(self._shadow, shadow_at)
         surf.blit(layer, panel.topleft)
         self._origin = panel.topleft
-        if pointer is not None and t >= 1.0:
+        self._pointer_at = pointer
+        if pointer is not None:
             style.draw_pointer(surf, pointer, self.u, self.lv)
 
     def draw_toast(self, surf: pygame.Surface, toast, now: float) -> None:
@@ -366,7 +384,7 @@ class QuickMenuView:
         if confirming:
             label = style.fit(style.tracked(self.f_value, (item.confirm_label or "Press A again to confirm").upper(),
                                             lv.accent, 0.08), max(1, inner.right - x))
-        else:
+        elif item.kind != "meter":  # a meter's label is cut to the room beside its reading, below
             label = style.clip(self.f_label, item.label, room, label_color)
         if item.kind == "meter":  # a live reading: value on the right, a bar under it
             top = rect.y + self.px(14)
@@ -484,12 +502,9 @@ class QuickMenuView:
     def draw_hints(self, s: pygame.Surface, x: int, cy: int, right: int, hints, size: float = 0.9) -> None:
         """Button hints along a line; at a larger text size they shrink a
         little rather than lose the last one (field report #63)."""
-        for scale in (size, size * 0.85, size * 0.72):
-            probe = pygame.Surface((max(1, right + self.px(600)), self.px(60)), pygame.SRCALPHA)
-            end = x
-            for button, text in hints:
-                end = style.button_hint(probe, end, probe.get_height() // 2, button, text, self.type, self.lv, size=scale)
-            if end <= right or scale == size * 0.72:
+        scale = size
+        for scale in (size, size * 0.85, size * 0.72):  # measured, not drawn, to find the size that fits
+            if x + sum(style.hint_width(b, text, self.type, scale) for b, text in hints) <= right:
                 break
         at = x
         for button, text in hints:

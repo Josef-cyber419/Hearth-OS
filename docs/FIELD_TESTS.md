@@ -116,7 +116,9 @@ the run's report. Things to know:
   (so does Settings → Phone remote, with a QR code). From any phone on the
   Wi-Fi: open the address, type the code, then try every button and type into
   Search and into a Wi-Fi password box. `hearthctl type "text"` uses the same
-  path from SSH. Five wrong codes should make a new one.
+  path from SSH. Five wrong codes should pause pairing for a minute (the code
+  on the TV stays the same; the page says to wait); after three such pauses
+  the code changes.
 - **Photos in the screen saver**: put a few JPEGs from a phone (some taken
   sideways) in `~/Pictures/<folder>` (or plug in a USB stick with a DCIM
   folder), choose *Your photos* or *Games and photos* in Settings → Home

@@ -13,17 +13,35 @@ import contextlib
 import copy
 import fcntl
 import json
+import logging
 import os
 import re
 import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Iterator
 
 from . import events
+
+log = logging.getLogger("hearth")
+
+
+def in_background(name: str, fn: Callable, *args) -> threading.Thread:
+    """Run `fn` on a daemon thread. A failure inside it is logged (with
+    the thread's name) rather than lost on stderr with the thread."""
+    def work() -> None:
+        try:
+            fn(*args)
+        except Exception:  # noqa: BLE001 - whatever it was, say so
+            log.exception("background work %r failed", name)
+
+    thread = threading.Thread(target=work, daemon=True, name=name)
+    thread.start()
+    return thread
 
 UNIT_RE = re.compile(r"hearth-(app|bg)-(.+)_\d+\.scope")
 
@@ -72,6 +90,15 @@ def _state_path() -> Path:
 @contextlib.contextmanager
 def _locked() -> Iterator[None]:
     with open(runtime_dir() / "state.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+@contextlib.contextmanager
+def held(name: str) -> Iterator[None]:
+    """A lock shared by Hearth's processes (hub, overlay, hearthctl) for a
+    piece of work that mustn't run twice at once, e.g. starting a receiver."""
+    with open(runtime_dir() / f"{name}.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
 

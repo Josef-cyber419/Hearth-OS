@@ -377,8 +377,7 @@ class SettingsApp:
         if category == "casting":  # which receivers are running right now
             self.jobs.start("cast-load", self._load_cast)
             return
-        if category == "home" and "home" not in self.data["loaded"]:  # drives with pictures: may be slow
-            self.data["loaded"].add("home")
+        if category == "home":  # a stick with pictures plugged in while Settings is open shows up too
             self.jobs.start("photos-load", self._load_photo_folders)
             return
         if category in self.data["loaded"] and not force:
@@ -424,7 +423,11 @@ class SettingsApp:
         return None
 
     def _load_cast(self) -> None:
-        self.data["cast"] = dict(session.read().get("background") or {})
+        from . import cast
+
+        # What's running, and what each receiver is missing (commands: off the UI thread).
+        self.data["cast"] = {"background": dict(session.read().get("background") or {}),
+                             "probed": cast.probe(self.config)}
         return None
 
     def _load_photo_folders(self) -> None:
@@ -754,11 +757,16 @@ class SettingsApp:
         from . import cast
 
         c = self.config
-        running_now = self.data.get("cast") or {}  # loaded when the page opens (load_for)
+        loaded = self.data.get("cast")  # loaded when the page opens (load_for); nothing is probed here
         name = cast.device_name(c)
         items = []
         on = cast.wanted(c)
-        for receiver, _state, how in cast.status(c, running_now):
+        if loaded:
+            states = {r.id: how for r, _state, how in cast.status(c, loaded["background"], loaded["probed"])}
+        else:
+            states = {r.id: "Checking…" for r in cast.RECEIVERS}
+        for receiver in cast.RECEIVERS:
+            how = states[receiver.id]
             extra = {"airplay": "iPhone, iPad or Mac: a video, photos, music, or the whole screen",
                      "spotify": "The Spotify app's speaker list, on any phone (needs Premium)"}[receiver.setting]
             items.append(Item(f"cast-{receiver.setting}", receiver.name, "toggle", value=on[receiver.id],
@@ -1855,7 +1863,7 @@ class SettingsView(QuickMenuView):
         style.blend_rect(surf, bar, (*lv.text, 22 if active else 10), int(8 * u))
         style.stripes(surf, bar.x, bar.y + int(12 * u), bar.h - int(24 * u), max(3, int(5 * u)),
                       (lv.accent, lv.second), alpha=255 if active else 110)
-        for i, (key, title, _) in enumerate(CATEGORIES):
+        for i, (_key, title, _) in enumerate(CATEGORIES):
             y = y0 + i * row_h
             on = i == app.menu.tab
             number = style.tracked(f, f"{i + 1:02d}", lv.accent if on else lv.dim, 0.1)
@@ -1870,7 +1878,7 @@ class SettingsView(QuickMenuView):
         x = self.margin + self.sidebar_w + int(56 * u)
         w = self.width - x - self.margin
         y = self.header_h + int(22 * u)
-        key, title, description = CATEGORIES[app.menu.tab]
+        _key, title, description = CATEGORIES[app.menu.tab]
         heading = style.tracked(self.type(52, "cond", "semibold"), title.upper(), lv.text, 0.05)
         surf.blit(heading, (x, y))
         y += heading.get_height()
@@ -1910,13 +1918,12 @@ class SettingsView(QuickMenuView):
         shade = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         shade.fill((*lv.ink, 250))
         surf.blit(shade, (0, 0))
-        # The address and QR code are worked out once per code, not per frame.
-        code_now = remote.active.code if remote.active else ""
+        # The address and QR code are worked out once per code and address, not per frame.
+        info = remote.active.info() if remote.active else {"url": "", "name_url": "", "code": "------"}
         cached = getattr(self, "_pairing", None)
-        if cached is None or cached[0] != code_now:
-            info = remote.active.info() if remote.active else {"url": "", "name_url": "", "code": "------"}
-            self._pairing = (code_now, info, remote.qr_matrix(info["url"]) if info["url"] else None)
-        _, info, matrix = self._pairing
+        if cached is None or cached[0] != (info["code"], info["url"]):
+            self._pairing = ((info["code"], info["url"]), remote.qr_matrix(info["url"]) if info["url"] else None)
+        matrix = self._pairing[1]
         x, y = self.margin, int(self.height * 0.2)
         title = style.tracked(self.type(30, "cond", "semibold"), "PHONE REMOTE", lv.dim, 0.3)
         surf.blit(title, (x, y))

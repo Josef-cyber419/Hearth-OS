@@ -14,6 +14,7 @@ libraryfolders.vdf) and the ROMs folder (~/ROMs becomes a link to
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import re
@@ -26,6 +27,8 @@ from typing import Callable
 HELPER = "/usr/libexec/hearth/hearth-storage"
 FSTAB = Path("/etc/fstab")
 TAG = "x-hearth"  # the mount option marking fstab entries Hearth made
+log = logging.getLogger("hearth")
+
 SYSTEM_MOUNTS = {"/", "/sysroot", "/boot", "/boot/efi", "/usr", "/etc", "/var", "/home", "/var/home", "[SWAP]"}
 LINUX_FS = {"ext4", "btrfs", "xfs"}  # permissions and links: what Steam and emulators need
 MIN_SIZE = 4e9  # smaller than this isn't a games drive (and keeps card readers and such out)
@@ -123,6 +126,15 @@ def _all_mounts(dev: dict) -> set[str]:
     return found
 
 
+def _all_paths(dev: dict) -> set[str]:
+    """The device and everything on it: partitions, and what's on those
+    (an encrypted system lives on /dev/mapper/luks-… under a partition)."""
+    found = {dev["path"]} if dev.get("path") else set()
+    for child in dev.get("children") or ():
+        found |= _all_paths(child)
+    return found
+
+
 MOUNTS = Path("/proc/self/mounts")
 
 
@@ -134,7 +146,8 @@ def _nest(devices: list[dict]) -> list[dict]:
     by_name = {d.get("name"): d for d in devices if d.get("name")}
     by_name.update({d.get("path"): d for d in devices if d.get("path")})  # PKNAME is "sda", the path "/dev/sda"
     for d in devices:
-        d.setdefault("children", [])
+        if not isinstance(d.get("children"), list):  # absent, or null
+            d["children"] = []
     top = []
     for d in devices:
         parent = by_name.get(d.get("pkname")) if d.get("pkname") else None
@@ -166,7 +179,8 @@ def drives(run: Runner = _lsblk, fstab: Path = FSTAB, include_system: bool = Fal
     out = run(["-J", "-b", "-o", "NAME,PKNAME,PATH,TYPE,SIZE,MODEL,TRAN,RM,RO,FSTYPE,LABEL,UUID,MOUNTPOINTS"])
     try:
         devices = _nest(json.loads(out or "{}").get("blockdevices", []))
-    except (ValueError, AttributeError, TypeError):
+    except (ValueError, AttributeError, TypeError) as e:
+        log.warning("storage: couldn't read lsblk's answer (%s): no drives offered", e)
         return []
     ours = hearth_mounts(fstab)
     held = system_devices(mounts)  # what the system is really mounted from, whatever lsblk says
@@ -178,8 +192,7 @@ def drives(run: Runner = _lsblk, fstab: Path = FSTAB, include_system: bool = Fal
         size = int(dev.get("size") or 0)
         if size < MIN_SIZE:
             continue
-        paths = {path} | {c.get("path") for c in dev.get("children") or () if c.get("path")}
-        system = bool(_all_mounts(dev) & SYSTEM_MOUNTS) or bool(paths & held)
+        system = bool(_all_mounts(dev) & SYSTEM_MOUNTS) or bool(_all_paths(dev) & held)
         if system and not include_system:
             continue
         parts = tuple(Part(c.get("path", ""), int(c.get("size") or 0), c.get("fstype") or "", c.get("label") or "",

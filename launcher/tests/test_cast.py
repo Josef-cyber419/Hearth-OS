@@ -69,10 +69,44 @@ def test_ensure_starts_what_is_on_and_stops_what_is_off(receivers_ready):
     assert state["background"][cast.AIRPLAY]["name_arg"] == "TV"
     cast.ensure(cfg.parse({"cast": {"name": "TV"}}))
     assert len(started) == 2  # already running: left alone
-    cast.ensure(cfg.parse({"cast": {"name": "TV", "spotify": False}}))
+    cast.ensure(cfg.parse({"cast": {"name": "TV", "spotify": False}}), wait=True)
     assert len(stopped) == 1 and cast.SPOTIFY not in session.read()["background"]
-    cast.ensure(cfg.parse({"cast": {"name": "Den", "spotify": False}}))  # renamed: AirPlay restarts
-    assert len(stopped) == 2 and started[-1].command[1] == "Den"
+    cast.ensure(cfg.parse({"cast": {"name": "Den", "spotify": False}}), wait=True)  # renamed: stopped...
+    assert len(stopped) == 2 and cast.AIRPLAY not in session.read()["background"]
+    cast.ensure(cfg.parse({"cast": {"name": "Den", "spotify": False}}))  # ...and back under the new name
+    assert started[-1].command[1] == "Den"
+
+
+def test_a_receiver_that_died_is_started_again(receivers_ready, monkeypatch):
+    started, stopped = receivers_ready
+    config = cfg.parse({"cast": {"spotify": False}})
+    cast.ensure(config)
+    assert len(started) == 1
+    monkeypatch.setattr(session, "background_alive", lambda info: False)  # uxplay crashed
+    cast.ensure(config)
+    assert len(started) == 2 and stopped == []  # restarted, not "stopped"
+    assert session.read()["background"][cast.AIRPLAY]["pid"] == 4242
+
+
+def test_the_keeper_brings_receivers_back_while_the_home_screen_is_up(receivers_ready, monkeypatch):
+    import time
+
+    started, _ = receivers_ready
+    config = cfg.parse({"cast": {"spotify": False}})
+    try:
+        cast.keep(lambda: config, every=0.02)
+        for _ in range(100):
+            if started:
+                break
+            time.sleep(0.02)
+        assert [a.id for a in started] == [cast.AIRPLAY]
+        session.update(lambda s: s.update(foreground={"id": "kodi", "name": "Kodi"}, focus="foreground"))
+        monkeypatch.setattr(session, "background_alive", lambda info: False)
+        time.sleep(0.1)
+        assert len(started) == 1  # not while something else is in front
+    finally:
+        cast.keep(None)
+        session.update(lambda s: s.update(foreground=None, focus="home"))
 
 
 def test_a_phones_picture_takes_the_screen_and_gives_it_back():
@@ -170,6 +204,10 @@ def test_stop_and_restart_drop_the_phone(receivers_ready):
 def test_settings_page(shipped_config, receivers_ready):
     app = settings_app.SettingsApp(shipped_config)
     app.menu.tab = [c[0] for c in settings_app.CATEGORIES].index("casting")
+    app.refresh()
+    items = {i.key: i for i in app.menu.current.items}
+    assert "Checking…" in items["cast-airplay"].detail  # nothing probed on the UI thread
+    app._load_cast()  # what load_for("casting") does in the background
     app.refresh()
     items = {i.key: i for i in app.menu.current.items}
     assert items["cast-airplay"].value is True and "Starts with the home screen" in items["cast-airplay"].detail
@@ -276,10 +314,16 @@ def test_a_failed_install_is_said_plainly(monkeypatch, tmp_path):
     monkeypatch.setattr("shutil.which", lambda name: None)
     asked = []
     monkeypatch.setattr(cast, "installer_failed", lambda unit: asked.append(unit) or True)
-    by = {r.id: words for r, how, words in cast.status(cfg.parse({}), {})}
-    assert asked == ["hearth-spotify-update.service"]
-    assert "couldn't be installed" in by[cast.SPOTIFY] and "journalctl --user -u hearth-spotify-update" in by[cast.SPOTIFY]
-    assert "isn't installed in this build" in by[cast.AIRPLAY]  # no installer to ask about
+    probed = cast.probe(cfg.parse({}))
+    assert asked == ["hearth-spotify-update.service"] and probed[cast.SPOTIFY][1] is True
+    by = {r.id: words for r, how, words in cast.status(cfg.parse({}), {}, probed)}
+    assert by[cast.SPOTIFY] == "Spotify's program couldn't be installed; hearthctl check says why"
+    assert "~/" not in by[cast.SPOTIFY] and "journalctl" not in by[cast.SPOTIFY]  # Settings: plain words
+    assert by[cast.AIRPLAY] == "UxPlay isn't installed in this build"  # no installer to ask about
+    monkeypatch.setattr(fieldcheck, "_run", lambda cmd, timeout=15: (1, ""))
+    results = {r.name: r for r in fieldcheck.casting()}
+    assert "journalctl --user -u hearth-spotify-update.service" in results["Spotify receiver"].detail  # the check: details
+    assert "not found" in results["AirPlay receiver"].detail
     monkeypatch.setattr(cast, "installer_failed", lambda unit: False)
     by = {r.id: words for r, how, words in cast.status(cfg.parse({}), {})}
     assert "still being installed" in by[cast.SPOTIFY]

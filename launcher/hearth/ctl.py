@@ -104,7 +104,7 @@ def check_session() -> list[Check]:
     in_gs = bool(os.environ.get("GAMESCOPE_WAYLAND_DISPLAY"))
     out.append(Check("Running inside Game Mode", "info", "yes" if in_gs else
                      "no (normal from Desktop Mode or SSH; checks below that need Game Mode are skipped)"))
-    overlay = subprocess.run(["pgrep", "-f", "hearth.overlay"], capture_output=True).returncode == 0
+    overlay = subprocess.run(["pgrep", "-f", "hearth.overlay"], capture_output=True, timeout=10).returncode == 0
     if in_gs:
         out.append(Check("Quick Menu process", "ok" if overlay else "fail",
                          "running" if overlay else "not running", "" if overlay else "see: hearthctl logs"))
@@ -205,7 +205,8 @@ def _read_text(path: str) -> str:
 
 def installed_flatpaks() -> set[str]:
     try:
-        out = subprocess.run(["flatpak", "list", "--app", "--columns=application"], capture_output=True, text=True)
+        out = subprocess.run(["flatpak", "list", "--app", "--columns=application"], capture_output=True, text=True,
+                             timeout=60)
         return set(out.stdout.split())
     except OSError:
         return set()
@@ -246,7 +247,8 @@ def check_updates() -> list[Check]:
         out.append(Check("OS image", "info", f"{status.image} ({status.booted})"))
     if status.update_ready:
         out.append(Check("Update", "warn", f"{status.staged} downloaded", "restart to finish updating"))
-    auto = subprocess.run(["systemctl", "is-enabled", "uupd.timer"], capture_output=True, text=True).stdout.strip()
+    auto = subprocess.run(["systemctl", "is-enabled", "uupd.timer"], capture_output=True, text=True,
+                          timeout=10).stdout.strip()
     out.append(Check("Automatic updates", "ok" if auto == "enabled" else "warn",
                      f"uupd.timer {auto or 'not found'}", "" if auto == "enabled" else "sudo systemctl enable --now uupd.timer"))
     return out
@@ -658,7 +660,7 @@ def main(argv: list[str] | None = None) -> int:
         from . import drive
 
         keys = drive.Keys.connect()
-        problem = keys.type(args.text) if keys else drive.NO_DISPLAY
+        problem = keys.type(args.text) if keys else drive.last_problem()
         if problem:
             print(problem)
             return 1

@@ -44,6 +44,24 @@ def test_the_two_shortcuts_land_on_the_desktop_once(tmp_path, monkeypatch):
     assert (home / ".config/hearth/desktop-icons").exists()
 
 
+def test_without_gio_the_shortcuts_are_still_placed_once(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    source = tmp_path / "applications"
+    source.mkdir()
+    for name in desktopguide.DESKTOP_ICONS:
+        (source / name).write_text("x")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(home / ".config"))
+
+    def no_gio(*a, **k):
+        raise FileNotFoundError("gio")
+
+    monkeypatch.setattr(desktopguide.subprocess, "call", no_gio)
+    assert len(desktopguide.desktop_icons(source=source)) == 2
+    assert (home / ".config/hearth/desktop-icons").exists()  # stamped: not copied again next login
+
+
 def test_shortcuts_already_there_from_skel_are_left_alone(tmp_path, monkeypatch):
     home = tmp_path / "home"
     (home / "Desktop").mkdir(parents=True)
@@ -147,3 +165,25 @@ def test_a_stale_marker_is_ignored(tmp_path, monkeypatch):
     assert not desktopguide.came_from_steam()
     assert not m.exists()
     assert not desktopguide.came_from_steam()  # none: nothing to do
+
+
+def test_the_steam_once_marker_is_left_only_when_a_switch_happens(tmp_path):
+    import os
+    import subprocess
+    from pathlib import Path
+
+    script = Path(__file__).resolve().parents[2] / "image/system_files/usr/libexec/hearth/hearth-gamemode"
+    env = {**os.environ, "HOME": str(tmp_path), "XDG_CONFIG_HOME": str(tmp_path / ".config"), "PATH": str(tmp_path / "bin")}
+    (tmp_path / "bin").mkdir()
+    r = subprocess.run(["/usr/bin/bash", str(script), "--steam"], env=env, capture_output=True, text=True)
+    assert r.returncode == 1 and "no session switcher" in r.stderr
+    assert not (tmp_path / ".config/hearth/steam-once").exists()  # nothing happened: no marker for a later boot
+    switcher = tmp_path / "bin/steamosctl"
+    switcher.write_text("#!/usr/bin/bash\necho switched $*\n")
+    switcher.chmod(0o755)
+    env["PATH"] = str(tmp_path / "bin") + ":/usr/bin:/bin"
+    r = subprocess.run(["/usr/bin/bash", str(script), "--steam"], env=env, capture_output=True, text=True)
+    assert r.returncode == 0 and "switched switch-to-game-mode" in r.stdout
+    assert (tmp_path / ".config/hearth/steam-once").exists()
+    r = subprocess.run(["/usr/bin/bash", str(script)], env=env, capture_output=True, text=True)
+    assert r.returncode == 0 and not (tmp_path / ".config/hearth/steam-once").exists()

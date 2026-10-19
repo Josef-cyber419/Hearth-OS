@@ -383,7 +383,8 @@ def main(argv: list[str] | None = None) -> int:
     if not dev_mode:  # a page open to the network has no place in a window on a laptop
         from . import remote
 
-        remote.start(lambda: cfg.load().remote_enabled)
+        remote.start(remote_enabled)
+        cast.keep(lambda: home_config(args), every=60)  # receivers come back if they die or install late
     state = {"last_id": None, "message": None, "surface": None, "intro": "boot"}
     failures: list[float] = []
     while True:
@@ -544,6 +545,8 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
             cast.ensure(config)  # AirPlay and Spotify receivers, as Settings → Casting says
         except Exception:
             log.exception("cast receivers")
+    elif gs is not None:
+        cast.keep(None)  # a window on a laptop: no receivers
 
     home = Home(config)
     if state["last_id"]:
@@ -674,11 +677,34 @@ def in_use() -> str | None:
     try:
         if session.read()["focus"] != "home":
             return "shown"
-        from . import media
+        from . import audio, media
 
-        return "playing" if any(p.playing for p in media.players()) else None
+        if any(p.playing for p in media.players()):
+            return "playing"
+        # No player on the bus, but sound going out: AirPlay audio, a game's
+        # music, a browser (uxplay has no MPRIS; a phone's music must not put the PC to sleep).
+        return "playing" if audio.playing_now() else None
     except Exception:  # noqa: BLE001 - never a reason to stop the home screen
         return None
+
+
+def remote_enabled() -> bool:
+    """Whether the phone remote is on in Settings; asked on every request
+    from a phone, so the config is re-read at most every few seconds, and
+    a broken config means "off" rather than an error page."""
+    now = time.monotonic()
+    cached = _remote_enabled.get("at")
+    if cached is None or now - cached > 5:
+        try:
+            _remote_enabled["on"] = cfg.load().remote_enabled
+        except (OSError, cfg.ConfigError) as e:
+            log.warning("phone remote: config can't be read, treating it as off: %s", e)
+            _remote_enabled["on"] = False
+        _remote_enabled["at"] = now
+    return bool(_remote_enabled.get("on"))
+
+
+_remote_enabled: dict = {}
 
 
 def foreground(state: dict, gs: Gamescope | None, run) -> None:

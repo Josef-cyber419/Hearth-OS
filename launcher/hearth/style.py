@@ -154,6 +154,17 @@ class Smooth:
 # -- type ---------------------------------------------------------------------
 
 
+class Face(pygame.font.Font):
+    """A font that draws the characters it's got: arrows the face lacks are
+    swapped for chevrons (plain()) wherever text is rendered or measured."""
+
+    def render(self, text, antialias=True, color=(255, 255, 255), bgcolor=None, wraplength=0):
+        return super().render(plain(text), antialias, color, bgcolor, wraplength)
+
+    def size(self, text):
+        return super().size(plain(text))
+
+
 class Type:
     """Barlow (SIL Open Font License): a condensed grotesque in the spirit of
     period race numbers and timing boards. Falls back to system fonts."""
@@ -177,15 +188,17 @@ class Type:
         if key not in self._fonts:
             path = FONT_DIR / self.FILES.get((family, weight), "BarlowCondensed-SemiBold.ttf")
             try:
-                self._fonts[key] = pygame.font.Font(str(path), key[2])
+                self._fonts[key] = Face(str(path), key[2])
             except (OSError, pygame.error):
-                self._fonts[key] = pygame.font.SysFont(FALLBACK_FAMILIES, key[2], bold=weight != "medium")
+                fallback = pygame.font.match_font(FALLBACK_FAMILIES, bold=weight != "medium")
+                self._fonts[key] = Face(fallback, key[2])
         return self._fonts[key]
 
 
 def tracked(font: pygame.font.Font, text: str, color, spacing: float = 0.12) -> pygame.Surface:
-    """Text with letter spacing (in ems), the way signwriters spaced capitals."""
-    return _tracked(font, text, tuple(color), round(spacing, 3))
+    """Text with letter spacing (in ems), the way signwriters spaced capitals.
+    The surface is shared (cached): blit it, don't draw on it."""
+    return _tracked(font, plain(text), tuple(color), round(spacing, 3))
 
 
 @lru_cache(maxsize=512)
@@ -217,8 +230,13 @@ def plain(text: str) -> str:
 
 def clip(font: pygame.font.Font, text: str, width: int, color) -> pygame.Surface:
     """Text rendered no wider than `width`: cut with an ellipsis rather than
-    squeezed (a shrunk line can't be read from a sofa)."""
-    text = plain(text)
+    squeezed (a shrunk line can't be read from a sofa). The surface is
+    shared (cached): blit it, don't draw on it."""
+    return _clip(font, plain(text), int(width), tuple(color))
+
+
+@lru_cache(maxsize=1024)
+def _clip(font: pygame.font.Font, text: str, width: int, color: tuple) -> pygame.Surface:
     if width <= 0 or font.size(text)[0] <= width:
         return font.render(text, True, color)
     while len(text) > 1 and font.size(text[:-1].rstrip() + "…")[0] > width:
@@ -228,10 +246,25 @@ def clip(font: pygame.font.Font, text: str, width: int, color) -> pygame.Surface
 
 def wrap(font: pygame.font.Font, text: str, width: int, lines: int = 2) -> list[str]:
     """Text broken into at most `lines` lines of `width`; the last one is
-    cut with an ellipsis if there's more."""
-    text = plain(text)
-    words, out, line = text.split(), [], ""
-    for word in words:
+    cut with an ellipsis if there's more. A word wider than the room
+    (a device id, a path) is broken rather than drawn past it."""
+    return list(_wrap(font, plain(text), int(width), lines))
+
+
+@lru_cache(maxsize=1024)
+def _wrap(font: pygame.font.Font, text: str, width: int, lines: int) -> tuple[str, ...]:
+    out: list[str] = []
+    line = ""
+    for word in text.split():
+        while width > 0 and font.size(word)[0] > width:  # too long for any line: break it
+            cut = len(word)
+            while cut > 1 and font.size(word[:cut])[0] > width:
+                cut -= 1
+            if line:
+                out.append(line)
+                line = ""
+            out.append(word[:cut])
+            word = word[cut:]
         trial = f"{line} {word}".strip()
         if line and font.size(trial)[0] > width:
             out.append(line)
@@ -242,11 +275,11 @@ def wrap(font: pygame.font.Font, text: str, width: int, lines: int = 2) -> list[
         out.append(line)
     if len(out) > lines:
         out = out[:lines]
-        rest = " ".join(out[-1:]) + "…"
+        rest = out[-1] + "…"
         while len(rest) > 2 and font.size(rest)[0] > width:
             rest = rest[:-2].rstrip() + "…"
         out[-1] = rest
-    return out
+    return tuple(out)
 
 
 def fit(surf: pygame.Surface, max_w: int) -> pygame.Surface:
@@ -314,7 +347,7 @@ def stripes(surf: pygame.Surface, x: int, y: int, length: int, broad: int, color
     gap = max(1, broad // 3)
     widths = (broad, max(1, broad // 3))
     pos = 0
-    for color, w in zip(colors, widths):
+    for color, w in zip(colors, widths, strict=False):
         rect = pygame.Rect(x + pos, y, w, length) if vertical else pygame.Rect(x, y + pos, length, w)
         if alpha >= 255:
             surf.fill(color, rect)
@@ -447,6 +480,16 @@ def _shape(surf: pygame.Surface, name: str, center, r: float, color) -> None:
     elif name == "triangle":
         pygame.draw.polygon(surf, color, [(cx, cy - r * 0.6), (cx + r * 0.58, cy + r * 0.42),
                                           (cx - r * 0.58, cy + r * 0.42)], w)
+
+
+def hint_width(button: str, label: str, t: Type, size: float = 1.0) -> int:
+    """How wide button_hint() would draw, without drawing it."""
+    f_btn = t(18 * size, "cond", "bold")
+    f_lbl = t(19 * size, "cond", "semibold")
+    name = glyph_for(button)
+    h = int(30 * size * t.scale * TEXT_SCALE)
+    w = h if name in ("cross", "circle", "square", "triangle") else max(h, f_btn.size(name)[0] + h // 2)
+    return w + h // 3 + tracked(f_lbl, label.upper(), (0, 0, 0), 0.14).get_width() + h
 
 
 def button_hint(surf: pygame.Surface, x: int, cy: int, button: str, label: str, t: Type, lv: Livery,

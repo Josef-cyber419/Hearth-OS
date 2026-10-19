@@ -61,8 +61,7 @@ class Actions:
             self.o.thaw()
             # Stopping waits for the app (a few seconds for Kodi, Heroic,
             # Dolphin): in the background, so the menu closes at once (#65).
-            threading.Thread(target=session.stop_entry, args=(state["foreground"],), daemon=True,
-                             name="close-app").start()
+            session.in_background("close-app", session.stop_entry, state["foreground"])
         elif state["focus"] != "home":  # e.g. Discord in front of the home screen
             self.show("home")
         elif state.get("screen"):  # Settings: the hub closes it
@@ -75,7 +74,7 @@ class Actions:
         if game:
             self.o.thaw()  # a paused game can't hear the request to quit
             events.record("quit_game", frontend=game[0], processes=len(game[1]))
-            threading.Thread(target=session.quit_game, args=(game[1],), daemon=True).start()
+            session.in_background("quit-game", session.quit_game, game[1])
         return "close"
 
     def quick_resume(self):
@@ -128,7 +127,7 @@ class Actions:
     def update(self):
         if (session.read().get("update") or {}).get("status") != "running":
             session.update(lambda s: s.__setitem__("update", {"status": "running"}))
-            threading.Thread(target=self.o.run_update, daemon=True).start()
+            session.in_background("update", self.o.run_update)
         self.o.refresh(force=True)
         return None  # stay open to show progress
 
@@ -357,6 +356,13 @@ class Overlay:
     # -- updates ---------------------------------------------------------------
 
     def run_update(self) -> None:
+        try:
+            self._run_update()
+        except Exception:  # noqa: BLE001 - "running" must never be left on the screen
+            log.exception("update")
+            session.update(lambda s: s.__setitem__("update", {"status": "failed"}))
+
+    def _run_update(self) -> None:
         log.info("update: starting")
         result = updates.apply(logs.log_path())
         if result == "busy":
@@ -415,7 +421,7 @@ class Overlay:
         elif updates.in_progress():
             result = {"status": "running"}  # still downloading: not "up to date" yet
             if (session.read().get("update") or {}).get("status") != "running":
-                threading.Thread(target=self.run_update, daemon=True).start()  # follows it to the end
+                session.in_background("update-follow", self.run_update)  # follows it to the end
         elif failed:
             result = {"status": "failed"}
         else:
@@ -529,7 +535,7 @@ class Overlay:
         if now - self._update_checked > UPDATE_CHECK_SECONDS and \
                 (self.state.get("update") or {}).get("status") != "running":
             self._update_checked = now
-            threading.Thread(target=self.check_staged, daemon=True).start()
+            session.in_background("update-check", self.check_staged)
 
         self.pointer_active = not self.open and pointer_app_in_front(self.state)
         if not self.pointer_active:
