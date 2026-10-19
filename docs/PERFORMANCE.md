@@ -29,6 +29,12 @@ second.
   The moment you press anything, it's back to full speed.
 - **It draws at 1080p at most**, even on a 4K TV; the graphics card scales it
   up.
+- **Each frame is cheap.** Measured headless at 1080p (software rendering,
+  the slow case), from 0.24.0: the Quick Menu draws in about 7 ms a frame
+  (11 before: once it has slid in, it repaints only its own patch, not the
+  whole screen) and Settings in about 5 ms (9 before: text that's cut or
+  wrapped is remembered, hints are measured rather than drawn to size).
+  The home screen is 6 to 7 ms while tiles move, and nothing when they don't.
 - **It keeps little in memory.** Each focused tile's blurred background is
   kept small (a tenth of the screen size) and only the last three full-size
   ones are kept, instead of up to thirteen (8 MB each).

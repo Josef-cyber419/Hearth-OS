@@ -36,7 +36,7 @@ The field session files them with `gh issue create --label field-report`,
 one problem per issue, **after searching** (`gh issue list --label
 field-report --state all --search "<words>"`): a known problem gets a
 comment, not a second issue. Re-testing a fix is a comment too
-("Verified on 0.23.0" or "Still happening on 0.23.0" with evidence); the
+("Verified on 0.24.0" or "Still happening on 0.24.0" with evidence); the
 cloud session closes verified ones.
 One-time setup on the PC: `gh` (built in from 0.23.0; before that
 `brew install gh`), then

@@ -7,7 +7,7 @@ owner's go-ahead and, for some, their hands.
 
 ## Starting a run
 
-The owner says something like "run the field tests for 0.23.0; I'm OK with
+The owner says something like "run the field tests for 0.24.0; I'm OK with
 tiers 1 to 3; file as you go". Before tier 1:
 
 1. `hearthctl status`: the version. Check out the matching code so what you

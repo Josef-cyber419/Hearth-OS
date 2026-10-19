@@ -21,7 +21,7 @@ reference_pc = "Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox
 
 [[area]]
 name = "Home screen"
-what = "TV-style rows, liveries, a drawing or icon on every tile, a backdrop from the focused game, controller batteries and network by the clock"
+what = "TV-style rows, six liveries (Girth OS is the parody), a drawing or icon on every tile, a backdrop from the focused game, controller batteries and network by the clock"
 status = "confirmed"
 
 [[area]]
@@ -101,7 +101,7 @@ status = "shipped"
 
 [[area]]
 name = "Performance"
-what = "Hearth idles under 2% of one core and about 300 MB; hearthctl footprint"
+what = "Hearth idles under 2% of one core and about 300 MB; the Quick Menu draws in 7 ms a frame and Settings in 5; hearthctl footprint"
 status = "confirmed"
 since = "0.22.0"
 
@@ -131,6 +131,12 @@ since = "0.24.0"
 [[area]]
 name = "Accessibility"
 what = "Larger text (two sizes) and a high-contrast look, each person's own; your own photos in the screen saver"
+status = "shipped"
+since = "0.24.0"
+
+[[area]]
+name = "Desktop Mode"
+what = "Holding Guide, or the Hearth icon on the desktop, returns to the TV; a Steam Gaming Mode icon runs Steam's interface for one session"
 status = "shipped"
 since = "0.24.0"
 

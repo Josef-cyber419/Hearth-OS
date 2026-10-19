@@ -12,9 +12,9 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 |---|--:|--:|
 | Lines of code | 19,148 | +1,887 |
 | Automated tests | 537 | +79 |
-| Lines of docs | 2,140 | +161 |
+| Lines of docs | 2,146 | +167 |
 | Guides in docs/ | 16 | +1 |
-| Pull requests merged | 28 | |
+| Pull requests merged | 30 | |
 | Versions released | 27 | |
 
 Lines of code by part (blank lines not counted):
@@ -41,7 +41,7 @@ Lines of code by part (blank lines not counted):
 
 | Area | What it does | Status |
 |---|---|---|
-| Home screen | TV-style rows, liveries, a drawing or icon on every tile, a backdrop from the focused game, controller batteries and network by the clock | ✅ Confirmed on the PC |
+| Home screen | TV-style rows, six liveries (Girth OS is the parody), a drawing or icon on every tile, a backdrop from the focused game, controller batteries and network by the clock | ✅ Confirmed on the PC |
 | Emulation | ES-DE with a tile per console; emulators tuned for the GPU and TV; game art found automatically | ✅ Confirmed on the PC (Dolphin working) |
 | Wii Remote | DolphinBar pointer on the home screen and as a mouse; handed to Dolphin for Wii games | ✅ Confirmed on the PC (pointer working) |
 | Quick Resume | Hold Guide to pause a game and pick it up later (up to 3) | ✅ Confirmed on the PC |
@@ -56,12 +56,13 @@ Lines of code by part (blank lines not counted):
 | Family | Daily game-time limit, bedtime and locked tiles behind a PIN, per person | 🟡 Shipped |
 | Privacy | No ads or tracking; a guide to turn off the TV's own tracking, by make | 🟡 Shipped |
 | TV control (CEC) | TV on and to the right input on wake and on Guide; standby with the PC | 🟡 Shipped |
-| Performance | Hearth idles under 2% of one core and about 300 MB; hearthctl footprint | ✅ Confirmed on the PC |
+| Performance | Hearth idles under 2% of one core and about 300 MB; the Quick Menu draws in 7 ms a frame and Settings in 5; hearthctl footprint | ✅ Confirmed on the PC |
 | Updates | Automatic, versioned, with releases on GitHub, a what's-new card and rollback | ✅ Confirmed on the PC |
 | People | Who's playing? (at start, after sleep, from the Quick Menu) with optional PINs; own favorites, colour scheme, Continue, Steam and Discord; limits set by an admin | 🟡 Shipped |
 | Casting **new** | AirPlay (video, photos, music, screen mirroring), Spotify Connect, YouTube with a TV code; Quick Menu → Stop casting | 🟡 Shipped |
 | Phone remote **new** | A page on the home network with a d-pad, the buttons and a keyboard, paired with a code and QR code on the TV | 🟡 Shipped |
 | Accessibility **new** | Larger text (two sizes) and a high-contrast look, each person's own; your own photos in the screen saver | 🟡 Shipped |
+| Desktop Mode **new** | Holding Guide, or the Hearth icon on the desktop, returns to the TV; a Steam Gaming Mode icon runs Steam's interface for one session | 🟡 Shipped |
 | Folders | Groups of tiles | ⚪ Not started (deferred for now) |
 | NVIDIA graphics | A separate image with NVIDIA's driver | ⚪ Not started (deferred: AMD and Intel first) |
 | Netflix and similar | DRM limits these to low quality on any home-built PC | ⛔ Not possible |
@@ -86,7 +87,7 @@ Lines of code by part (blank lines not counted):
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.24.0](../0.24.0/report.md) | 2026-10-19 | 19,148 | 537 | 2,140 | 16 | 28 |
+| [0.24.0](../0.24.0/report.md) | 2026-10-19 | 19,148 | 537 | 2,146 | 16 | 30 |
 | [0.23.0](../0.23.0/report.md) | 2026-10-01 | 17,261 | 458 | 1,979 | 15 | 28 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 27 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |
