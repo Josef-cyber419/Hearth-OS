@@ -181,3 +181,20 @@ def test_girth_os_is_wider_by_design(surface, shipped_config):
     found = {header.get_at((x, y))[:3] for y in range(0, girth.header_h, 2) for x in range(0, girth.width // 2, 2)}
     assert lv.accent in found  # "OS" in orange
     assert lv.dim in found or any(abs(c[0] - lv.dim[0]) < 8 and abs(c[2] - lv.dim[2]) < 8 for c in found)  # the tagline
+
+
+def test_the_g_roundel_is_the_mark_in_the_header_and_at_boot(surface, shipped_config):
+    lv = style.LIVERIES["girth"]
+    mark = style.roundel_g(100, lv)
+    assert mark.get_size() == (100, 100)
+    close = lambda a, b: sum(abs(x - y) for x, y in zip(a[:3], b[:3])) < 12  # noqa: E731
+
+    assert mark.get_at((50, 50))[3] == 0 and mark.get_at((75, 30))[3] == 0  # the hole and the opening: see-through
+    assert close(mark.get_at((70, 61)), lv.accent)  # the crossbar
+    assert mark.get_at((50, 15))[3] == 255 and mark.get_at((2, 2))[3] == 0  # silver on top, nothing in the corner
+    config = cfg.load(shipped_config)
+    screen = ui.HomeScreen(surface, Home(config), config.title, livery="girth", intro="boot")
+    screen.draw()  # the first frame: the logo in the middle, the stripes still off screen
+    w, h = surface.get_size()
+    assert any(close(surface.get_at((w // 2 + dx, h // 2 + int(h * 0.05))), lv.accent) for dx in range(10, 60, 4))
+    assert style.roundel_g(100, lv) is mark  # cached

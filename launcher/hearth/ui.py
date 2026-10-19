@@ -1139,9 +1139,15 @@ class HomeScreen:
         layer = pygame.Surface((th.width, th.header_h), pygame.SRCALPHA)
         top = int(th.header_h * 0.32)
         cell = max(2, int(7 * th.u))
-        style.checkered(layer, th.margin, top + int(9 * th.u), cell, 4, 3, lv.text)
+        if lv.wordmark:  # the livery's own mark where the chequered flag goes
+            mark = style.roundel_g(int(th.font_brand.get_height() * 1.55), lv)
+            layer.blit(mark, (th.margin - int(4 * th.u), top + th.font_brand.get_height() // 2 - mark.get_height() // 2
+                              + int(4 * th.u)))
+            brand_x = th.margin + mark.get_width() + int(14 * th.u)
+        else:
+            style.checkered(layer, th.margin, top + int(9 * th.u), cell, 4, 3, lv.text)
+            brand_x = th.margin + cell * 4 + int(20 * th.u)
         spacing = 0.32 + (0.5 * (1 - a) if self.intro == "boot" else 0)
-        brand_x = th.margin + cell * 4 + int(20 * th.u)
         if lv.wordmark:  # the livery's own name: its last word in the accent colour
             words = lv.wordmark.upper().split(" ")
             brand = style.tracked(th.font_brand, " ".join(words[:-1]) + " ", lv.text, spacing)
@@ -1331,6 +1337,11 @@ class HomeScreen:
         w, h = th.width, th.height
         slant = h * SLANT
         layer = pygame.Surface((w, h), pygame.SRCALPHA)
+        if lv.wordmark:  # the boot logo: the mark, growing a touch, until the stripes have passed
+            mark = style.roundel_g(int(h * (0.30 + 0.03 * p)), lv)
+            mark.set_alpha(int(255 * (1 - p) ** 0.6))
+            layer.blit(mark, mark.get_rect(center=(w // 2, h // 2)))
+            mark.set_alpha(255)
         broad = int(h * 0.16)
         bands = ((lv.accent, broad), (lv.second, broad // 3), (lv.text, broad // 8))
         total = sum(b for _, b in bands) + broad // 4 * 2 + slant

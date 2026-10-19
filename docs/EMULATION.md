@@ -118,7 +118,8 @@ consoles to 4K.
 | Original Xbox | `xbox` | xemu | Xbox BIOS, MCPX boot ROM, HDD image | Good |
 | **Xbox 360** | `xbox360` | Xenia (manual, below) | – | Experimental on Linux: some games great, many with glitches |
 | Arcade | `arcade`, `mame` | MAME / RetroArch | Matching ROM sets | Excellent |
-| Xbox One / Series, PS5, Switch 2 | – | No working emulators exist | – | Use the real console through the **HDMI Input** tile ([HARDWARE.md](HARDWARE.md#capture-card-play-real-consoles-through-hearth)) |
+| **PlayStation 5** | – | Not yet | – | SharpEmu and KytyPS5 are early (late 2026: a dozen mostly 2D games run, no 3D blockbusters); not worth installing yet. Use the real console through the **HDMI Input** tile |
+| Xbox One / Series, Switch 2 | – | No working emulators exist | – | Use the real console through the **HDMI Input** tile ([HARDWARE.md](HARDWARE.md#capture-card-play-real-consoles-through-hearth)) |
 
 ## Tuned for your PC
 

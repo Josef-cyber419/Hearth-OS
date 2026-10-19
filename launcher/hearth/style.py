@@ -333,6 +333,39 @@ def checkered(surf: pygame.Surface, x: int, y: int, cell: int, cols: int, rows: 
     pygame.draw.rect(surf, color, (x, y, cols * cell, rows * cell), width=max(1, cell // 4))
 
 
+@lru_cache(maxsize=16)
+def roundel_g(size: int, lv: Livery) -> pygame.Surface:
+    """The Girth OS mark: a brushed-silver G in a thin ring, its crossbar a
+    slab in the accent colour. Drawn, not loaded, so it's crisp at any size;
+    the cut-outs are transparent, so it sits on any backdrop."""
+    size = max(8, int(size))
+    big = size * 2  # drawn at twice the size and scaled down: smooth edges
+    c = big / 2
+    r = big * 0.42  # the silver disc
+    # Brushed silver: a diagonal gradient, light at the top left.
+    disc = pygame.Surface((big, big), pygame.SRCALPHA)
+    light, dark = (238, 240, 243), (150, 156, 164)
+    for i in range(big):
+        t = i / max(1, big - 1)
+        pygame.draw.line(disc, mix(light, dark, t), (i, 0), (0, i))
+        pygame.draw.line(disc, mix(light, dark, t), (big - 1, i), (i, big - 1))
+    # Its shape: a disc, less the hole and the opening at the upper right.
+    mask = pygame.Surface((big, big), pygame.SRCALPHA)
+    pygame.draw.circle(mask, (255, 255, 255, 255), (c, c), r)
+    pygame.draw.circle(mask, (0, 0, 0, 0), (c, c), r * 0.5)
+    pygame.draw.polygon(mask, (0, 0, 0, 0), [(c, c - r * 0.1), (c + r * 1.2, c - r * 1.3), (c + r * 1.2, c + r * 0.1),
+                                             (c, c + r * 0.1)])
+    disc.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    surf = pygame.Surface((big, big), pygame.SRCALPHA)
+    # A thin outer ring, a little apart from the disc.
+    pygame.draw.circle(surf, (*lv.dim, 150), (c, c), big * 0.49, width=max(2, big // 100))
+    surf.blit(disc, (0, 0))
+    # The crossbar: a slab in the accent colour, flush with the disc's edge.
+    bar = pygame.Rect(int(c + r * 0.02), int(c + r * 0.12), int(r * 0.98), int(r * 0.42))
+    surf.fill(lv.accent, bar)
+    return pygame.transform.smoothscale(surf, (size, size))
+
+
 def roundel(surf: pygame.Surface, center, radius: float, text: str, font: pygame.font.Font, fill, ink) -> None:
     """A race-number roundel: a painted disc carrying the entry's number."""
     circle(surf, fill, center, radius)

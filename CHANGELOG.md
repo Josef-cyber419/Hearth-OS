@@ -24,7 +24,8 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 - **Accessibility**: Settings → Accessibility: larger text (two sizes) and a
   high-contrast look, each person's own.
 - **A new livery, Girth OS**: wider by design. Settings → Appearance; the
-  header says so, and the tiles really are wider.
+  header says so under a G roundel, the boot logo is the roundel too, and
+  the tiles really are wider.
 - **Two icons on the desktop**: **Hearth** goes back to the TV, and **Steam
   Gaming Mode** starts Game Mode with Steam's own interface for that one
   session (Hearth is back the next time). Bazzite's "Return to Gaming Mode"
