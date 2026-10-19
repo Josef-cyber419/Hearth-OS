@@ -14,6 +14,7 @@ libraryfolders.vdf) and the ROMs folder (~/ROMs becomes a link to
 from __future__ import annotations
 
 import json
+import logging
 import os
 import random
 import re
@@ -26,6 +27,8 @@ from typing import Callable
 HELPER = "/usr/libexec/hearth/hearth-storage"
 FSTAB = Path("/etc/fstab")
 TAG = "x-hearth"  # the mount option marking fstab entries Hearth made
+log = logging.getLogger("hearth")
+
 SYSTEM_MOUNTS = {"/", "/sysroot", "/boot", "/boot/efi", "/usr", "/etc", "/var", "/home", "/var/home", "[SWAP]"}
 LINUX_FS = {"ext4", "btrfs", "xfs"}  # permissions and links: what Steam and emulators need
 MIN_SIZE = 4e9  # smaller than this isn't a games drive (and keeps card readers and such out)
@@ -123,14 +126,64 @@ def _all_mounts(dev: dict) -> set[str]:
     return found
 
 
-def drives(run: Runner = _lsblk, fstab: Path = FSTAB, include_system: bool = False) -> list[Drive]:
-    """Whole drives, the system's own marked (and left out unless asked for)."""
-    out = run(["-J", "-b", "-o", "PATH,TYPE,SIZE,MODEL,TRAN,RM,RO,FSTYPE,LABEL,UUID,MOUNTPOINTS"])
+def _all_paths(dev: dict) -> set[str]:
+    """The device and everything on it: partitions, and what's on those
+    (an encrypted system lives on /dev/mapper/luks-… under a partition)."""
+    found = {dev["path"]} if dev.get("path") else set()
+    for child in dev.get("children") or ():
+        found |= _all_paths(child)
+    return found
+
+
+MOUNTS = Path("/proc/self/mounts")
+
+
+def _nest(devices: list[dict]) -> list[dict]:
+    """lsblk's tree. Newer lsblk (util-linux 2.41) prints a flat list unless
+    NAME is among the columns, so partitions are hung back under their disk
+    by PKNAME either way (field report #60: the system drive read as empty
+    and was offered for erasing)."""
+    by_name = {d.get("name"): d for d in devices if d.get("name")}
+    by_name.update({d.get("path"): d for d in devices if d.get("path")})  # PKNAME is "sda", the path "/dev/sda"
+    for d in devices:
+        if not isinstance(d.get("children"), list):  # absent, or null
+            d["children"] = []
+    top = []
+    for d in devices:
+        parent = by_name.get(d.get("pkname")) if d.get("pkname") else None
+        if parent is not None and parent is not d:
+            if d not in parent["children"]:
+                parent["children"].append(d)
+        elif d.get("type") != "part" or not d.get("pkname"):
+            top.append(d)
+    return top
+
+
+def system_devices(mounts: Path = MOUNTS) -> set[str]:
+    """Device paths mounted where the system lives (/, /var, /boot...)."""
+    out = set()
     try:
-        devices = json.loads(out or "{}").get("blockdevices", [])
-    except ValueError:
+        lines = mounts.read_text().splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        fields = line.split()
+        if len(fields) >= 2 and fields[0].startswith("/dev/") and fields[1] in SYSTEM_MOUNTS:
+            out.add(fields[0])
+    return out
+
+
+def drives(run: Runner = _lsblk, fstab: Path = FSTAB, include_system: bool = False,
+           mounts: Path = MOUNTS) -> list[Drive]:
+    """Whole drives, the system's own marked (and left out unless asked for)."""
+    out = run(["-J", "-b", "-o", "NAME,PKNAME,PATH,TYPE,SIZE,MODEL,TRAN,RM,RO,FSTYPE,LABEL,UUID,MOUNTPOINTS"])
+    try:
+        devices = _nest(json.loads(out or "{}").get("blockdevices", []))
+    except (ValueError, AttributeError, TypeError) as e:
+        log.warning("storage: couldn't read lsblk's answer (%s): no drives offered", e)
         return []
     ours = hearth_mounts(fstab)
+    held = system_devices(mounts)  # what the system is really mounted from, whatever lsblk says
     found = []
     for dev in devices:
         path = dev.get("path") or ""
@@ -139,7 +192,7 @@ def drives(run: Runner = _lsblk, fstab: Path = FSTAB, include_system: bool = Fal
         size = int(dev.get("size") or 0)
         if size < MIN_SIZE:
             continue
-        system = bool(_all_mounts(dev) & SYSTEM_MOUNTS)
+        system = bool(_all_mounts(dev) & SYSTEM_MOUNTS) or bool(_all_paths(dev) & held)
         if system and not include_system:
             continue
         parts = tuple(Part(c.get("path", ""), int(c.get("size") or 0), c.get("fstype") or "", c.get("label") or "",

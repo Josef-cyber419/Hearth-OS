@@ -24,7 +24,7 @@ import pygame
 
 from . import config as cfg
 from . import input as input_
-from . import desktopguide, events, homebutton, library, logs, session, sounds, style, ui, updates
+from . import cast, desktopguide, events, homebutton, library, logs, session, sounds, style, ui, updates
 from .gamescope import HOME_APPID, Gamescope
 from .model import Home
 
@@ -380,6 +380,11 @@ def main(argv: list[str] | None = None) -> int:
         suspended=[e for e in s.get("suspended", []) if session.entry_alive(e)]))
 
     dev_mode = args.windowed or args.dry_run
+    if not dev_mode:  # a page open to the network has no place in a window on a laptop
+        from . import remote
+
+        remote.start(remote_enabled)
+        cast.keep(lambda: cfg.load(args.config), every=60)  # receivers come back if they die or install late
     state = {"last_id": None, "message": None, "surface": None, "intro": "boot"}
     failures: list[float] = []
     while True:
@@ -530,10 +535,18 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     """One round of: show the home screen, then run what was picked."""
     config = home_config(args, state)
     style.set_prompts(config.prompts, config.confirm)
+    style.set_text_scale(config.text_size)
     sounds.enable(config.sounds)
     input_.set_deadzone(config.stick_deadzone)
     if overlay:
         overlay.ensure()
+    if gs is not None and not dev_mode:
+        try:
+            cast.ensure(config)  # AirPlay and Spotify receivers, as Settings → Casting says
+        except Exception:
+            log.exception("cast receivers")
+    elif gs is not None:
+        cast.keep(None)  # a window on a laptop: no receivers
 
     home = Home(config)
     if state["last_id"]:
@@ -549,9 +562,10 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
     ready = (current.get("update") or {}).get("status") == "ready"
     stats = events.FrameStats()
     view, offset = style.inset(state["surface"], config.safe_area)
-    common = dict(input_blocked=lambda: session.read()["overlay_open"], livery=config.livery, motion=config.motion,
+    common = dict(input_blocked=lambda: session.read()["overlay_open"], livery=config.scheme, motion=config.motion,
                   clock=config.clock, swap_confirm=config.confirm == "east", offset=offset,
                   saver_after=config.screensaver_minutes * 60, saver_style=config.screensaver,
+                  saver_photos=config.photos_folder,
                   ask=lambda a: eviction_question(a, config))
     from . import profiles
 
@@ -583,7 +597,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
                  rebuild=lambda: home_config(args), sleep_after=config.sleep_minutes * 60,
                  whats_new=whatsnew.pending(updates.hearth_version()),
                  interrupt=(lambda: ask_again(state)) if profiles.active() else None,
-                 running_now=lambda: set(session.read()["background"]), **common)
+                 running_now=lambda: set(session.read()["background"]), busy=in_use, **common)
     state["message"] = None
     state["intro"] = None
     frames = stats.summary()
@@ -635,7 +649,7 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
         # Keep a "Starting…" screen up; gamescope switches to the app as soon
         # as its window appears (see session.focus_order), instead of
         # showing black while it loads.
-        ui.draw_loading(state["surface"], app, config.livery)
+        ui.draw_loading(state["surface"], app, config.scheme)
         return foreground(state, gs, lambda: launch(app, dry_run=args.dry_run, gs=gs,
                                                     hold_seconds=config.guide_hold, config=config))
 
@@ -653,6 +667,44 @@ def step(args, gs: Gamescope | None, overlay: OverlayProcess | None, dev_mode: b
         except Exception:
             log.exception("noting the Steam account")
     return None
+
+
+def in_use() -> str | None:
+    """Is the PC being used while the home screen is up, so it mustn't
+    sleep: "shown" when something else is on the screen (Discord, a phone
+    casting), "playing" when music is (Spotify Connect, or any player on
+    the bus), None when it's just sitting there."""
+    try:
+        if session.read()["focus"] != "home":
+            return "shown"
+        from . import audio, media
+
+        if any(p.playing for p in media.players()):
+            return "playing"
+        # No player on the bus, but sound going out: AirPlay audio, a game's
+        # music, a browser (uxplay has no MPRIS; a phone's music must not put the PC to sleep).
+        return "playing" if audio.playing_now() else None
+    except Exception:  # noqa: BLE001 - never a reason to stop the home screen
+        return None
+
+
+def remote_enabled() -> bool:
+    """Whether the phone remote is on in Settings; asked on every request
+    from a phone, so the config is re-read at most every few seconds, and
+    a broken config means "off" rather than an error page."""
+    now = time.monotonic()
+    cached = _remote_enabled.get("at")
+    if cached is None or now - cached > 5:
+        try:
+            _remote_enabled["on"] = cfg.load().remote_enabled
+        except (OSError, cfg.ConfigError) as e:
+            log.warning("phone remote: config can't be read, treating it as off: %s", e)
+            _remote_enabled["on"] = False
+        _remote_enabled["at"] = now
+    return bool(_remote_enabled.get("on"))
+
+
+_remote_enabled: dict = {}
 
 
 def foreground(state: dict, gs: Gamescope | None, run) -> None:

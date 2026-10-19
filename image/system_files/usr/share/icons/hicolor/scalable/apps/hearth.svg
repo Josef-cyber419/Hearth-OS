@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Hearth: a flame in a fireplace arch, in the Gulf livery's colours. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="#141c25"/>
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="none" stroke="#f1ebde" stroke-opacity="0.12" stroke-width="4"/>
+  <path d="M52 204 V116 a76 76 0 0 1 152 0 V204" fill="none" stroke="#f1ebde" stroke-width="14" stroke-linecap="round"/>
+  <path d="M40 204 H216" stroke="#f1ebde" stroke-width="14" stroke-linecap="round"/>
+  <path d="M128 78 c10 22 36 36 36 68 a36 36 0 0 1 -72 0 c0 -18 12 -26 16 -40 c6 10 10 16 10 26 c8 -10 10 -26 10 -54 z" fill="#f3812a"/>
+  <path d="M128 128 c6 12 18 20 18 36 a18 18 0 0 1 -36 0 c0 -10 6 -14 8 -22 c3 5 5 8 5 13 c4 -5 5 -13 5 -27 z" fill="#f1ebde"/>
+</svg>

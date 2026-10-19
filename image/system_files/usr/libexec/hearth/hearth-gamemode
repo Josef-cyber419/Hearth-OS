@@ -1,11 +1,38 @@
 #!/usr/bin/bash
 # Leave the desktop for Game Mode, which starts Hearth (the same as the
-# desktop's "Return to Gaming Mode" shortcut). Used by hearth-desktop-guide.
+# desktop's "Return to Gaming Mode" shortcut). Used by hearth-desktop-guide
+# and the Hearth icon on the desktop.
+#
+#   hearth-gamemode          Game Mode with Hearth
+#   hearth-gamemode --steam  Game Mode with Steam's own interface, this once:
+#                            the next Game Mode session is Hearth again
+#                            (the "Steam Gaming Mode" icon on the desktop).
+#                            For every time: hearthctl disable.
+once=${XDG_CONFIG_HOME:-$HOME/.config}/hearth/steam-once
+case "${1:-}" in
+    --steam) want=steam ;;
+    "") want=hearth ;;
+    *) echo "usage: hearth-gamemode [--steam]" >&2; exit 2 ;;
+esac
+switch=()
 for select in /usr/libexec/os-session-select /usr/bin/steamos-session-select; do
-    [[ -x $select ]] && exec "$select" gamescope
+    if [[ -x $select ]]; then
+        switch=("$select" gamescope)
+        break
+    fi
 done
-if command -v steamosctl >/dev/null; then
-    exec steamosctl switch-to-game-mode
+if [[ ${#switch[@]} -eq 0 ]] && command -v steamosctl >/dev/null; then
+    switch=(steamosctl switch-to-game-mode)
 fi
-echo "hearth-gamemode: no session switcher found; is this a Bazzite deck image?" >&2
-exit 1
+if [[ ${#switch[@]} -eq 0 ]]; then
+    echo "hearth-gamemode: no session switcher found; is this a Bazzite deck image?" >&2
+    exit 1
+fi
+# The marker is left only once the switch is really happening: a marker
+# left behind by a failed switch would send a later boot into Steam.
+if [[ $want == steam ]]; then
+    mkdir -p "$(dirname "$once")" && touch "$once"
+else
+    rm -f "$once"
+fi
+exec "${switch[@]}"

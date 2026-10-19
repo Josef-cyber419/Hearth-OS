@@ -12,6 +12,7 @@
       "Bash(hearthctl logs:*)",
       "Bash(hearthctl events:*)",
       "Bash(hearthctl press:*)",
+      "Bash(hearthctl type:*)",
       "Bash(hearthctl buttons:*)",
       "Bash(hearthctl art:*)",
       "Bash(hearthctl channel)",

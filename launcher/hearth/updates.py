@@ -44,7 +44,7 @@ def _label(d: dict) -> str:
     if d.get("version"):
         return str(d["version"])
     if d.get("timestamp"):
-        return dt.datetime.fromtimestamp(d["timestamp"], dt.timezone.utc).strftime("%Y-%m-%d")
+        return dt.datetime.fromtimestamp(d["timestamp"], dt.UTC).strftime("%Y-%m-%d")
     return str(d.get("checksum", "?"))[:12]
 
 
@@ -140,7 +140,7 @@ def run_helper(action: str, log_file: Path | None = None, show: bool = False, co
     redraws five times a second, field report #47), and on a failure its last
     lines are added to `log_file`, so a failure always says why."""
     full = log_file.with_name("update.log") if log_file else None
-    out = open(full, "w") if full else None if show else subprocess.DEVNULL
+    out = open(full, "w") if full else None if show else subprocess.DEVNULL  # noqa: SIM115 - closed below
     try:
         rc = subprocess.run(["sudo", "-n", HELPER, action], stdout=out, stderr=subprocess.STDOUT).returncode
     except OSError:

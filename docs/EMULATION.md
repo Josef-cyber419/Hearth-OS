@@ -26,7 +26,7 @@ The plan: use the desktop for maintenance, and the TV screen for playing.
    - `BIOS/`: BIOS, firmware and key files that some consoles need.
 3. Copy games into the matching console folder, e.g. `ROMs/ps2/`,
    `ROMs/gc/`, `ROMs/switch/`.
-4. Click **Return to Gaming Mode** on the desktop. The console appears in the
+4. Click the **Hearth** icon on the desktop. The console appears in the
    Emulation menu.
 5. **Artwork**: Hearth finds a picture for each game by itself, from
    libretro's free thumbnail library (the one RetroArch uses), a little at a
@@ -118,7 +118,8 @@ consoles to 4K.
 | Original Xbox | `xbox` | xemu | Xbox BIOS, MCPX boot ROM, HDD image | Good |
 | **Xbox 360** | `xbox360` | Xenia (manual, below) | – | Experimental on Linux: some games great, many with glitches |
 | Arcade | `arcade`, `mame` | MAME / RetroArch | Matching ROM sets | Excellent |
-| Xbox One / Series, PS5, Switch 2 | – | No working emulators exist | – | Use the real console through the **HDMI Input** tile ([HARDWARE.md](HARDWARE.md#capture-card-play-real-consoles-through-hearth)) |
+| **PlayStation 5** | – | Not yet | – | SharpEmu and KytyPS5 are early (late 2026: a dozen mostly 2D games run, no 3D blockbusters); not worth installing yet. Use the real console through the **HDMI Input** tile |
+| Xbox One / Series, Switch 2 | – | No working emulators exist | – | Use the real console through the **HDMI Input** tile ([HARDWARE.md](HARDWARE.md#capture-card-play-real-consoles-through-hearth)) |
 
 ## Tuned for your PC
 

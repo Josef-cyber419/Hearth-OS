@@ -6,6 +6,53 @@ version, and a fix on its own is a patch. The version shows in Settings →
 System and `hearthctl status`. Each one is tagged (`v0.20.0`) and published as
 a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
 
+## 0.24.0 (2026-10-19)
+
+- **Cast from your phone**: the PC shows up on your Wi-Fi as a screen and a
+  speaker. AirPlay from an iPhone, iPad or Mac (a video, photos, music or
+  the whole screen: it comes to the front, and goes away when you stop),
+  Spotify Connect (pick the PC in the Spotify app; Premium), and YouTube
+  with a TV code. Settings → Casting names it and turns each part on or
+  off; Quick Menu → System → Stop casting drops the phone.
+- **Your phone as a remote**: Settings → Phone remote shows a code and a QR
+  code; the page (nothing to install) has a d-pad, the buttons and a
+  keyboard, so Wi-Fi passwords, searches and sign-ins are typed on the phone.
+  `hearthctl type` types from a terminal the same way.
+- **Your photos in the screen saver**: a folder, or a plugged-in drive's
+  pictures, on their own or mixed with your games' art, the right way up
+  (Settings → Home screen).
+- **Accessibility**: Settings → Accessibility: larger text (two sizes) and a
+  high-contrast look, each person's own.
+- **A new livery, Girth OS**: wider by design. Settings → Appearance; the
+  header says so under a G roundel, the boot logo is the roundel too, and
+  the tiles really are wider.
+- **Two icons on the desktop**: **Hearth** goes back to the TV, and **Steam
+  Gaming Mode** starts Game Mode with Steam's own interface for that one
+  session (Hearth is back the next time). Bazzite's "Return to Gaming Mode"
+  stays and lands on Hearth too.
+- **Lighter and sturdier**: the Quick Menu draws in two thirds of the time
+  it took (it no longer repaints the whole screen every frame once it's
+  open) and Settings in half; text that's cut or wrapped is remembered
+  rather than measured again each frame. A review of the whole codebase
+  fixed the things that could go wrong quietly: a phone's music no longer
+  lets the PC fall asleep; receivers that crash or install after boot come
+  back by themselves; the phone remote only answers requests for this PC
+  by name or address, changes its code after repeated guessing, and keeps
+  working when the display can't be reached; an encrypted system drive is
+  never offered for erasing; a mistyped setting is a plain "config error"
+  rather than a crash; background work that fails is logged instead of
+  lost.
+- **Fixes from the third field run**: the system drive can no longer be
+  offered for erasing when lsblk lists partitions flat (util-linux 2.41);
+  spotifyd installs again (its checksum file is named after the build), and
+  Settings says so when the install failed; `hearthctl type` and the phone
+  keyboard no longer drop doubled letters; Home from the Quick Menu over
+  Kodi or Heroic closes the menu at once; Search's delete hint names
+  Backspace with a keyboard; long names are cut or wrapped instead of drawn
+  under switches, values and percentages, also at the larger text sizes;
+  arrows the font hasn't got draw as chevrons; a controller whose battery
+  level is unknown no longer shows an empty outline.
+
 ## 0.23.0 (2026-10-01)
 
 - **Pictures on the tiles**: Settings is a gearbox, Sleep a moon, Restart a

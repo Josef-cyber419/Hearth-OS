@@ -5,6 +5,12 @@
 # Steam is launched from Hearth's Steam tile.
 #
 # To boot straight into Steam instead (no root needed): `hearthctl disable`.
-if [ ! -e "${XDG_CONFIG_HOME:-$HOME/.config}/hearth/disabled" ]; then
+# For one session only, the desktop's "Steam Gaming Mode" icon
+# (hearth-gamemode --steam) leaves a steam-once file, used up here.
+_hearth_cfg=${XDG_CONFIG_HOME:-$HOME/.config}/hearth
+if [ -e "$_hearth_cfg/steam-once" ]; then
+    rm -f "$_hearth_cfg/steam-once"
+elif [ ! -e "$_hearth_cfg/disabled" ]; then
     export CLIENTCMD="/usr/bin/hearth"
 fi
+unset _hearth_cfg

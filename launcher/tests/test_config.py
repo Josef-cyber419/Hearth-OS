@@ -144,3 +144,10 @@ def test_theme_defaults_and_user_override():
 def test_theme_motion_is_checked():
     with pytest.raises(cfg.ConfigError, match="motion"):
         cfg.parse({"theme": {"motion": "fast"}})
+
+
+def test_a_section_that_is_not_a_table_is_a_config_error_not_a_crash():
+    for section in ("remote", "cast", "home", "accessibility", "theme"):
+        with pytest.raises(cfg.ConfigError, match=f"\\[{section}\\] must be a table"):
+            cfg.parse({section: False})
+    assert cfg.parse({"remote": {"enabled": False}}).remote_enabled is False

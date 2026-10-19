@@ -142,7 +142,7 @@ def test_settings_people_page_offers_a_colour_scheme(shipped_config, two):
     app.refresh()
     items = {i.key: i for i in app.menu.current.items}
     assert items["person-livery"].options[0] == "Household's" and items["person-livery"].value == 0
-    items["person-livery"].on_change(list(style.LIVERIES).index("brg") + 1)
+    items["person-livery"].on_change(style.liveries().index("brg") + 1)
     assert profiles.get("sam").livery == "brg"
 
 

@@ -137,7 +137,7 @@ class Monitor:
             # "1: 1800Mhz *": the star marks the clock it's running at now.
             mhz = [int(m.group(1)) if (m := re.search(r":\s*(\d+)\s*mhz", line, re.I)) else None
                    for line in levels]
-            for line, v in zip(levels, mhz):
+            for line, v in zip(levels, mhz, strict=True):
                 if "*" in line and v:
                     r.gpu_mhz = float(v)
             known = [v for v in mhz if v]

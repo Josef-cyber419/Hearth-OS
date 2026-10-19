@@ -7,7 +7,7 @@ like a smart TV or console. No keyboard, no mouse, no browser.
 
 | Tile | App | Remote/controller? |
 |---|---|---|
-| YouTube | [VacuumTube](https://github.com/shy1132/VacuumTube): YouTube's own TV interface (the one on consoles and smart TVs), packaged as an app, with controller support and ad blocking | Yes. Sign in with a code on your phone, like on a TV. |
+| YouTube | [VacuumTube](https://github.com/shy1132/VacuumTube): YouTube's own TV interface (the one on consoles and smart TVs), packaged as an app, with controller support and ad blocking | Yes. Sign in with a code on your phone, like on a TV; link the phone with a TV code and its cast button drives this tile ([CASTING.md](CASTING.md)). |
 | Kodi | Kodi media center, for your own files | Yes, built for remotes. Understands HDMI-CEC natively. |
 | Jellyfin | Jellyfin Desktop in `--tv` mode | Yes. Needs a Jellyfin server (your NAS or another PC). |
 | Plex | Plex HTPC, Plex's TV app | Yes. |

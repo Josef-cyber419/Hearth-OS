@@ -170,3 +170,17 @@ def test_edge_scroll_waits_for_dialogs_and_a_hidden_pointer(surface, shipped_con
     screen.edge_scroll(50.0)
     screen.edge_scroll(50.0 + ui.EDGE_FIRST)
     assert screen.home.row == 0
+
+
+def test_a_pad_whose_battery_level_is_unknown_shows_no_empty_cell(surface, shipped_config):
+    from hearth.battery import Battery
+
+    config = cfg.load(shipped_config)
+    screen = ui.HomeScreen(surface, Home(config), config.title)
+    layer = pygame.Surface(surface.get_size(), pygame.SRCALPHA)
+    screen._batteries = [Battery("Pad", None, False)]
+    assert screen._draw_batteries(layer, 1000, 50) == 1000  # nothing drawn: no level, not charging
+    screen._batteries = [Battery("Pad", 40, False)]
+    assert screen._draw_batteries(layer, 1000, 50) < 1000
+    screen._batteries = [Battery("Pad", None, True)]
+    assert screen._draw_batteries(layer, 1000, 50) < 1000  # charging is worth showing

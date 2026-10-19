@@ -32,6 +32,12 @@ class Livery:
     dim: RGB
     accent: RGB  # the broad stripe: focus, values, highlights
     second: RGB  # the pinstripe beside it
+    contrast: bool = False  # the high-contrast look (Settings → Accessibility): thick focus, no glow
+    # A livery can be a whole identity: its own name in the header (the last
+    # word in the accent colour), a line under it, and tiles a bit wider.
+    wordmark: str = ""
+    tagline: str = ""
+    wide: float = 1.0
 
 
 LIVERIES = {
@@ -45,6 +51,16 @@ LIVERIES = {
                     accent=(222, 28, 38), second=(246, 196, 0)),
     "silver": Livery("Silver Arrow", ink=(12, 13, 15), panel=(27, 29, 32), text=(236, 238, 240),
                      dim=(140, 146, 153), accent=(206, 211, 217), second=(0, 161, 150)),
+    # The parody: Girth OS, wider by design. Near-black, bone white, a hotter
+    # orange and brushed silver; the tiles are 12% wider, because of course.
+    "girth": Livery("Girth OS", ink=(14, 17, 22), panel=(23, 28, 36), text=(241, 239, 233), dim=(138, 148, 158),
+                    accent=(255, 95, 10), second=(201, 206, 212), wordmark="Girth OS", tagline="Wider by design",
+                    wide=1.12),
+    # Not a livery to pick in Appearance: Settings → Accessibility → High
+    # contrast puts it over whichever one is chosen. Pure black, pure white,
+    # a yellow that reads for most colour vision, light grey for "dim".
+    "contrast": Livery("High contrast", ink=(0, 0, 0), panel=(14, 14, 14), text=(255, 255, 255),
+                       dim=(212, 212, 212), accent=(255, 214, 0), second=(255, 255, 255), contrast=True),
 }
 
 
@@ -52,6 +68,24 @@ def livery(name: str) -> Livery:
     if name not in LIVERIES:
         log.warning("unknown livery %r; using gulf (choices: %s)", name, ", ".join(LIVERIES))
     return LIVERIES.get(name, LIVERIES["gulf"])
+
+
+def liveries() -> list[str]:
+    """The liveries to choose from (the high-contrast look isn't one: it's a switch)."""
+    return [n for n, lv in LIVERIES.items() if not lv.contrast]
+
+
+# -- text size (Settings → Accessibility) -------------------------------------
+
+TEXT_SIZES = {"normal": 1.0, "large": 1.18, "larger": 1.36}
+TEXT_SCALE = 1.0  # every font is this much bigger than the design size
+
+
+def set_text_scale(size: str | float) -> None:
+    """Set the text size for every screen drawn from now on (fonts are made
+    as they're needed, so a screen built afterwards is all at the new size)."""
+    global TEXT_SCALE
+    TEXT_SCALE = TEXT_SIZES.get(size, 1.0) if isinstance(size, str) else float(size)
 
 
 # -- colour -------------------------------------------------------------------
@@ -120,6 +154,17 @@ class Smooth:
 # -- type ---------------------------------------------------------------------
 
 
+class Face(pygame.font.Font):
+    """A font that draws the characters it's got: arrows the face lacks are
+    swapped for chevrons (plain()) wherever text is rendered or measured."""
+
+    def render(self, text, antialias=True, color=(255, 255, 255), bgcolor=None, wraplength=0):
+        return super().render(plain(text), antialias, color, bgcolor, wraplength)
+
+    def size(self, text):
+        return super().size(plain(text))
+
+
 class Type:
     """Barlow (SIL Open Font License): a condensed grotesque in the spirit of
     period race numbers and timing boards. Falls back to system fonts."""
@@ -139,19 +184,21 @@ class Type:
         self._fonts: dict[tuple, pygame.font.Font] = {}
 
     def __call__(self, px: float, family: str = "cond", weight: str = "semibold") -> pygame.font.Font:
-        key = (family, weight, max(8, int(px * self.scale)))
+        key = (family, weight, max(8, int(px * self.scale * TEXT_SCALE)))
         if key not in self._fonts:
             path = FONT_DIR / self.FILES.get((family, weight), "BarlowCondensed-SemiBold.ttf")
             try:
-                self._fonts[key] = pygame.font.Font(str(path), key[2])
+                self._fonts[key] = Face(str(path), key[2])
             except (OSError, pygame.error):
-                self._fonts[key] = pygame.font.SysFont(FALLBACK_FAMILIES, key[2], bold=weight != "medium")
+                fallback = pygame.font.match_font(FALLBACK_FAMILIES, bold=weight != "medium")
+                self._fonts[key] = Face(fallback, key[2])
         return self._fonts[key]
 
 
 def tracked(font: pygame.font.Font, text: str, color, spacing: float = 0.12) -> pygame.Surface:
-    """Text with letter spacing (in ems), the way signwriters spaced capitals."""
-    return _tracked(font, text, tuple(color), round(spacing, 3))
+    """Text with letter spacing (in ems), the way signwriters spaced capitals.
+    The surface is shared (cached): blit it, don't draw on it."""
+    return _tracked(font, plain(text), tuple(color), round(spacing, 3))
 
 
 @lru_cache(maxsize=512)
@@ -173,6 +220,66 @@ def clock_text(clock: str = "24h") -> str:
     if clock == "12h":
         return time.strftime("%I:%M").lstrip("0") + time.strftime(" %p").lower()
     return time.strftime("%H:%M")
+
+
+def plain(text: str) -> str:
+    """Text with the characters Barlow hasn't got swapped for ones it has
+    (an arrow drew as a box, field report #61)."""
+    return text.replace("→", "›").replace("←", "‹")
+
+
+def clip(font: pygame.font.Font, text: str, width: int, color) -> pygame.Surface:
+    """Text rendered no wider than `width`: cut with an ellipsis rather than
+    squeezed (a shrunk line can't be read from a sofa). The surface is
+    shared (cached): blit it, don't draw on it."""
+    return _clip(font, plain(text), int(width), tuple(color))
+
+
+@lru_cache(maxsize=1024)
+def _clip(font: pygame.font.Font, text: str, width: int, color: tuple) -> pygame.Surface:
+    if width <= 0 or font.size(text)[0] <= width:
+        return font.render(text, True, color)
+    while len(text) > 1 and font.size(text[:-1].rstrip() + "…")[0] > width:
+        text = text[:-1]
+    return font.render(text[:-1].rstrip() + "…" if len(text) > 1 else "…", True, color)
+
+
+def wrap(font: pygame.font.Font, text: str, width: int, lines: int = 2) -> list[str]:
+    """Text broken into at most `lines` lines of `width`; the last one is
+    cut with an ellipsis if there's more. A word wider than the room
+    (a device id, a path) is broken rather than drawn past it."""
+    return list(_wrap(font, plain(text), int(width), lines))
+
+
+@lru_cache(maxsize=1024)
+def _wrap(font: pygame.font.Font, text: str, width: int, lines: int) -> tuple[str, ...]:
+    out: list[str] = []
+    line = ""
+    for word in text.split():
+        while width > 0 and font.size(word)[0] > width:  # too long for any line: break it
+            cut = len(word)
+            while cut > 1 and font.size(word[:cut])[0] > width:
+                cut -= 1
+            if line:
+                out.append(line)
+                line = ""
+            out.append(word[:cut])
+            word = word[cut:]
+        trial = f"{line} {word}".strip()
+        if line and font.size(trial)[0] > width:
+            out.append(line)
+            line = word
+        else:
+            line = trial
+    if line:
+        out.append(line)
+    if len(out) > lines:
+        out = out[:lines]
+        rest = out[-1] + "…"
+        while len(rest) > 2 and font.size(rest)[0] > width:
+            rest = rest[:-2].rstrip() + "…"
+        out[-1] = rest
+    return tuple(out)
 
 
 def fit(surf: pygame.Surface, max_w: int) -> pygame.Surface:
@@ -240,7 +347,7 @@ def stripes(surf: pygame.Surface, x: int, y: int, length: int, broad: int, color
     gap = max(1, broad // 3)
     widths = (broad, max(1, broad // 3))
     pos = 0
-    for color, w in zip(colors, widths):
+    for color, w in zip(colors, widths, strict=False):
         rect = pygame.Rect(x + pos, y, w, length) if vertical else pygame.Rect(x, y + pos, length, w)
         if alpha >= 255:
             surf.fill(color, rect)
@@ -257,6 +364,39 @@ def checkered(surf: pygame.Surface, x: int, y: int, cell: int, cols: int, rows: 
             if (r + c) % 2 == 0:
                 surf.fill(color, (x + c * cell, y + r * cell, cell, cell))
     pygame.draw.rect(surf, color, (x, y, cols * cell, rows * cell), width=max(1, cell // 4))
+
+
+@lru_cache(maxsize=16)
+def roundel_g(size: int, lv: Livery) -> pygame.Surface:
+    """The Girth OS mark: a brushed-silver G in a thin ring, its crossbar a
+    slab in the accent colour. Drawn, not loaded, so it's crisp at any size;
+    the cut-outs are transparent, so it sits on any backdrop."""
+    size = max(8, int(size))
+    big = size * 2  # drawn at twice the size and scaled down: smooth edges
+    c = big / 2
+    r = big * 0.42  # the silver disc
+    # Brushed silver: a diagonal gradient, light at the top left.
+    disc = pygame.Surface((big, big), pygame.SRCALPHA)
+    light, dark = (238, 240, 243), (150, 156, 164)
+    for i in range(big):
+        t = i / max(1, big - 1)
+        pygame.draw.line(disc, mix(light, dark, t), (i, 0), (0, i))
+        pygame.draw.line(disc, mix(light, dark, t), (big - 1, i), (i, big - 1))
+    # Its shape: a disc, less the hole and the opening at the upper right.
+    mask = pygame.Surface((big, big), pygame.SRCALPHA)
+    pygame.draw.circle(mask, (255, 255, 255, 255), (c, c), r)
+    pygame.draw.circle(mask, (0, 0, 0, 0), (c, c), r * 0.5)
+    pygame.draw.polygon(mask, (0, 0, 0, 0), [(c, c - r * 0.1), (c + r * 1.2, c - r * 1.3), (c + r * 1.2, c + r * 0.1),
+                                             (c, c + r * 0.1)])
+    disc.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MIN)
+    surf = pygame.Surface((big, big), pygame.SRCALPHA)
+    # A thin outer ring, a little apart from the disc.
+    pygame.draw.circle(surf, (*lv.dim, 150), (c, c), big * 0.49, width=max(2, big // 100))
+    surf.blit(disc, (0, 0))
+    # The crossbar: a slab in the accent colour, flush with the disc's edge.
+    bar = pygame.Rect(int(c + r * 0.02), int(c + r * 0.12), int(r * 0.98), int(r * 0.42))
+    surf.fill(lv.accent, bar)
+    return pygame.transform.smoothscale(surf, (size, size))
 
 
 def roundel(surf: pygame.Surface, center, radius: float, text: str, font: pygame.font.Font, fill, ink) -> None:
@@ -342,6 +482,16 @@ def _shape(surf: pygame.Surface, name: str, center, r: float, color) -> None:
                                           (cx - r * 0.58, cy + r * 0.42)], w)
 
 
+def hint_width(button: str, label: str, t: Type, size: float = 1.0) -> int:
+    """How wide button_hint() would draw, without drawing it."""
+    f_btn = t(18 * size, "cond", "bold")
+    f_lbl = t(19 * size, "cond", "semibold")
+    name = glyph_for(button)
+    h = int(30 * size * t.scale * TEXT_SCALE)
+    w = h if name in ("cross", "circle", "square", "triangle") else max(h, f_btn.size(name)[0] + h // 2)
+    return w + h // 3 + tracked(f_lbl, label.upper(), (0, 0, 0), 0.14).get_width() + h
+
+
 def button_hint(surf: pygame.Surface, x: int, cy: int, button: str, label: str, t: Type, lv: Livery,
                 size: float = 1.0) -> int:
     """A controller button glyph and its action, e.g. (A) OPEN, in the
@@ -351,7 +501,7 @@ def button_hint(surf: pygame.Surface, x: int, cy: int, button: str, label: str, 
     name = glyph_for(button)
     shape = name in ("cross", "circle", "square", "triangle")
     glyph = None if shape else f_btn.render(name, True, lv.ink)
-    h = int(30 * size * t.scale)
+    h = int(30 * size * t.scale * TEXT_SCALE)
     w = h if shape else max(h, glyph.get_width() + h // 2)
     chip = pygame.Rect(x, cy - h // 2, w, h)
     if w == h:

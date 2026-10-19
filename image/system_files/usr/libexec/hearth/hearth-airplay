@@ -1,0 +1,13 @@
+#!/usr/bin/bash
+# The AirPlay receiver: UxPlay, named for the phone's list (Settings →
+# Casting). Started in the background by Hearth with the session (cast.py);
+# when a picture arrives UxPlay opens a window and Hearth shows it.
+#
+#   -nh      the name as given, without the host name tacked on
+#   -p       the usual AirPlay ports (7000, 7001, 7100 TCP; 6000, 6001, 7011 UDP),
+#            so a firewall rule can name them
+#   -nohold  a second phone takes over from the first instead of being refused
+#   -reset 3 give up on a phone that has gone quiet, after three timeouts
+set -euo pipefail
+name=${1:-Hearth}
+exec uxplay -n "$name" -nh -p -nohold -reset 3

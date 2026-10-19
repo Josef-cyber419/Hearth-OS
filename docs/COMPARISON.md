@@ -18,7 +18,7 @@ Steam's Big Picture / Game Mode.
 | **One remote for everything** | Apple TV and Roku (HDMI-CEC), consoles (controller) | **Yes**: controller, TV remote over CEC, Wii Remote, keyboard. On-screen hints follow what you use. |
 | **Looks after the TV** | Apple TV (aerial screen saver), LG (OLED care), all (sleep timers) | **Now**: an ambient screen saver of your games' art, slowly drifting and dimmed, with the time (or just the time), and sleep when idle. |
 | **Universal search** across apps and games | Google TV, Apple TV, Roku, PS5 | **Now**: the View button (Share / −, or "/"), or the Search tile: type with the controller or a keyboard; every tile and every game, matched by words, initials or platform. |
-| **Profiles**: each person's favourites, recents, avatar | Every console and TV | **Not yet**. Next: per-person favourites and Continue, chosen at start-up or from the Quick Menu. |
+| **Profiles**: each person's favourites, recents, avatar | Every console and TV | **Now**: People (Settings → People): "Who's playing?" at start, after sleep and from the Quick Menu, optional PINs, each person's own favourites, Continue, Steam, Discord, colour scheme and text size. |
 | **Game details page**: playtime, last played, actions | PS5 game hub, Xbox game page, Steam | **Now**: Y on a game shows its art, platform, last played, play time (Steam's own count, Hearth's for the rest) and times started, with Play, Favorite, Move and Remove from Continue. |
 | **Groups/folders** of tiles | Xbox (Groups), Apple TV (folders) | **Not yet**. Rows play this part today; custom rows can be added in `apps.toml`. Next: make a row from the home screen. |
 | **Sounds**: a soft click as you move, a chime on launch | PS5, Switch, Xbox | **Now**: optional (Settings → Home screen → Sounds): a soft tick as focus moves, chimes to open and go back. |
@@ -27,7 +27,10 @@ Steam's Big Picture / Game Mode.
 | **System monitor**: load, temperatures, throttling | Steam Deck (performance overlay), Xbox/PS5 (warnings only) | **Now**: Quick Menu → Stats: CPU and GPU load, temperatures (GPU hotspot too), clocks, power, memory and video memory, with a plain warning when a chip is at its limit or slowing down to cool off. |
 | **Captures**: screenshots over any game, and a gallery | Xbox (Capture & share), PS5 (Create button), Switch (Album), Steam (screenshots, now in its screensaver too) | **Now**: Quick Menu → System → Take a screenshot (or `hearthctl screenshot`); a Captures tile to view and delete them; they show in the screen saver too. Next: a button shortcut, and short video clips. |
 | **Notes after an update**: what's new | Switch (News), consoles and tvOS (release notes) | **Now**: once after each update, the home screen shows what that version brought; every version is in CHANGELOG.md and on GitHub's releases. |
-| **Your phone as a remote**, with a keyboard | Google TV and Apple TV (phone remote apps with typing), Roku (app), Steam (Steam Link) | **Not yet**. Next: a page on the home network (a code on the TV to pair) with a d-pad and a keyboard for search and Wi-Fi passwords. |
+| **Your phone as a remote**, with a keyboard | Google TV and Apple TV (phone remote apps with typing), Roku (app), Steam (Steam Link) | **Now**: Settings → Phone remote shows a code and a QR code; the page (nothing to install) has a d-pad, the buttons and a keyboard, and what you type lands in Hearth's search, a Wi-Fi password, or an app's sign-in box. |
+| **Cast from a phone**: AirPlay, Chromecast, Spotify Connect | Every TV (AirPlay and/or Google Cast), consoles (YouTube with a TV code) | **Now**: AirPlay (video, photos, music, screen mirroring), Spotify Connect, and YouTube with a TV code ([CASTING.md](CASTING.md)). Google Cast itself is closed, so no Chromecast. |
+| **Your photos as the screen saver** | Apple TV and Google TV (photo frames) | **Now**: a folder, or a plugged-in drive's Pictures or DCIM, on their own or mixed with your games' art (Settings → Home screen). |
+| **Accessibility**: large text, high contrast | Every console and TV | **Now**: Settings → Accessibility: two larger text sizes and a high-contrast look (black, white, yellow, a thick focus ring), each person's own. Spoken menus: not yet. |
 | **Continue watching across apps** (a universal watchlist) | Google TV (some services), Apple TV (the TV app); Roku users have asked for years | **Now**: a Watch next row from Jellyfin, Plex and Kodi, with progress bars; it resumes on the spot and tells your server how far you got. |
 | **Parental controls** that are simple | Switch (phone app), Xbox and PlayStation (family accounts, all different) | **Now**: Settings → Family: a daily game-time limit (films don't count), a bedtime, locked tiles, one PIN, no accounts. |
 | **One touch play**: the TV follows the console | PS5, Xbox, Apple TV (over HDMI-CEC) | **Now**, with a CEC adapter: Guide switches the TV to Hearth, and waking retries until the TV answers. |
@@ -50,6 +53,7 @@ complain about or ask for, and what Hearth does about it.
 | **Parental controls are confusing, and different on every device** | One page, one PIN, three rules. |
 | **The TV stays on the wrong input** (CEC is unreliable) | Keeps asking until the TV answers, and Guide brings it back. |
 | **Folders and themes** (Switch owners, since 2017) | Liveries today; folders when wanted. |
+| **Casting needs the TV's own app store to be alive** (old TVs lose AirPlay and Cast apps) | AirPlay and Spotify Connect are part of Hearth and update with it. |
 
 ## Where Hearth is already ahead
 
@@ -70,9 +74,11 @@ complain about or ask for, and what Hearth does about it.
 Done: search, game details, notices, UI sounds, the ambient screen saver,
 now-playing controls, a system monitor, captures, what's new after updates,
 the network by the clock, Watch next, Family limits, the TV privacy check,
-one touch play, and every PC store in one Library. Next up: **your phone as
-a remote** (with a keyboard). Still to come, when wanted: **profiles** and
-**groups/folders** of tiles.
+one touch play, every PC store in one Library, profiles (People), casting,
+the phone remote, photos in the screen saver and accessibility. Still to
+come, when wanted: **groups/folders** of tiles, spoken menus, picture and
+sound settings (frame-rate matching, night mode), RetroAchievements and
+save backups.
 
 Looked at in September 2026: Steam's September update (Big Art Mode, a
 screensaver of game art and screenshots, a default-to-desktop switch), tvOS 26

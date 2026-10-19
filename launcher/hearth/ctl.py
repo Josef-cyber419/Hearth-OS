@@ -10,6 +10,7 @@ or over SSH from another computer).
   hearthctl footprint       memory and CPU in use, and the programs using them
   hearthctl check           every safe check at once, saved as a report (docs/FIELD_TESTS.md)
   hearthctl press up a      send buttons to what's on the TV (for testing over SSH)
+  hearthctl type "text"     type into what's on the TV (a search, a password box)
   hearthctl update          install OS + app updates now (restart to finish)
   hearthctl channel [live|staging]  which build this PC follows; switch between them
   hearthctl rollback        go back to the previous OS version
@@ -103,7 +104,7 @@ def check_session() -> list[Check]:
     in_gs = bool(os.environ.get("GAMESCOPE_WAYLAND_DISPLAY"))
     out.append(Check("Running inside Game Mode", "info", "yes" if in_gs else
                      "no (normal from Desktop Mode or SSH; checks below that need Game Mode are skipped)"))
-    overlay = subprocess.run(["pgrep", "-f", "hearth.overlay"], capture_output=True).returncode == 0
+    overlay = subprocess.run(["pgrep", "-f", "hearth.overlay"], capture_output=True, timeout=10).returncode == 0
     if in_gs:
         out.append(Check("Quick Menu process", "ok" if overlay else "fail",
                          "running" if overlay else "not running", "" if overlay else "see: hearthctl logs"))
@@ -204,7 +205,8 @@ def _read_text(path: str) -> str:
 
 def installed_flatpaks() -> set[str]:
     try:
-        out = subprocess.run(["flatpak", "list", "--app", "--columns=application"], capture_output=True, text=True)
+        out = subprocess.run(["flatpak", "list", "--app", "--columns=application"], capture_output=True, text=True,
+                             timeout=60)
         return set(out.stdout.split())
     except OSError:
         return set()
@@ -245,7 +247,8 @@ def check_updates() -> list[Check]:
         out.append(Check("OS image", "info", f"{status.image} ({status.booted})"))
     if status.update_ready:
         out.append(Check("Update", "warn", f"{status.staged} downloaded", "restart to finish updating"))
-    auto = subprocess.run(["systemctl", "is-enabled", "uupd.timer"], capture_output=True, text=True).stdout.strip()
+    auto = subprocess.run(["systemctl", "is-enabled", "uupd.timer"], capture_output=True, text=True,
+                          timeout=10).stdout.strip()
     out.append(Check("Automatic updates", "ok" if auto == "enabled" else "warn",
                      f"uupd.timer {auto or 'not found'}", "" if auto == "enabled" else "sudo systemctl enable --now uupd.timer"))
     return out
@@ -294,6 +297,12 @@ def cmd_status() -> int:
     for paused in reversed(state.get("suspended", [])):
         print(f"Quick Resume: {paused['name']} (paused)")
     print(f"Quick Menu: {'open' if state['overlay_open'] else 'closed'}")
+    cast_info = state.get("cast")
+    if cast_info:
+        print(f"Casting: {cast_info['name']}" + (" (on screen)" if state["focus"] == cast_info["id"] else ""))
+    remote = state.get("remote")
+    if remote:
+        print(f"Phone remote: {remote['url']} (code {remote['code']}, {remote['phones']} paired)")
     print(f"Log: {logs.log_path()}")
     return 0
 
@@ -601,9 +610,12 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("art", help="find pictures online for emulated games without one, now")
     p.add_argument("-n", "--limit", type=int, default=500)
     sub.add_parser("check")
-    p = sub.add_parser("press", help="send buttons to the TV: up down left right a b x y view menu lb rb guide home")
+    p = sub.add_parser("press", help="send buttons to the TV: up down left right a b x y view menu lb rb backspace "
+                                     "guide home")
     p.add_argument("buttons", nargs="+")
     p.add_argument("--delay", type=float, default=0.35, help="seconds between presses")
+    p = sub.add_parser("type", help="type text into what's on the TV (ASCII; a newline presses Enter)")
+    p.add_argument("text")
     p = sub.add_parser("channel", help="show or switch update channel: live or staging")
     p.add_argument("name", nargs="?", choices=sorted(updates.CHANNELS))
     p = sub.add_parser("rollback")
@@ -643,6 +655,15 @@ def main(argv: list[str] | None = None) -> int:
         text = fieldcheck.markdown(fieldcheck.run())
         print(text)
         print(f"Saved {fieldcheck.save(text)}")
+        return 0
+    if args.cmd == "type":
+        from . import drive
+
+        keys = drive.Keys.connect()
+        problem = keys.type(args.text) if keys else drive.last_problem()
+        if problem:
+            print(problem)
+            return 1
         return 0
     if args.cmd == "press":
         from . import drive

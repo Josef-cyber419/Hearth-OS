@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth
+Comment=Back to the TV: Game Mode with the Hearth home screen
+Exec=/usr/libexec/hearth/hearth-gamemode
+Icon=hearth
+Terminal=false
+Categories=Game;
+Keywords=game mode;gaming mode;tv;

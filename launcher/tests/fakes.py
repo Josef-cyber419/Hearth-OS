@@ -72,6 +72,9 @@ class FakeActions:
     def switch_person(self):
         return self._record("switch_person")
 
+    def stop_cast(self):
+        return self._record("stop_cast")
+
     def update(self):
         return self._record("update")
 

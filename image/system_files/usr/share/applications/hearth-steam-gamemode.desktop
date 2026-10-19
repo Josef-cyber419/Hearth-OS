@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Steam Gaming Mode
+Comment=Game Mode with Steam's own interface, just this once; Hearth is back next time
+Exec=/usr/libexec/hearth/hearth-gamemode --steam
+Icon=steam
+Terminal=false
+Categories=Game;
+Keywords=game mode;gaming mode;big picture;

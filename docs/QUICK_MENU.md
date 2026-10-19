@@ -52,8 +52,10 @@ Steam ever hangs).
   ES-DE: closes just the emulator, ES-DE stays on your list), **Home, keep
   <game> paused** (Quick Resume: it waits
   in a row on the home screen and carries on where you were), close the
-  current app, **take a screenshot** (the menu closes first, so it's just the
-  game; see them with the **Captures** tile), check for updates, report a
+  current app, **Stop casting** (while a phone is casting to the screen:
+  drops it; see [CASTING.md](CASTING.md)), **take a screenshot** (the menu
+  closes first, so it's just the game; see them with the **Captures** tile),
+  check for updates, report a
   problem, sleep, restart, power off. With a Wii Remote connected, also
   *Wii Remote pointer as mouse* for the app in front. Anything that ends what
   you're doing asks you to press A again.

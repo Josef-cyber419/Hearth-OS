@@ -13,17 +13,35 @@ import contextlib
 import copy
 import fcntl
 import json
+import logging
 import os
 import re
 import shutil
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from pathlib import Path
 from typing import Callable, Iterator
 
 from . import events
+
+log = logging.getLogger("hearth")
+
+
+def in_background(name: str, fn: Callable, *args) -> threading.Thread:
+    """Run `fn` on a daemon thread. A failure inside it is logged (with
+    the thread's name) rather than lost on stderr with the thread."""
+    def work() -> None:
+        try:
+            fn(*args)
+        except Exception:  # noqa: BLE001 - whatever it was, say so
+            log.exception("background work %r failed", name)
+
+    thread = threading.Thread(target=work, daemon=True, name=name)
+    thread.start()
+    return thread
 
 UNIT_RE = re.compile(r"hearth-(app|bg)-(.+)_\d+\.scope")
 
@@ -54,13 +72,15 @@ def runtime_dir() -> Path:
 #   "screen": "settings" | null,  (a screen of the hub's own in front of the home screen)
 #   "close_screen": bool  (Home was asked for: the hub closes that screen)
 #   "switch_request": bool  (the Quick Menu asks for "Who's playing?": the hub closes what's in front)
+#   "remote": {"url", "name_url", "code", "port", "phones"} | null  (the phone remote's page, remote.py)
+#   "cast": {"id", "name", "since", "back"} | null  (a receiver's window is in front, cast.py)
 # }
 
 DEFAULT_STATE = {"foreground": None, "background": {}, "focus": "home", "overlay_open": False,
                  "paused": False, "requests": [], "update": None, "report": None,
                  "wii_mouse": {}, "wii": None, "wii_raw": False,
                  "suspended": [], "suspend_request": False, "screen": None, "close_screen": False,
-                 "switch_request": False}
+                 "switch_request": False, "remote": None, "cast": None}
 
 
 def _state_path() -> Path:
@@ -70,6 +90,15 @@ def _state_path() -> Path:
 @contextlib.contextmanager
 def _locked() -> Iterator[None]:
     with open(runtime_dir() / "state.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+@contextlib.contextmanager
+def held(name: str) -> Iterator[None]:
+    """A lock shared by Hearth's processes (hub, overlay, hearthctl) for a
+    piece of work that mustn't run twice at once, e.g. starting a receiver."""
+    with open(runtime_dir() / f"{name}.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
 
