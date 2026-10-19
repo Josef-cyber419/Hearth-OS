@@ -117,7 +117,7 @@ A PC follows one of two builds:
 `hearthctl channel` shows which one this PC is on; `hearthctl channel
 staging` or `hearthctl channel live` switches it (restart to finish). A
 specific version can also be installed by its number:
-`sudo bootc switch ghcr.io/josef-cyber419/hearth-os:0.21.0`.
+`sudo bootc switch ghcr.io/josef-cyber419/hearth-os:0.24.0`.
 
 ## Building your own image (for developers)
 
