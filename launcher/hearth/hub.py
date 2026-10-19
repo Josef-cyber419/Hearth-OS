@@ -384,7 +384,7 @@ def main(argv: list[str] | None = None) -> int:
         from . import remote
 
         remote.start(remote_enabled)
-        cast.keep(lambda: home_config(args), every=60)  # receivers come back if they die or install late
+        cast.keep(lambda: cfg.load(args.config), every=60)  # receivers come back if they die or install late
     state = {"last_id": None, "message": None, "surface": None, "intro": "boot"}
     failures: list[float] = []
     while True:

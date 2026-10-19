@@ -10,9 +10,9 @@ Tested on: Ryzen 7 5800X3D, Radeon RX 6750 XT, 24 GB, 256 GB SATA SSD, Xbox cont
 
 | | 0.24.0 | Change since 0.23.0 |
 |---|--:|--:|
-| Lines of code | 18,871 | +1,610 |
-| Automated tests | 519 | +61 |
-| Lines of docs | 2,126 | +147 |
+| Lines of code | 19,148 | +1,887 |
+| Automated tests | 537 | +79 |
+| Lines of docs | 2,140 | +161 |
 | Guides in docs/ | 16 | +1 |
 | Pull requests merged | 28 | |
 | Versions released | 27 | |
@@ -21,10 +21,10 @@ Lines of code by part (blank lines not counted):
 
 | Part | Lines |
 |---|--:|
-| Home screen, Quick Menu and settings (Python) | 16,105 |
-| System image (scripts, services, config) | 1,366 |
-| Build and tools | 1,400 |
-| Tests | 7,233 |
+| Home screen, Quick Menu and settings (Python) | 16,363 |
+| System image (scripts, services, config) | 1,380 |
+| Build and tools | 1,405 |
+| Tests | 7,447 |
 
 ## What's new in 0.24.0
 
@@ -34,6 +34,7 @@ Lines of code by part (blank lines not counted):
 - **Accessibility**: Settings → Accessibility: larger text (two sizes) and a high-contrast look, each person's own.
 - **A new livery, Girth OS**: wider by design. Settings → Appearance; the header says so under a G roundel, the boot logo is the roundel too, and the tiles really are wider.
 - **Two icons on the desktop**: **Hearth** goes back to the TV, and **Steam Gaming Mode** starts Game Mode with Steam's own interface for that one session (Hearth is back the next time). Bazzite's "Return to Gaming Mode" stays and lands on Hearth too.
+- **Lighter and sturdier**: the Quick Menu draws in two thirds of the time it took (it no longer repaints the whole screen every frame once it's open) and Settings in half; text that's cut or wrapped is remembered rather than measured again each frame. A review of the whole codebase fixed the things that could go wrong quietly: a phone's music no longer lets the PC fall asleep; receivers that crash or install after boot come back by themselves; the phone remote only answers requests for this PC by name or address, changes its code after repeated guessing, and keeps working when the display can't be reached; an encrypted system drive is never offered for erasing; a mistyped setting is a plain "config error" rather than a crash; background work that fails is logged instead of lost.
 - **Fixes from the third field run**: the system drive can no longer be offered for erasing when lsblk lists partitions flat (util-linux 2.41); spotifyd installs again (its checksum file is named after the build), and Settings says so when the install failed; `hearthctl type` and the phone keyboard no longer drop doubled letters; Home from the Quick Menu over Kodi or Heroic closes the menu at once; Search's delete hint names Backspace with a keyboard; long names are cut or wrapped instead of drawn under switches, values and percentages, also at the larger text sizes; arrows the font hasn't got draw as chevrons; a controller whose battery level is unknown no longer shows an empty outline.
 
 ## What's working
@@ -85,7 +86,7 @@ Lines of code by part (blank lines not counted):
 
 | Version | Date | Lines of code | Tests | Docs (lines) | Guides | Pull requests |
 |---|---|--:|--:|--:|--:|--:|
-| [0.24.0](../0.24.0/report.md) | 2026-10-03 | 18,871 | 519 | 2,126 | 16 | 28 |
+| [0.24.0](../0.24.0/report.md) | 2026-10-03 | 19,148 | 537 | 2,140 | 16 | 28 |
 | [0.23.0](../0.23.0/report.md) | 2026-10-01 | 17,261 | 458 | 1,979 | 15 | 28 |
 | [0.22.4](../0.22.4/report.md) | 2026-09-30 | 15,485 | 381 | 1,773 | 14 | 27 |
 | [0.22.2](../0.22.2/report.md) | 2026-09-30 | 15,066 | 374 | 1,556 | 13 | 26 |

@@ -30,6 +30,18 @@ a GitHub release and as an image tag (`ghcr.io/<owner>/hearth-os:0.20.0`).
   Gaming Mode** starts Game Mode with Steam's own interface for that one
   session (Hearth is back the next time). Bazzite's "Return to Gaming Mode"
   stays and lands on Hearth too.
+- **Lighter and sturdier**: the Quick Menu draws in two thirds of the time
+  it took (it no longer repaints the whole screen every frame once it's
+  open) and Settings in half; text that's cut or wrapped is remembered
+  rather than measured again each frame. A review of the whole codebase
+  fixed the things that could go wrong quietly: a phone's music no longer
+  lets the PC fall asleep; receivers that crash or install after boot come
+  back by themselves; the phone remote only answers requests for this PC
+  by name or address, changes its code after repeated guessing, and keeps
+  working when the display can't be reached; an encrypted system drive is
+  never offered for erasing; a mistyped setting is a plain "config error"
+  rather than a crash; background work that fails is logged instead of
+  lost.
 - **Fixes from the third field run**: the system drive can no longer be
   offered for erasing when lsblk lists partitions flat (util-linux 2.41);
   spotifyd installs again (its checksum file is named after the build), and
